@@ -1,1 +1,4 @@
 - [OpenAPI integer compatibility](openapi-integer-compatibility.md) — Current Zod generator emits unsupported `zod.int()` for OpenAPI integers.
+- [esbuild breaks import.meta.url-relative file loading](esbuild-import-meta-url-resolution.md) — packages that load files relative to their own dir must be externalized, or resolution silently no-ops.
+- [Replit-managed Stripe connector limitations](stripe-connector-managed-webhooks-currency.md) — no exposed webhook signing secret; KWD not a supported presentment currency on the sandbox account.
+- [Rebase tool can silently drop content](rebase-tool-silent-content-drop.md) — "no conflict markers" after continueMergeResolution isn't proof the merge is correct; verify against source commits.

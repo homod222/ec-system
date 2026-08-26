@@ -12,16 +12,15 @@ import {
   CreditCard, Edit3, FileText, GraduationCap, LayoutDashboard, LogOut, Menu, MoreHorizontal,
   Phone, Plus, Search, Settings, ShieldCheck, Sparkles, Trash2, TrendingUp, Users, Wallet, X,
 } from 'lucide-react';
-import { Link, Redirect, Route, Router as WouterRouter, Switch, useLocation, useRoute } from 'wouter';
 import {
   getGetChildQueryKey, getGetTodayAttendanceQueryKey, getListChildrenQueryKey,
   getGetDashboardActivityQueryKey, getGetDashboardSummaryQueryKey, getListClassroomsQueryKey,
-  getGetApplicationQueryKey, getListApplicationsQueryKey,
+  getGetApplicationQueryKey, getListApplicationsQueryKey, getGetFinanceSummaryQueryKey, getListInvoicesQueryKey,
   useAcceptApplication, useAttachApplicationDocument, useCreateApplication, useGetApplication, useRequestUploadUrl,
-  useCreateChild, useCreateClassroom, useDeleteChild, useGetChild, useGetDashboardActivity, useGetDashboardSummary,
-  useGetFinanceSummary, useGetTodayAttendance, useListChildren, useListClassrooms, useListGuardians,
-  useListApplications, useListInvoices, useListStaff, useRecordAttendance, useStartChildRenewal,
-  useUpdateApplication, useUpdateApplicationStatus, useUpdateChild,
+  useCreateChild, useCreateClassroom, useCreateInvoiceCheckoutSession, useDeleteChild, useGetChild,
+  useGetDashboardActivity, useGetDashboardSummary, useGetFinanceSummary, useGetTodayAttendance, useListChildren,
+  useListClassrooms, useListGuardians, useListApplications, useListInvoices, useListStaff, useRecordAttendance,
+  useSendInvoiceReminder, useStartChildRenewal, useUpdateApplication, useUpdateApplicationStatus, useUpdateChild,
 } from '@workspace/api-client-react';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
@@ -31,6 +30,8 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Input } from '@/components/ui/input';
 import { Landing } from './pages/Landing';
 import type { Application, ApplicationInput, AttendanceRecord, Child, Classroom, Invoice, StaffMember } from '@workspace/api-client-react';
+import { Link, Redirect, Route, Router as WouterRouter, Switch, useLocation, useRoute, useSearch } from 'wouter';
+import { useToast } from '@/hooks/use-toast';
 
 const queryClient = new QueryClient();
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
@@ -785,7 +786,32 @@ function Attendance() {
 function Finance() {
   const summary = useGetFinanceSummary(); const invoiceQuery = useListInvoices(); 
   const invoices = invoiceQuery.data || []; const data = summary.data;
-  
+  const qc = useQueryClient(); const { toast } = useToast();
+  const search = useSearch(); const [, setLocation] = useLocation();
+
+  useEffect(() => {
+    const params = new URLSearchParams(search);
+    const payment = params.get('payment');
+    const invoiceId = params.get('invoice');
+    if (!payment) return;
+
+    if (payment === 'success') {
+      toast({ title: 'جارٍ تأكيد الدفع…', description: 'سيتم تحديث حالة الفاتورة فور استلام تأكيد الدفع من stripe.' });
+      // الدفع يتم تأكيده عبر webhook من Stripe وقد يستغرق ثوانٍ قليلة، لذا نعيد المحاولة تلقائيًا.
+      const timer = setTimeout(() => {
+        qc.invalidateQueries({ queryKey: getGetFinanceSummaryQueryKey() });
+        qc.invalidateQueries({ queryKey: getListInvoicesQueryKey() });
+      }, 2500);
+      setLocation('/finance', { replace: true });
+      return () => clearTimeout(timer);
+    }
+    if (payment === 'cancelled') {
+      toast({ title: 'تم إلغاء عملية الدفع', description: invoiceId ? `لم تكتمل عملية سداد الفاتورة رقم ${invoiceId}.` : undefined, variant: 'destructive' });
+      setLocation('/finance', { replace: true });
+    }
+    return undefined;
+  }, [search, qc, setLocation, toast]);
+
   return (
     <Shell>
       <PageHeader eyebrow="حضانة EC / الإدارة المالية" title="المالية والتحصيل" description="صورة دقيقة للمدفوعات المتأخرة والتدفقات النقدية." action={<Button data-testid="button-finance-export" variant="soft"><FileText size={18} />إصدار تقرير المحاسبة</Button>} />
@@ -847,20 +873,58 @@ function Finance() {
 }
 
 function InvoiceRow({ invoice }: { invoice: Invoice }) { 
+  const { toast } = useToast();
+  const checkout = useCreateInvoiceCheckoutSession();
+  const reminder = useSendInvoiceReminder();
+  const unpaid = invoice.status !== 'paid';
+
+  const handlePay = () => {
+    const returnUrl = `${window.location.origin}${basePath}/finance`;
+    checkout.mutate({ id: invoice.id, data: { returnUrl } }, {
+      onSuccess: (result) => { window.location.href = result.url; },
+      onError: () => toast({ title: 'تعذّر بدء عملية الدفع', description: 'حاول مرة أخرى أو تواصل مع الدعم الفني.', variant: 'destructive' }),
+    });
+  };
+
+  const handleReminder = () => {
+    reminder.mutate({ id: invoice.id }, {
+      onSuccess: (result) => toast({ title: result.status === 'sent' ? 'تم إرسال التذكير' : 'تعذّر إرسال التذكير', description: result.message, variant: result.status === 'sent' ? 'default' : 'destructive' }),
+      onError: () => toast({ title: 'تعذّر إرسال التذكير', description: 'حدث خطأ غير متوقع أثناء إرسال الإشعار.', variant: 'destructive' }),
+    });
+  };
+
   return (
-    <div data-testid={`row-invoice-${invoice.id}`} className="flex items-center gap-4 rounded-xl border border-border bg-background p-4 hover:border-primary/20 transition-colors">
+    <div data-testid={`row-invoice-${invoice.id}`} className="flex flex-col gap-3 rounded-xl border border-border bg-background p-4 hover:border-primary/20 transition-colors sm:flex-row sm:items-center">
       <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-secondary text-primary">
         <FileText size={20} />
       </span>
       <div className="min-w-0 flex-1">
         <p className="truncate text-base font-bold text-foreground">{invoice.guardianName}</p>
         <p className="mt-0.5 text-xs font-medium text-muted-foreground">{invoice.invoiceNumber} · {invoice.childName}</p>
+        {invoice.lastPaymentStatus === 'failed' && (
+          <p className="mt-1 text-xs font-bold text-destructive">فشلت آخر محاولة دفع{invoice.lastPaymentError ? `: ${invoice.lastPaymentError}` : ''}</p>
+        )}
+        {invoice.status === 'paid' && invoice.chargedAmount != null && invoice.chargedCurrency && (
+          <p className="mt-1 text-xs font-medium text-muted-foreground">تم التحصيل عبر Stripe: {invoice.chargedAmount} {invoice.chargedCurrency.toUpperCase()}</p>
+        )}
       </div>
-      <div className="text-left">
-        <p className="text-base font-bold text-foreground mb-1">{money(invoice.amount)}</p>
-        <Pill tone={invoice.status === 'paid' ? 'green' : invoice.status === 'overdue' ? 'red' : 'yellow'}>
-          {invoice.status === 'paid' ? 'تم السداد' : invoice.status === 'overdue' ? 'متأخرة' : 'قيد الانتظار'}
-        </Pill>
+      <div className="flex items-center gap-3 sm:text-left">
+        <div>
+          <p className="text-base font-bold text-foreground mb-1">{money(invoice.amount)}</p>
+          <Pill tone={invoice.status === 'paid' ? 'green' : invoice.status === 'overdue' ? 'red' : 'yellow'}>
+            {invoice.status === 'paid' ? 'تم السداد' : invoice.status === 'overdue' ? 'متأخرة' : 'قيد الانتظار'}
+          </Pill>
+        </div>
+        {unpaid && (
+          <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
+            <Button data-testid={`button-pay-${invoice.id}`} variant="primary" className="!px-3 !py-2 !text-xs" onClick={handlePay} disabled={checkout.isPending}>
+              {checkout.isPending ? 'جارٍ التحويل…' : 'دفع الآن'}
+            </Button>
+            <Button data-testid={`button-remind-${invoice.id}`} variant="soft" className="!px-3 !py-2 !text-xs" onClick={handleReminder} disabled={reminder.isPending}>
+              {reminder.isPending ? 'جارٍ الإرسال…' : 'إرسال تذكير'}
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   ); 

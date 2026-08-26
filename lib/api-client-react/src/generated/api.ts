@@ -39,6 +39,9 @@ import type {
   Guardian,
   HealthStatus,
   Invoice,
+  InvoiceCheckoutSession,
+  InvoiceCheckoutSessionInput,
+  InvoiceReminderResult,
   ListApplicationsParams,
   ListChildrenParams,
   ListInvoicesParams,
@@ -2034,4 +2037,147 @@ export function useListInvoices<TData = Awaited<ReturnType<typeof listInvoices>>
 
 
 
+
+export const getCreateInvoiceCheckoutSessionUrl = (id: number,) => {
+
+
+
+
+  return `/api/invoices/${id}/checkout-session`
+}
+
+/**
+ * @summary Create a Stripe checkout session to pay an invoice
+ */
+export const createInvoiceCheckoutSession = async (id: number,
+    invoiceCheckoutSessionInput: InvoiceCheckoutSessionInput, options?: Parameters<typeof customFetch>[1]): Promise<InvoiceCheckoutSession> => {
+
+  return customFetch<InvoiceCheckoutSession>(getCreateInvoiceCheckoutSessionUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(invoiceCheckoutSessionInput)
+  }
+);}
+
+
+
+
+
+export const getCreateInvoiceCheckoutSessionMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createInvoiceCheckoutSession>>, TError,{id: number;data: BodyType<InvoiceCheckoutSessionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createInvoiceCheckoutSession>>, TError,{id: number;data: BodyType<InvoiceCheckoutSessionInput>}, TContext> => {
+
+const mutationKey = ['createInvoiceCheckoutSession'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createInvoiceCheckoutSession>>, {id: number;data: BodyType<InvoiceCheckoutSessionInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  createInvoiceCheckoutSession(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateInvoiceCheckoutSessionMutationResult = NonNullable<Awaited<ReturnType<typeof createInvoiceCheckoutSession>>>
+    export type CreateInvoiceCheckoutSessionMutationBody = BodyType<InvoiceCheckoutSessionInput>
+    export type CreateInvoiceCheckoutSessionMutationError = ErrorType<void>
+
+    /**
+ * @summary Create a Stripe checkout session to pay an invoice
+ */
+export const useCreateInvoiceCheckoutSession = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createInvoiceCheckoutSession>>, TError,{id: number;data: BodyType<InvoiceCheckoutSessionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createInvoiceCheckoutSession>>,
+        TError,
+        {id: number;data: BodyType<InvoiceCheckoutSessionInput>},
+        TContext
+      > => {
+      return useMutation(getCreateInvoiceCheckoutSessionMutationOptions(options));
+    }
+
+export const getSendInvoiceReminderUrl = (id: number,) => {
+
+
+
+
+  return `/api/invoices/${id}/reminder`
+}
+
+/**
+ * @summary Send a due-date payment reminder to the guardian
+ */
+export const sendInvoiceReminder = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<InvoiceReminderResult> => {
+
+  return customFetch<InvoiceReminderResult>(getSendInvoiceReminderUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getSendInvoiceReminderMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendInvoiceReminder>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof sendInvoiceReminder>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['sendInvoiceReminder'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendInvoiceReminder>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  sendInvoiceReminder(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SendInvoiceReminderMutationResult = NonNullable<Awaited<ReturnType<typeof sendInvoiceReminder>>>
+
+    export type SendInvoiceReminderMutationError = ErrorType<void>
+
+    /**
+ * @summary Send a due-date payment reminder to the guardian
+ */
+export const useSendInvoiceReminder = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendInvoiceReminder>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof sendInvoiceReminder>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getSendInvoiceReminderMutationOptions(options));
+    }
 

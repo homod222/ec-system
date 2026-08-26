@@ -78,10 +78,7 @@ export const ListChildrenResponse = zod.array(ListChildrenResponseItem)
  */
 
 
-
 export const createChildBodyGuardianPhoneMin = 5;
-
-
 
 
 export const CreateChildBody = zod.object({
@@ -149,11 +146,7 @@ export const UpdateChildParams = zod.object({
 })
 
 
-
-
 export const updateChildBodyGuardianPhoneMin = 5;
-
-
 
 
 export const UpdateChildBody = zod.object({
@@ -285,10 +278,7 @@ export const ListApplicationsResponse = zod.array(ListApplicationsResponseItem)
  */
 
 
-
-
 export const createApplicationBodyGuardianPhoneMin = 5;
-
 
 
 export const CreateApplicationBody = zod.object({
@@ -385,11 +375,7 @@ export const UpdateApplicationParams = zod.object({
 })
 
 
-
-
-
 export const updateApplicationBodyGuardianPhoneMin = 5;
-
 
 
 export const UpdateApplicationBody = zod.object({
@@ -446,7 +432,6 @@ export const AttachApplicationDocumentParams = zod.object({
 })
 
 
-
 export const attachApplicationDocumentBodySizeMax = 10485760;
 export const attachApplicationDocumentBodySizeMultipleOf = 1;
 
@@ -493,8 +478,6 @@ export const requestUploadUrlBodyApplicationIdMultipleOf = 1;
 
 export const requestUploadUrlBodySizeMax = 10485760;
 export const requestUploadUrlBodySizeMultipleOf = 1;
-
-
 
 
 export const RequestUploadUrlBody = zod.object({
@@ -631,10 +614,7 @@ export const ListClassroomsResponse = zod.array(ListClassroomsResponseItem)
  */
 
 
-
 export const createClassroomBodyCapacityMultipleOf = 1;
-
-
 
 
 export const CreateClassroomBody = zod.object({
@@ -741,8 +721,41 @@ export const ListInvoicesResponseItem = zod.object({
   "childName": zod.string(),
   "amount": zod.number(),
   "dueDate": zod.string(),
-  "status": zod.enum(['paid', 'pending', 'overdue'])
+  "status": zod.enum(['paid', 'pending', 'overdue']),
+  "paidAt": zod.string().nullable(),
+  "lastPaymentStatus": zod.string().nullable(),
+  "lastPaymentError": zod.string().nullish(),
+  "chargedCurrency": zod.string().nullish(),
+  "chargedAmount": zod.number().nullish()
 })
 export const ListInvoicesResponse = zod.array(ListInvoicesResponseItem)
 
+
+/**
+ * @summary Create a Stripe checkout session to pay an invoice
+ */
+export const CreateInvoiceCheckoutSessionParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const CreateInvoiceCheckoutSessionBody = zod.object({
+  "returnUrl": zod.string().describe('Absolute URL of the finance page to redirect back to after checkout.')
+})
+
+export const CreateInvoiceCheckoutSessionResponse = zod.object({
+  "url": zod.string()
+})
+
+
+/**
+ * @summary Send a due-date payment reminder to the guardian
+ */
+export const SendInvoiceReminderParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const SendInvoiceReminderResponse = zod.object({
+  "status": zod.enum(['sent', 'failed']),
+  "message": zod.string()
+})
 

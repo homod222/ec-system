@@ -6,6 +6,9 @@ import {
   CreateChildResponse,
   CreateClassroomBody,
   CreateClassroomResponse,
+  CreateInvoiceCheckoutSessionBody,
+  CreateInvoiceCheckoutSessionParams,
+  CreateInvoiceCheckoutSessionResponse,
   DeleteChildParams,
   GetChildParams,
   GetChildResponse,
@@ -22,6 +25,8 @@ import {
   ListStaffResponse,
   RecordAttendanceBody,
   RecordAttendanceResponse,
+  SendInvoiceReminderParams,
+  SendInvoiceReminderResponse,
   UpdateChildBody,
   UpdateChildParams,
   UpdateChildResponse,
@@ -37,6 +42,8 @@ import {
   staffTable,
 } from "@workspace/db";
 import { checkClassroomCapacity } from "../lib/classroomCapacity";
+import { createInvoiceCheckoutSession, isAllowedReturnUrl } from "../lib/financePayments";
+import { sendDueReminder } from "../lib/notifications";
 
 const router: IRouter = Router();
 const today = () => new Date().toISOString().slice(0, 10);
@@ -422,6 +429,8 @@ router.post("/classrooms", async (req, res): Promise<void> => {
   res.status(201).json(CreateClassroomResponse.parse({ ...data, childrenCount: 0 }));
 });
 
+const arMonthLabel = new Intl.DateTimeFormat("ar", { month: "long" });
+
 router.get("/finance/summary", async (req, res): Promise<void> => {
   const ownerId = getAuth(req).userId!;
   const invoiceRows = await db
@@ -432,18 +441,32 @@ router.get("/finance/summary", async (req, res): Promise<void> => {
       eq(childrenTable.ownerId, ownerId),
     ));
   const invoices = invoiceRows.map(({ invoice }) => invoice);
-  const collectedThisMonth = invoices.filter((invoice) => invoice.status === "paid").reduce((sum, invoice) => sum + invoice.amount, 0);
+  const now = new Date();
+  const isSameMonth = (date: Date, ref: Date) =>
+    date.getUTCFullYear() === ref.getUTCFullYear() && date.getUTCMonth() === ref.getUTCMonth();
+
+  const collectedThisMonth = invoices
+    .filter((invoice) => invoice.status === "paid" && isSameMonth(new Date(invoice.paidAt ?? invoice.dueDate), now))
+    .reduce((sum, invoice) => sum + invoice.amount, 0);
   const outstanding = invoices.filter((invoice) => invoice.status !== "paid").reduce((sum, invoice) => sum + invoice.amount, 0);
+
+  const monthlyTrend = Array.from({ length: 3 }, (_, index) => {
+    const monthDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (2 - index), 1));
+    const collected = invoices
+      .filter((invoice) => invoice.status === "paid" && isSameMonth(new Date(invoice.paidAt ?? invoice.dueDate), monthDate))
+      .reduce((sum, invoice) => sum + invoice.amount, 0);
+    const expected = invoices
+      .filter((invoice) => isSameMonth(new Date(invoice.dueDate), monthDate))
+      .reduce((sum, invoice) => sum + invoice.amount, 0);
+    return { month: arMonthLabel.format(monthDate), collected, expected };
+  });
+
   res.json(GetFinanceSummaryResponse.parse({
     collectedThisMonth,
     outstanding,
     overdueCount: invoices.filter((invoice) => invoice.status === "overdue").length,
     paidCount: invoices.filter((invoice) => invoice.status === "paid").length,
-    monthlyTrend: [
-      { month: "يونيو", collected: Math.round(collectedThisMonth * 0.7), expected: Math.round((collectedThisMonth + outstanding) * 0.8) },
-      { month: "يوليو", collected: Math.round(collectedThisMonth * 0.85), expected: Math.round((collectedThisMonth + outstanding) * 0.9) },
-      { month: "أغسطس", collected: collectedThisMonth, expected: collectedThisMonth + outstanding },
-    ],
+    monthlyTrend,
   }));
 });
 
@@ -480,8 +503,94 @@ router.get("/invoices", async (req, res): Promise<void> => {
       amount: invoice.amount,
       dueDate: invoice.dueDate,
       status: invoice.status,
+      paidAt: invoice.paidAt ? invoice.paidAt.toISOString() : null,
+      lastPaymentStatus: invoice.lastPaymentStatus,
+      lastPaymentError: invoice.lastPaymentError,
+      chargedCurrency: invoice.chargedCurrency,
+      chargedAmount: invoice.chargedAmount,
     }));
   res.json(ListInvoicesResponse.parse(rows));
+});
+
+/** Loads an invoice only if it belongs (via its child) to the authenticated owner. */
+async function loadOwnedInvoice(ownerId: string, invoiceId: number) {
+  const [row] = await db
+    .select({ invoice: invoicesTable })
+    .from(invoicesTable)
+    .innerJoin(childrenTable, and(
+      eq(invoicesTable.childId, childrenTable.id),
+      eq(childrenTable.ownerId, ownerId),
+    ))
+    .where(eq(invoicesTable.id, invoiceId));
+  return row?.invoice ?? null;
+}
+
+router.post("/invoices/:id/checkout-session", async (req, res): Promise<void> => {
+  const params = CreateInvoiceCheckoutSessionParams.safeParse(req.params);
+  const body = CreateInvoiceCheckoutSessionBody.safeParse(req.body);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  if (!body.success) {
+    res.status(400).json({ error: body.error.message });
+    return;
+  }
+  if (!isAllowedReturnUrl(body.data.returnUrl)) {
+    res.status(400).json({ error: "Invalid return URL" });
+    return;
+  }
+  const invoice = await loadOwnedInvoice(getAuth(req).userId!, params.data.id);
+  if (!invoice) {
+    res.status(404).json({ error: "Invoice not found" });
+    return;
+  }
+  if (invoice.status === "paid") {
+    res.status(400).json({ error: "Invoice already paid" });
+    return;
+  }
+  const [guardian] = await db.select().from(guardiansTable).where(eq(guardiansTable.id, invoice.guardianId));
+  if (!guardian) {
+    res.status(404).json({ error: "Guardian not found for invoice" });
+    return;
+  }
+  try {
+    const session = await createInvoiceCheckoutSession({
+      invoice,
+      guardian,
+      successUrl: `${body.data.returnUrl}?payment=success&invoice=${invoice.id}`,
+      cancelUrl: `${body.data.returnUrl}?payment=cancelled&invoice=${invoice.id}`,
+    });
+    res.json(CreateInvoiceCheckoutSessionResponse.parse({ url: session.url }));
+  } catch (err) {
+    req.log.error({ err, invoiceId: invoice.id }, "Failed to create Stripe checkout session");
+    res.status(502).json({ error: "Failed to create payment session" });
+  }
+});
+
+router.post("/invoices/:id/reminder", async (req, res): Promise<void> => {
+  const parsed = SendInvoiceReminderParams.safeParse(req.params);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+  const invoice = await loadOwnedInvoice(getAuth(req).userId!, parsed.data.id);
+  if (!invoice) {
+    res.status(404).json({ error: "Invoice not found" });
+    return;
+  }
+  const [guardian] = await db.select().from(guardiansTable).where(eq(guardiansTable.id, invoice.guardianId));
+  if (!guardian) {
+    res.status(404).json({ error: "Guardian not found for invoice" });
+    return;
+  }
+  const result = await sendDueReminder(invoice, guardian);
+  res.json(SendInvoiceReminderResponse.parse({
+    status: result.status,
+    message: result.status === "sent"
+      ? "تم إرسال التذكير عبر واتساب"
+      : (result.errorMessage ?? "تعذر إرسال التذكير"),
+  }));
 });
 
 export default router;

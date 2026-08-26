@@ -15,4 +15,14 @@ export interface Invoice {
   amount: number;
   dueDate: string;
   status: InvoiceStatus;
+  /** @nullable */
+  paidAt: string | null;
+  /** @nullable */
+  lastPaymentStatus: string | null;
+  /** @nullable */
+  lastPaymentError?: string | null;
+  /** @nullable */
+  chargedCurrency?: string | null;
+  /** @nullable */
+  chargedAmount?: number | null;
 }

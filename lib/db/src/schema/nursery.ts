@@ -72,8 +72,31 @@ export const invoicesTable = pgTable("invoices", {
   amount: numeric("amount", { precision: 10, scale: 2, mode: "number" }).notNull(),
   dueDate: date("due_date", { mode: "string" }).notNull(),
   status: text("status").notNull(),
+  stripeCheckoutSessionId: text("stripe_checkout_session_id"),
+  stripePaymentIntentId: text("stripe_payment_intent_id"),
+  paidAt: timestamp("paid_at", { withTimezone: true }),
+  lastPaymentStatus: text("last_payment_status"),
+  lastPaymentError: text("last_payment_error"),
+  // Invoices are denominated in KWD, but the connected Stripe account does not
+  // support KWD as a presentment currency, so the actual card charge happens
+  // in a supported currency (currently USD). These record what Stripe actually
+  // charged, straight from the webhook payload, for audit/reconciliation.
+  chargedCurrency: text("charged_currency"),
+  chargedAmount: numeric("charged_amount", { precision: 10, scale: 2, mode: "number" }),
+  exchangeRate: numeric("exchange_rate", { precision: 10, scale: 4, mode: "number" }),
 });
 
+export const paymentNotificationsTable = pgTable("payment_notifications", {
+  id: serial("id").primaryKey(),
+  invoiceId: integer("invoice_id").notNull(),
+  channel: text("channel").notNull().default("whatsapp"),
+  type: text("type").notNull(),
+  recipientPhone: text("recipient_phone").notNull(),
+  message: text("message").notNull(),
+  status: text("status").notNull(),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
 export const activitiesTable = pgTable("activities", {
   id: serial("id").primaryKey(),
   ownerId: text("owner_id").notNull().default("__legacy__"),
@@ -135,6 +158,8 @@ export const insertStaffSchema = createInsertSchema(staffTable).omit({ id: true 
 export const insertAttendanceSchema = createInsertSchema(attendanceTable).omit({ id: true });
 export const insertInvoiceSchema = createInsertSchema(invoicesTable).omit({ id: true });
 export const insertActivitySchema = createInsertSchema(activitiesTable).omit({ id: true, ownerId: true, createdAt: true });
+
+export const insertPaymentNotificationSchema = createInsertSchema(paymentNotificationsTable).omit({ id: true, createdAt: true });
 export const insertApplicationSchema = createInsertSchema(applicationsTable).omit({ id: true, ownerId: true, createdAt: true, updatedAt: true });
 export const insertApplicationDocumentSchema = createInsertSchema(applicationDocumentsTable).omit({ id: true, createdAt: true });
 export const insertUploadGrantSchema = createInsertSchema(uploadGrantsTable).omit({ id: true, createdAt: true, consumedAt: true });
@@ -146,6 +171,8 @@ export type StaffMember = typeof staffTable.$inferSelect;
 export type Attendance = typeof attendanceTable.$inferSelect;
 export type Invoice = typeof invoicesTable.$inferSelect;
 export type Activity = typeof activitiesTable.$inferSelect;
+
+export type PaymentNotification = typeof paymentNotificationsTable.$inferSelect;
 export type Application = typeof applicationsTable.$inferSelect;
 export type ApplicationDocument = typeof applicationDocumentsTable.$inferSelect;
 export type UploadGrant = typeof uploadGrantsTable.$inferSelect;

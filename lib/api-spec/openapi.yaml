@@ -521,6 +521,46 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Invoice"
+  /invoices/{id}/checkout-session:
+    post:
+      operationId: createInvoiceCheckoutSession
+      tags: [finance]
+      summary: Create a Stripe checkout session to pay an invoice
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InvoiceCheckoutSessionInput"
+      responses:
+        "200":
+          description: Checkout session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvoiceCheckoutSession"
+        "400":
+          description: Invoice already paid
+        "404":
+          description: Invoice not found
+  /invoices/{id}/reminder:
+    post:
+      operationId: sendInvoiceReminder
+      tags: [finance]
+      summary: Send a due-date payment reminder to the guardian
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Reminder dispatch result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvoiceReminderResult"
+        "404":
+          description: Invoice not found
 components:
   parameters:
     Id:
@@ -813,7 +853,7 @@ components:
         expected: { type: number }
     Invoice:
       type: object
-      required: [id, invoiceNumber, guardianName, childName, amount, dueDate, status]
+      required: [id, invoiceNumber, guardianName, childName, amount, dueDate, status, paidAt, lastPaymentStatus]
       properties:
         id: { type: number }
         invoiceNumber: { type: string }
@@ -824,4 +864,28 @@ components:
         status:
           type: string
           enum: [paid, pending, overdue]
-
+        paidAt: { type: ["string", "null"] }
+        lastPaymentStatus: { type: ["string", "null"] }
+        lastPaymentError: { type: ["string", "null"] }
+        chargedCurrency: { type: ["string", "null"] }
+        chargedAmount: { type: ["number", "null"] }
+    InvoiceCheckoutSessionInput:
+      type: object
+      required: [returnUrl]
+      properties:
+        returnUrl:
+          type: string
+          description: Absolute URL of the finance page to redirect back to after checkout.
+    InvoiceCheckoutSession:
+      type: object
+      required: [url]
+      properties:
+        url: { type: string }
+    InvoiceReminderResult:
+      type: object
+      required: [status, message]
+      properties:
+        status:
+          type: string
+          enum: [sent, failed]
+        message: { type: string }

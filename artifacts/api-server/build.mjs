@@ -100,6 +100,9 @@ async function buildAll() {
       "puppeteer",
       "puppeteer-core",
       "electron",
+      // Resolves its SQL migration files relative to its own package directory
+      // via `import.meta.url` -- bundling breaks that path resolution.
+      "stripe-replit-sync",
     ],
     sourcemap: "linked",
     plugins: [

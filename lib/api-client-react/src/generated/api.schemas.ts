@@ -441,6 +441,38 @@ export interface Invoice {
   amount: number;
   dueDate: string;
   status: InvoiceStatus;
+  /** @nullable */
+  paidAt: string | null;
+  /** @nullable */
+  lastPaymentStatus: string | null;
+  /** @nullable */
+  lastPaymentError?: string | null;
+  /** @nullable */
+  chargedCurrency?: string | null;
+  /** @nullable */
+  chargedAmount?: number | null;
+}
+
+export interface InvoiceCheckoutSessionInput {
+  /** Absolute URL of the finance page to redirect back to after checkout. */
+  returnUrl: string;
+}
+
+export interface InvoiceCheckoutSession {
+  url: string;
+}
+
+export type InvoiceReminderResultStatus = typeof InvoiceReminderResultStatus[keyof typeof InvoiceReminderResultStatus];
+
+
+export const InvoiceReminderResultStatus = {
+  sent: 'sent',
+  failed: 'failed',
+} as const;
+
+export interface InvoiceReminderResult {
+  status: InvoiceReminderResultStatus;
+  message: string;
 }
 
 export type ListChildrenParams = {
@@ -483,4 +515,3 @@ export const ListInvoicesStatus = {
   pending: 'pending',
   overdue: 'overdue',
 } as const;
-
