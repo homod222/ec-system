@@ -37,7 +37,7 @@ export function Landing() {
             دخول الإدارة
           </Link>
           <Link href="/sign-up" data-testid="link-landing-sign-up" className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-sm hover:-translate-y-0.5 hover:shadow-md transition-all">
-            سجلي طفلك الآن
+            إنشاء حساب الإدارة
           </Link>
         </div>
       </nav>
@@ -58,7 +58,7 @@ export function Landing() {
             </p>
             <div className="mt-10 flex flex-wrap gap-4">
               <Link href="/sign-up" className="inline-flex items-center gap-2 rounded-2xl bg-accent px-6 py-4 text-base font-bold text-accent-foreground shadow-lg hover:-translate-y-1 hover:shadow-xl transition-all">
-                ابدئي رحلة طفلك <ArrowUpRight size={18} />
+                ابدئي إدارة الحضانة <ArrowUpRight size={18} />
               </Link>
               <a href="#about" className="inline-flex items-center gap-2 rounded-2xl border-2 border-primary-foreground/20 px-6 py-4 text-base font-bold text-primary-foreground hover:bg-primary-foreground/10 transition-all">
                 اكتشفي برامجنا

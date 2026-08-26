@@ -4,6 +4,8 @@ import { getAuth } from "@clerk/express";
 import {
   CreateChildBody,
   CreateChildResponse,
+  CreateClassroomBody,
+  CreateClassroomResponse,
   DeleteChildParams,
   GetChildParams,
   GetChildResponse,
@@ -34,6 +36,7 @@ import {
   invoicesTable,
   staffTable,
 } from "@workspace/db";
+import { checkClassroomCapacity } from "../lib/classroomCapacity";
 
 const router: IRouter = Router();
 const today = () => new Date().toISOString().slice(0, 10);
@@ -47,17 +50,22 @@ const requireAuth: RequestHandler = (req, res, next) => {
   next();
 };
 
-async function childRows() {
+async function childRows(ownerId: string) {
   const [children, guardians, classrooms, attendance] = await Promise.all([
-    db.select().from(childrenTable),
-    db.select().from(guardiansTable),
-    db.select().from(classroomsTable),
-    db.select().from(attendanceTable),
+    db.select().from(childrenTable).where(eq(childrenTable.ownerId, ownerId)),
+    db.select().from(guardiansTable).where(eq(guardiansTable.ownerId, ownerId)),
+    db.select().from(classroomsTable).where(eq(classroomsTable.ownerId, ownerId)),
+    db.select({ attendance: attendanceTable })
+      .from(attendanceTable)
+      .innerJoin(childrenTable, and(
+        eq(attendanceTable.childId, childrenTable.id),
+        eq(childrenTable.ownerId, ownerId),
+      )),
   ]);
   const guardianMap = new Map(guardians.map((guardian) => [guardian.id, guardian]));
   const classroomMap = new Map(classrooms.map((classroom) => [classroom.id, classroom]));
   const attendanceMap = new Map<number, { total: number; present: number }>();
-  attendance.forEach((record) => {
+  attendance.forEach(({ attendance: record }) => {
     const current = attendanceMap.get(record.childId) ?? { total: 0, present: 0 };
     current.total += 1;
     if (record.status === "present" || record.status === "late") current.present += 1;
@@ -75,7 +83,7 @@ async function childRows() {
       gender: child.gender,
       birthDate: child.birthDate,
       status: child.status,
-      classroomId: child.classroomId,
+      classroomId: classroom?.id ?? null,
       classroomName: classroom?.name ?? null,
       guardianName: guardian?.name ?? "ولي أمر غير مسجل",
       guardianPhone: guardian?.phone ?? "",
@@ -90,14 +98,28 @@ async function childRows() {
 router.use(requireAuth);
 
 router.get("/dashboard/summary", async (req, res): Promise<void> => {
-  const [children, attendance, staff, invoices] = await Promise.all([
-    db.select().from(childrenTable),
-    db.select().from(attendanceTable).where(eq(attendanceTable.date, today())),
+  const ownerId = getAuth(req).userId!;
+  const [children, attendance, staff, invoiceRows] = await Promise.all([
+    db.select().from(childrenTable).where(eq(childrenTable.ownerId, ownerId)),
+    db.select({ attendance: attendanceTable })
+      .from(attendanceTable)
+      .innerJoin(childrenTable, and(
+        eq(attendanceTable.childId, childrenTable.id),
+        eq(childrenTable.ownerId, ownerId),
+      ))
+      .where(eq(attendanceTable.date, today())),
     db.select().from(staffTable),
-    db.select().from(invoicesTable),
+    db
+      .select({ invoice: invoicesTable })
+      .from(invoicesTable)
+      .innerJoin(childrenTable, and(
+        eq(invoicesTable.childId, childrenTable.id),
+        eq(childrenTable.ownerId, ownerId),
+      )),
   ]);
-  const presentToday = attendance.filter((entry) => entry.status === "present" || entry.status === "late").length;
-  const absentToday = attendance.filter((entry) => entry.status === "absent").length;
+  const invoices = invoiceRows.map(({ invoice }) => invoice);
+  const presentToday = attendance.filter(({ attendance: entry }) => entry.status === "present" || entry.status === "late").length;
+  const absentToday = attendance.filter(({ attendance: entry }) => entry.status === "absent").length;
   const monthlyRevenue = invoices
     .filter((invoice) => invoice.status === "paid")
     .reduce((sum, invoice) => sum + invoice.amount, 0);
@@ -117,8 +139,14 @@ router.get("/dashboard/summary", async (req, res): Promise<void> => {
   res.json(data);
 });
 
-router.get("/dashboard/activity", async (_req, res): Promise<void> => {
-  const activities = await db.select().from(activitiesTable).orderBy(desc(activitiesTable.createdAt)).limit(8);
+router.get("/dashboard/activity", async (req, res): Promise<void> => {
+  const ownerId = getAuth(req).userId!;
+  const activities = await db
+    .select()
+    .from(activitiesTable)
+    .where(eq(activitiesTable.ownerId, ownerId))
+    .orderBy(desc(activitiesTable.createdAt))
+    .limit(8);
   res.json(GetDashboardActivityResponse.parse(activities.map((entry) => ({
     ...entry,
     createdAt: entry.createdAt.toISOString(),
@@ -132,7 +160,7 @@ router.get("/children", async (req, res): Promise<void> => {
     return;
   }
   const search = parsed.data.search?.trim().toLowerCase();
-  const rows = (await childRows()).filter((child) => {
+  const rows = (await childRows(getAuth(req).userId!)).filter((child) => {
     const matchesSearch = !search || `${child.fullName} ${child.guardianName}`.toLowerCase().includes(search);
     const matchesClassroom = !parsed.data.classroomId || child.classroomId === parsed.data.classroomId;
     return matchesSearch && matchesClassroom;
@@ -147,23 +175,42 @@ router.post("/children", async (req, res): Promise<void> => {
     return;
   }
   const input = parsed.data;
-  const [guardian] = await db.insert(guardiansTable).values({
-    name: input.guardianName,
-    phone: input.guardianPhone,
-    email: null,
-    balance: 0,
-  }).returning();
-  const [child] = await db.insert(childrenTable).values({
-    firstName: input.firstName,
-    lastName: input.lastName,
-    gender: input.gender,
-    birthDate: input.birthDate,
-    classroomId: input.classroomId ?? null,
-    guardianId: guardian.id,
-    level: input.level,
-    notes: input.notes ?? null,
-  }).returning();
-  const record = (await childRows()).find((row) => row.id === child.id);
+  const ownerId = getAuth(req).userId!;
+  const result = await db.transaction(async (tx) => {
+    if (input.classroomId != null) {
+      const capacity = await checkClassroomCapacity(tx, ownerId, input.classroomId);
+      if (capacity.kind !== "available") return capacity;
+    }
+    const [guardian] = await tx.insert(guardiansTable).values({
+      ownerId,
+      name: input.guardianName,
+      phone: input.guardianPhone,
+      email: null,
+      balance: 0,
+    }).returning();
+    const [child] = await tx.insert(childrenTable).values({
+      ownerId,
+      firstName: input.firstName,
+      lastName: input.lastName,
+      gender: input.gender,
+      birthDate: input.birthDate,
+      classroomId: input.classroomId ?? null,
+      guardianId: guardian.id,
+      level: input.level,
+      notes: input.notes ?? null,
+    }).returning();
+    return { kind: "created" as const, child };
+  });
+  if (result.kind === "missing") {
+    res.status(404).json({ error: "Classroom not found" });
+    return;
+  }
+  if (result.kind === "full") {
+    res.status(409).json({ error: "Classroom is full" });
+    return;
+  }
+  const child = result.child;
+  const record = (await childRows(ownerId)).find((row) => row.id === child.id);
   res.status(201).json(CreateChildResponse.parse(record));
 });
 
@@ -173,7 +220,7 @@ router.get("/children/:id", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  const record = (await childRows()).find((row) => row.id === parsed.data.id);
+  const record = (await childRows(getAuth(req).userId!)).find((row) => row.id === parsed.data.id);
   if (!record) {
     res.status(404).json({ error: "Child not found" });
     return;
@@ -192,29 +239,57 @@ router.patch("/children/:id", async (req, res): Promise<void> => {
     res.status(400).json({ error: body.error.message });
     return;
   }
-  const [current] = await db.select().from(childrenTable).where(eq(childrenTable.id, params.data.id));
+  const ownerId = getAuth(req).userId!;
+  const [current] = await db.select().from(childrenTable).where(and(
+    eq(childrenTable.id, params.data.id),
+    eq(childrenTable.ownerId, ownerId),
+  ));
   if (!current) {
     res.status(404).json({ error: "Child not found" });
     return;
   }
-  let guardianId = current.guardianId;
-  if (body.data.guardianName !== undefined || body.data.guardianPhone !== undefined) {
-    await db.update(guardiansTable).set({
-      ...(body.data.guardianName !== undefined ? { name: body.data.guardianName } : {}),
-      ...(body.data.guardianPhone !== undefined ? { phone: body.data.guardianPhone } : {}),
-    }).where(eq(guardiansTable.id, guardianId));
+  const updateResult = await db.transaction(async (tx) => {
+    const targetClassroomId = body.data.classroomId === undefined
+      ? current.classroomId
+      : body.data.classroomId;
+    const targetStatus = body.data.status ?? current.status;
+    if (targetClassroomId != null && targetStatus === "active") {
+      const capacity = await checkClassroomCapacity(tx, ownerId, targetClassroomId, current.id);
+      if (capacity.kind !== "available") return capacity;
+    }
+    if (body.data.guardianName !== undefined || body.data.guardianPhone !== undefined) {
+      await tx.update(guardiansTable).set({
+        ...(body.data.guardianName !== undefined ? { name: body.data.guardianName } : {}),
+        ...(body.data.guardianPhone !== undefined ? { phone: body.data.guardianPhone } : {}),
+      }).where(and(
+        eq(guardiansTable.id, current.guardianId),
+        eq(guardiansTable.ownerId, ownerId),
+      ));
+    }
+    await tx.update(childrenTable).set({
+      ...(body.data.firstName !== undefined ? { firstName: body.data.firstName } : {}),
+      ...(body.data.lastName !== undefined ? { lastName: body.data.lastName } : {}),
+      ...(body.data.gender !== undefined ? { gender: body.data.gender } : {}),
+      ...(body.data.birthDate !== undefined ? { birthDate: body.data.birthDate } : {}),
+      ...(body.data.classroomId !== undefined ? { classroomId: body.data.classroomId } : {}),
+      ...(body.data.level !== undefined ? { level: body.data.level } : {}),
+      ...(body.data.status !== undefined ? { status: body.data.status } : {}),
+      ...(body.data.notes !== undefined ? { notes: body.data.notes } : {}),
+    }).where(and(
+      eq(childrenTable.id, params.data.id),
+      eq(childrenTable.ownerId, ownerId),
+    ));
+    return { kind: "updated" as const };
+  });
+  if (updateResult.kind === "missing") {
+    res.status(404).json({ error: "Classroom not found" });
+    return;
   }
-  await db.update(childrenTable).set({
-    ...(body.data.firstName !== undefined ? { firstName: body.data.firstName } : {}),
-    ...(body.data.lastName !== undefined ? { lastName: body.data.lastName } : {}),
-    ...(body.data.gender !== undefined ? { gender: body.data.gender } : {}),
-    ...(body.data.birthDate !== undefined ? { birthDate: body.data.birthDate } : {}),
-    ...(body.data.classroomId !== undefined ? { classroomId: body.data.classroomId } : {}),
-    ...(body.data.level !== undefined ? { level: body.data.level } : {}),
-    ...(body.data.status !== undefined ? { status: body.data.status } : {}),
-    ...(body.data.notes !== undefined ? { notes: body.data.notes } : {}),
-  }).where(eq(childrenTable.id, params.data.id));
-  const record = (await childRows()).find((row) => row.id === params.data.id);
+  if (updateResult.kind === "full") {
+    res.status(409).json({ error: "Classroom is full" });
+    return;
+  }
+  const record = (await childRows(ownerId)).find((row) => row.id === params.data.id);
   res.json(UpdateChildResponse.parse(record));
 });
 
@@ -224,7 +299,10 @@ router.delete("/children/:id", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  const [deleted] = await db.delete(childrenTable).where(eq(childrenTable.id, parsed.data.id)).returning();
+  const [deleted] = await db.delete(childrenTable).where(and(
+    eq(childrenTable.id, parsed.data.id),
+    eq(childrenTable.ownerId, getAuth(req).userId!),
+  )).returning();
   if (!deleted) {
     res.status(404).json({ error: "Child not found" });
     return;
@@ -232,8 +310,12 @@ router.delete("/children/:id", async (req, res): Promise<void> => {
   res.sendStatus(204);
 });
 
-router.get("/guardians", async (_req, res): Promise<void> => {
-  const [guardians, children] = await Promise.all([db.select().from(guardiansTable), db.select().from(childrenTable)]);
+router.get("/guardians", async (req, res): Promise<void> => {
+  const ownerId = getAuth(req).userId!;
+  const [guardians, children] = await Promise.all([
+    db.select().from(guardiansTable).where(eq(guardiansTable.ownerId, ownerId)),
+    db.select().from(childrenTable).where(eq(childrenTable.ownerId, ownerId)),
+  ]);
   res.json(ListGuardiansResponse.parse(guardians.map((guardian) => ({
     id: guardian.id,
     name: guardian.name,
@@ -244,11 +326,16 @@ router.get("/guardians", async (_req, res): Promise<void> => {
   }))));
 });
 
-router.get("/classrooms", async (_req, res): Promise<void> => {
-  const [classrooms, children] = await Promise.all([db.select().from(classroomsTable), db.select().from(childrenTable)]);
-  res.json(ListClassroomsResponse.parse(classrooms.map((classroom) => ({
+router.get("/classrooms", async (req, res): Promise<void> => {
+  const ownerId = getAuth(req).userId!;
+  const [classrooms, children] = await Promise.all([
+    db.select().from(classroomsTable).where(eq(classroomsTable.ownerId, ownerId)),
+    db.select().from(childrenTable).where(eq(childrenTable.ownerId, ownerId)),
+  ]);
+  res.json(ListClassroomsResponse.parse(classrooms.map(({ ownerId: _ownerId, ...classroom }) => ({
     ...classroom,
-    childrenCount: children.filter((child) => child.classroomId === classroom.id).length,
+    childrenCount: children.filter((child) =>
+      child.classroomId === classroom.id && child.status === "active").length,
   }))));
 });
 
@@ -260,13 +347,20 @@ router.get("/staff", async (_req, res): Promise<void> => {
   }))));
 });
 
-router.get("/attendance/today", async (_req, res): Promise<void> => {
+router.get("/attendance/today", async (req, res): Promise<void> => {
+  const ownerId = getAuth(req).userId!;
   const [records, children] = await Promise.all([
-    db.select().from(attendanceTable).where(eq(attendanceTable.date, today())),
-    db.select().from(childrenTable),
+    db.select({ attendance: attendanceTable })
+      .from(attendanceTable)
+      .innerJoin(childrenTable, and(
+        eq(attendanceTable.childId, childrenTable.id),
+        eq(childrenTable.ownerId, ownerId),
+      ))
+      .where(eq(attendanceTable.date, today())),
+    db.select().from(childrenTable).where(eq(childrenTable.ownerId, ownerId)),
   ]);
   const childMap = new Map(children.map((child) => [child.id, child]));
-  res.json(GetTodayAttendanceResponse.parse(records.map((record) => {
+  res.json(GetTodayAttendanceResponse.parse(records.map(({ attendance: record }) => {
     const child = childMap.get(record.childId);
     return {
       ...record,
@@ -281,7 +375,10 @@ router.post("/attendance", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  const [child] = await db.select().from(childrenTable).where(eq(childrenTable.id, parsed.data.childId));
+  const [child] = await db.select().from(childrenTable).where(and(
+    eq(childrenTable.id, parsed.data.childId),
+    eq(childrenTable.ownerId, getAuth(req).userId!),
+  ));
   if (!child) {
     res.status(404).json({ error: "Child not found" });
     return;
@@ -305,8 +402,36 @@ router.post("/attendance", async (req, res): Promise<void> => {
   }));
 });
 
-router.get("/finance/summary", async (_req, res): Promise<void> => {
-  const invoices = await db.select().from(invoicesTable);
+router.post("/classrooms", async (req, res): Promise<void> => {
+  const parsed = CreateClassroomBody.safeParse(req.body);
+  if (!parsed.success || !Number.isSafeInteger(parsed.data.capacity)) {
+    res.status(400).json({
+      error: parsed.success ? "Classroom capacity must be a whole number" : parsed.error.message,
+    });
+    return;
+  }
+  const [classroom] = await db.insert(classroomsTable).values({
+    ownerId: getAuth(req).userId!,
+    name: parsed.data.name,
+    level: parsed.data.level,
+    teacherName: parsed.data.teacherName,
+    capacity: parsed.data.capacity,
+    color: parsed.data.color ?? "teal",
+  }).returning();
+  const { ownerId: _ownerId, ...data } = classroom;
+  res.status(201).json(CreateClassroomResponse.parse({ ...data, childrenCount: 0 }));
+});
+
+router.get("/finance/summary", async (req, res): Promise<void> => {
+  const ownerId = getAuth(req).userId!;
+  const invoiceRows = await db
+    .select({ invoice: invoicesTable })
+    .from(invoicesTable)
+    .innerJoin(childrenTable, and(
+      eq(invoicesTable.childId, childrenTable.id),
+      eq(childrenTable.ownerId, ownerId),
+    ));
+  const invoices = invoiceRows.map(({ invoice }) => invoice);
   const collectedThisMonth = invoices.filter((invoice) => invoice.status === "paid").reduce((sum, invoice) => sum + invoice.amount, 0);
   const outstanding = invoices.filter((invoice) => invoice.status !== "paid").reduce((sum, invoice) => sum + invoice.amount, 0);
   res.json(GetFinanceSummaryResponse.parse({
@@ -328,23 +453,30 @@ router.get("/invoices", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  const [invoices, guardians, children] = await Promise.all([
-    db.select().from(invoicesTable),
-    db.select().from(guardiansTable),
-    db.select().from(childrenTable),
-  ]);
-  const guardianMap = new Map(guardians.map((guardian) => [guardian.id, guardian]));
-  const childMap = new Map(children.map((child) => [child.id, child]));
-  const rows = invoices
-    .filter((invoice) => !parsed.data.status || invoice.status === parsed.data.status)
-    .map((invoice) => ({
+  const ownerId = getAuth(req).userId!;
+  const invoiceRows = await db
+    .select({
+      invoice: invoicesTable,
+      guardianName: guardiansTable.name,
+      childFirstName: childrenTable.firstName,
+      childLastName: childrenTable.lastName,
+    })
+    .from(invoicesTable)
+    .innerJoin(childrenTable, and(
+      eq(invoicesTable.childId, childrenTable.id),
+      eq(childrenTable.ownerId, ownerId),
+    ))
+    .innerJoin(guardiansTable, and(
+      eq(invoicesTable.guardianId, guardiansTable.id),
+      eq(guardiansTable.ownerId, ownerId),
+    ));
+  const rows = invoiceRows
+    .filter(({ invoice }) => !parsed.data.status || invoice.status === parsed.data.status)
+    .map(({ invoice, guardianName, childFirstName, childLastName }) => ({
       id: invoice.id,
       invoiceNumber: invoice.invoiceNumber,
-      guardianName: guardianMap.get(invoice.guardianId)?.name ?? "ولي أمر",
-      childName: (() => {
-        const child = childMap.get(invoice.childId);
-        return child ? `${child.firstName} ${child.lastName}` : "طفل";
-      })(),
+      guardianName,
+      childName: `${childFirstName} ${childLastName}`,
       amount: invoice.amount,
       dueDate: invoice.dueDate,
       status: invoice.status,

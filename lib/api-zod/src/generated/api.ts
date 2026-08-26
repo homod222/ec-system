@@ -199,6 +199,405 @@ export const DeleteChildResponse = zod.void()
 
 
 /**
+ * @summary Start a renewal application for a child
+ */
+export const StartChildRenewalParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const startChildRenewalResponseDocumentsItemObjectPathRegExp = new RegExp('^/objects/uploads/[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$');
+
+
+export const StartChildRenewalResponse = zod.object({
+  "id": zod.number(),
+  "type": zod.enum(['new', 'renewal']),
+  "status": zod.enum(['new', 'reviewing', 'accepted', 'rejected']),
+  "childId": zod.number().nullable(),
+  "sourceChildId": zod.number().nullable(),
+  "firstName": zod.string(),
+  "lastName": zod.string(),
+  "gender": zod.enum(['male', 'female']),
+  "birthDate": zod.string(),
+  "level": zod.string(),
+  "classroomId": zod.number().nullable(),
+  "notes": zod.string().nullable(),
+  "guardianName": zod.string(),
+  "guardianPhone": zod.string(),
+  "guardianEmail": zod.string().nullable(),
+  "documents": zod.array(zod.object({
+  "id": zod.number(),
+  "applicationId": zod.number(),
+  "name": zod.string(),
+  "contentType": zod.string(),
+  "size": zod.number(),
+  "objectPath": zod.string().regex(startChildRenewalResponseDocumentsItemObjectPathRegExp),
+  "createdAt": zod.string()
+})),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary List registration and renewal applications
+ */
+export const ListApplicationsQueryParams = zod.object({
+  "status": zod.enum(['new', 'reviewing', 'accepted', 'rejected']).optional(),
+  "type": zod.enum(['new', 'renewal']).optional()
+})
+
+export const listApplicationsResponseDocumentsItemObjectPathRegExp = new RegExp('^/objects/uploads/[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$');
+
+
+export const ListApplicationsResponseItem = zod.object({
+  "id": zod.number(),
+  "type": zod.enum(['new', 'renewal']),
+  "status": zod.enum(['new', 'reviewing', 'accepted', 'rejected']),
+  "childId": zod.number().nullable(),
+  "sourceChildId": zod.number().nullable(),
+  "firstName": zod.string(),
+  "lastName": zod.string(),
+  "gender": zod.enum(['male', 'female']),
+  "birthDate": zod.string(),
+  "level": zod.string(),
+  "classroomId": zod.number().nullable(),
+  "notes": zod.string().nullable(),
+  "guardianName": zod.string(),
+  "guardianPhone": zod.string(),
+  "guardianEmail": zod.string().nullable(),
+  "documents": zod.array(zod.object({
+  "id": zod.number(),
+  "applicationId": zod.number(),
+  "name": zod.string(),
+  "contentType": zod.string(),
+  "size": zod.number(),
+  "objectPath": zod.string().regex(listApplicationsResponseDocumentsItemObjectPathRegExp),
+  "createdAt": zod.string()
+})),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+export const ListApplicationsResponse = zod.array(ListApplicationsResponseItem)
+
+
+/**
+ * @summary Create a registration application
+ */
+
+
+
+
+export const createApplicationBodyGuardianPhoneMin = 5;
+
+
+
+export const CreateApplicationBody = zod.object({
+  "firstName": zod.string().min(1),
+  "lastName": zod.string().min(1),
+  "gender": zod.enum(['male', 'female']),
+  "birthDate": zod.string(),
+  "level": zod.string().min(1),
+  "classroomId": zod.number().nullish(),
+  "notes": zod.string().nullish(),
+  "guardianName": zod.string().min(1),
+  "guardianPhone": zod.string().min(createApplicationBodyGuardianPhoneMin),
+  "guardianEmail": zod.string().nullish()
+})
+
+export const createApplicationResponseDocumentsItemObjectPathRegExp = new RegExp('^/objects/uploads/[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$');
+
+
+export const CreateApplicationResponse = zod.object({
+  "id": zod.number(),
+  "type": zod.enum(['new', 'renewal']),
+  "status": zod.enum(['new', 'reviewing', 'accepted', 'rejected']),
+  "childId": zod.number().nullable(),
+  "sourceChildId": zod.number().nullable(),
+  "firstName": zod.string(),
+  "lastName": zod.string(),
+  "gender": zod.enum(['male', 'female']),
+  "birthDate": zod.string(),
+  "level": zod.string(),
+  "classroomId": zod.number().nullable(),
+  "notes": zod.string().nullable(),
+  "guardianName": zod.string(),
+  "guardianPhone": zod.string(),
+  "guardianEmail": zod.string().nullable(),
+  "documents": zod.array(zod.object({
+  "id": zod.number(),
+  "applicationId": zod.number(),
+  "name": zod.string(),
+  "contentType": zod.string(),
+  "size": zod.number(),
+  "objectPath": zod.string().regex(createApplicationResponseDocumentsItemObjectPathRegExp),
+  "createdAt": zod.string()
+})),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Get an application
+ */
+export const GetApplicationParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const getApplicationResponseDocumentsItemObjectPathRegExp = new RegExp('^/objects/uploads/[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$');
+
+
+export const GetApplicationResponse = zod.object({
+  "id": zod.number(),
+  "type": zod.enum(['new', 'renewal']),
+  "status": zod.enum(['new', 'reviewing', 'accepted', 'rejected']),
+  "childId": zod.number().nullable(),
+  "sourceChildId": zod.number().nullable(),
+  "firstName": zod.string(),
+  "lastName": zod.string(),
+  "gender": zod.enum(['male', 'female']),
+  "birthDate": zod.string(),
+  "level": zod.string(),
+  "classroomId": zod.number().nullable(),
+  "notes": zod.string().nullable(),
+  "guardianName": zod.string(),
+  "guardianPhone": zod.string(),
+  "guardianEmail": zod.string().nullable(),
+  "documents": zod.array(zod.object({
+  "id": zod.number(),
+  "applicationId": zod.number(),
+  "name": zod.string(),
+  "contentType": zod.string(),
+  "size": zod.number(),
+  "objectPath": zod.string().regex(getApplicationResponseDocumentsItemObjectPathRegExp),
+  "createdAt": zod.string()
+})),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Update application child and guardian data
+ */
+export const UpdateApplicationParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+
+
+
+
+export const updateApplicationBodyGuardianPhoneMin = 5;
+
+
+
+export const UpdateApplicationBody = zod.object({
+  "firstName": zod.string().min(1).optional(),
+  "lastName": zod.string().min(1).optional(),
+  "gender": zod.enum(['male', 'female']).optional(),
+  "birthDate": zod.string().optional(),
+  "level": zod.string().min(1).optional(),
+  "classroomId": zod.number().nullish(),
+  "notes": zod.string().nullish(),
+  "guardianName": zod.string().min(1).optional(),
+  "guardianPhone": zod.string().min(updateApplicationBodyGuardianPhoneMin).optional(),
+  "guardianEmail": zod.string().nullish()
+})
+
+export const updateApplicationResponseDocumentsItemObjectPathRegExp = new RegExp('^/objects/uploads/[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$');
+
+
+export const UpdateApplicationResponse = zod.object({
+  "id": zod.number(),
+  "type": zod.enum(['new', 'renewal']),
+  "status": zod.enum(['new', 'reviewing', 'accepted', 'rejected']),
+  "childId": zod.number().nullable(),
+  "sourceChildId": zod.number().nullable(),
+  "firstName": zod.string(),
+  "lastName": zod.string(),
+  "gender": zod.enum(['male', 'female']),
+  "birthDate": zod.string(),
+  "level": zod.string(),
+  "classroomId": zod.number().nullable(),
+  "notes": zod.string().nullable(),
+  "guardianName": zod.string(),
+  "guardianPhone": zod.string(),
+  "guardianEmail": zod.string().nullable(),
+  "documents": zod.array(zod.object({
+  "id": zod.number(),
+  "applicationId": zod.number(),
+  "name": zod.string(),
+  "contentType": zod.string(),
+  "size": zod.number(),
+  "objectPath": zod.string().regex(updateApplicationResponseDocumentsItemObjectPathRegExp),
+  "createdAt": zod.string()
+})),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Attach uploaded document metadata to an application
+ */
+export const AttachApplicationDocumentParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+
+
+export const attachApplicationDocumentBodySizeMax = 10485760;
+export const attachApplicationDocumentBodySizeMultipleOf = 1;
+
+export const attachApplicationDocumentBodyObjectPathRegExp = new RegExp('^/objects/uploads/[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$');
+
+
+export const AttachApplicationDocumentBody = zod.object({
+  "name": zod.string().min(1),
+  "contentType": zod.string().min(1),
+  "size": zod.number().min(1).max(attachApplicationDocumentBodySizeMax).multipleOf(attachApplicationDocumentBodySizeMultipleOf),
+  "objectPath": zod.string().regex(attachApplicationDocumentBodyObjectPathRegExp)
+})
+
+export const attachApplicationDocumentResponseObjectPathRegExp = new RegExp('^/objects/uploads/[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$');
+
+
+export const AttachApplicationDocumentResponse = zod.object({
+  "id": zod.number(),
+  "applicationId": zod.number(),
+  "name": zod.string(),
+  "contentType": zod.string(),
+  "size": zod.number(),
+  "objectPath": zod.string().regex(attachApplicationDocumentResponseObjectPathRegExp),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Download an application document
+ */
+export const GetApplicationDocumentContentParams = zod.object({
+  "applicationId": zod.coerce.number(),
+  "documentId": zod.coerce.number()
+})
+
+export const GetApplicationDocumentContentResponse = zod.unknown()
+
+
+/**
+ * @summary Request a private object upload URL
+ */
+export const requestUploadUrlBodyApplicationIdMultipleOf = 1;
+
+
+export const requestUploadUrlBodySizeMax = 10485760;
+export const requestUploadUrlBodySizeMultipleOf = 1;
+
+
+
+
+export const RequestUploadUrlBody = zod.object({
+  "applicationId": zod.number().min(1).multipleOf(requestUploadUrlBodyApplicationIdMultipleOf),
+  "name": zod.string().min(1),
+  "size": zod.number().min(1).max(requestUploadUrlBodySizeMax).multipleOf(requestUploadUrlBodySizeMultipleOf),
+  "contentType": zod.string().min(1)
+})
+
+export const requestUploadUrlResponseObjectPathRegExp = new RegExp('^/objects/uploads/[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$');
+
+
+export const RequestUploadUrlResponse = zod.object({
+  "uploadUrl": zod.string(),
+  "objectPath": zod.string().regex(requestUploadUrlResponseObjectPathRegExp)
+})
+
+
+/**
+ * @summary Move an application through review or reject it
+ */
+export const UpdateApplicationStatusParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateApplicationStatusBody = zod.object({
+  "status": zod.enum(['new', 'reviewing', 'rejected'])
+})
+
+export const updateApplicationStatusResponseDocumentsItemObjectPathRegExp = new RegExp('^/objects/uploads/[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$');
+
+
+export const UpdateApplicationStatusResponse = zod.object({
+  "id": zod.number(),
+  "type": zod.enum(['new', 'renewal']),
+  "status": zod.enum(['new', 'reviewing', 'accepted', 'rejected']),
+  "childId": zod.number().nullable(),
+  "sourceChildId": zod.number().nullable(),
+  "firstName": zod.string(),
+  "lastName": zod.string(),
+  "gender": zod.enum(['male', 'female']),
+  "birthDate": zod.string(),
+  "level": zod.string(),
+  "classroomId": zod.number().nullable(),
+  "notes": zod.string().nullable(),
+  "guardianName": zod.string(),
+  "guardianPhone": zod.string(),
+  "guardianEmail": zod.string().nullable(),
+  "documents": zod.array(zod.object({
+  "id": zod.number(),
+  "applicationId": zod.number(),
+  "name": zod.string(),
+  "contentType": zod.string(),
+  "size": zod.number(),
+  "objectPath": zod.string().regex(updateApplicationStatusResponseDocumentsItemObjectPathRegExp),
+  "createdAt": zod.string()
+})),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Accept an application and activate its child record
+ */
+export const AcceptApplicationParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const acceptApplicationResponseDocumentsItemObjectPathRegExp = new RegExp('^/objects/uploads/[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$');
+
+
+export const AcceptApplicationResponse = zod.object({
+  "id": zod.number(),
+  "type": zod.enum(['new', 'renewal']),
+  "status": zod.enum(['new', 'reviewing', 'accepted', 'rejected']),
+  "childId": zod.number().nullable(),
+  "sourceChildId": zod.number().nullable(),
+  "firstName": zod.string(),
+  "lastName": zod.string(),
+  "gender": zod.enum(['male', 'female']),
+  "birthDate": zod.string(),
+  "level": zod.string(),
+  "classroomId": zod.number().nullable(),
+  "notes": zod.string().nullable(),
+  "guardianName": zod.string(),
+  "guardianPhone": zod.string(),
+  "guardianEmail": zod.string().nullable(),
+  "documents": zod.array(zod.object({
+  "id": zod.number(),
+  "applicationId": zod.number(),
+  "name": zod.string(),
+  "contentType": zod.string(),
+  "size": zod.number(),
+  "objectPath": zod.string().regex(acceptApplicationResponseDocumentsItemObjectPathRegExp),
+  "createdAt": zod.string()
+})),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
  * @summary List guardians
  */
 export const ListGuardiansResponseItem = zod.object({
@@ -225,6 +624,36 @@ export const ListClassroomsResponseItem = zod.object({
   "color": zod.string()
 })
 export const ListClassroomsResponse = zod.array(ListClassroomsResponseItem)
+
+
+/**
+ * @summary Create a classroom
+ */
+
+
+
+export const createClassroomBodyCapacityMultipleOf = 1;
+
+
+
+
+export const CreateClassroomBody = zod.object({
+  "name": zod.string().min(1),
+  "level": zod.string().min(1),
+  "teacherName": zod.string().min(1),
+  "capacity": zod.number().min(1).multipleOf(createClassroomBodyCapacityMultipleOf),
+  "color": zod.string().min(1).optional()
+})
+
+export const CreateClassroomResponse = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "level": zod.string(),
+  "teacherName": zod.string(),
+  "capacity": zod.number(),
+  "childrenCount": zod.number(),
+  "color": zod.string()
+})
 
 
 /**

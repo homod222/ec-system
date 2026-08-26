@@ -1,5 +1,8 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useForm } from 'react-hook-form';
+import { z } from 'zod';
 import { ClerkProvider, SignIn, SignUp, useAuth, useClerk, useUser } from '@clerk/react';
 import * as ClerkInternal from '@clerk/react/internal';
 import { shadcn } from '@clerk/themes';
@@ -12,15 +15,22 @@ import {
 import { Link, Redirect, Route, Router as WouterRouter, Switch, useLocation, useRoute } from 'wouter';
 import {
   getGetChildQueryKey, getGetTodayAttendanceQueryKey, getListChildrenQueryKey,
-  useCreateChild, useDeleteChild, useGetChild, useGetDashboardActivity, useGetDashboardSummary,
+  getGetDashboardActivityQueryKey, getGetDashboardSummaryQueryKey, getListClassroomsQueryKey,
+  getGetApplicationQueryKey, getListApplicationsQueryKey,
+  useAcceptApplication, useAttachApplicationDocument, useCreateApplication, useGetApplication, useRequestUploadUrl,
+  useCreateChild, useCreateClassroom, useDeleteChild, useGetChild, useGetDashboardActivity, useGetDashboardSummary,
   useGetFinanceSummary, useGetTodayAttendance, useListChildren, useListClassrooms, useListGuardians,
-  useListInvoices, useListStaff, useRecordAttendance, useUpdateChild,
+  useListApplications, useListInvoices, useListStaff, useRecordAttendance, useStartChildRenewal,
+  useUpdateApplication, useUpdateApplicationStatus, useUpdateChild,
 } from '@workspace/api-client-react';
-import type { AttendanceRecord, Child, Classroom, Invoice, StaffMember } from '@workspace/api-client-react';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
 import { Landing } from './pages/Landing';
+import type { Application, ApplicationInput, AttendanceRecord, Child, Classroom, Invoice, StaffMember } from '@workspace/api-client-react';
 
 const queryClient = new QueryClient();
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
@@ -30,6 +40,7 @@ const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
 
 const navItems = [
   { href: '/dashboard', label: 'لوحة القيادة', icon: LayoutDashboard },
+  { href: '/applications', label: 'طلبات التسجيل', icon: FileText },
   { href: '/children', label: 'الأطفال', icon: Baby },
   { href: '/attendance', label: 'الحضور والانصراف', icon: CalendarCheck },
   { href: '/classrooms', label: 'الفصول الدراسية', icon: BookOpen },
@@ -113,7 +124,7 @@ function Shell({ children }: { children: React.ReactNode }) {
         <nav className="space-y-1">
           {navItems.map(({ href, label, icon: Icon }) => (
             <Link key={href} href={href} data-testid={`link-nav-${href.slice(1)}`} onClick={() => setOpen(false)} 
-              className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-bold transition-colors ${location === href || (href === '/children' && location.startsWith('/children/')) ? 'bg-sidebar-primary text-sidebar-primary-foreground shadow-sm' : 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground'}`}>
+              className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-bold transition-colors ${location === href || location.startsWith(`${href}/`) ? 'bg-sidebar-primary text-sidebar-primary-foreground shadow-sm' : 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground'}`}>
               <Icon size={18} />
               <span>{label}</span>
               {href === '/attendance' && <span className="mr-auto rounded-full bg-destructive px-2 py-0.5 text-[10px] font-bold text-white">اليوم</span>}
@@ -443,7 +454,7 @@ function ChildProfile() {
   const [, params] = useRoute('/children/:id'); const id = Number(params?.id); 
   const query = useGetChild(id); const child = query.data;
   const [edit, setEdit] = useState(false); const [confirm, setConfirm] = useState(false); 
-  const del = useDeleteChild(); const [, setLocation] = useLocation(); const qc = useQueryClient(); 
+  const del = useDeleteChild(); const renewal = useStartChildRenewal(); const [, setLocation] = useLocation(); const qc = useQueryClient();
   
   if (query.isLoading) return <Shell><Skeleton className="h-12 w-64 mb-6" /><Skeleton className="h-64 w-full rounded-[2rem]" /></Shell>;
   if (query.isError || !child) return <Shell><QueryState error onRetry={() => query.refetch()}>{null}</QueryState></Shell>;
@@ -467,7 +478,10 @@ function ChildProfile() {
               <BookOpen size={16} /> {child.level} · {child.classroomName || 'غير محدد'} · مسجل منذ {child.birthDate}
             </p>
           </div>
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
+            <Button variant="soft" data-testid="button-start-renewal" disabled={renewal.isPending} onClick={() => renewal.mutate({ id: child.id }, { onSuccess: (application) => { qc.invalidateQueries({ queryKey: getListApplicationsQueryKey() }); setLocation(`/applications/${application.id}`); } })} className="bg-primary-foreground/10 text-primary-foreground border border-primary-foreground/20 hover:bg-primary-foreground/20">
+              <FileText size={18} />{renewal.isPending ? 'جارٍ بدء التجديد...' : 'بدء طلب تجديد'}
+            </Button>
             <Button variant="soft" data-testid="button-edit-child" onClick={() => setEdit(true)} className="bg-primary-foreground/10 text-primary-foreground border border-primary-foreground/20 hover:bg-primary-foreground/20">
               <Edit3 size={18} />تعديل
             </Button>
@@ -549,6 +563,12 @@ function ChildProfile() {
 
 function ArrowRightIcon() { return <ChevronRight size={18} className="rotate-180" />; }
 
+const applicationStatuses = {
+  new: { label: 'جديد', tone: 'blue' as const },
+  reviewing: { label: 'قيد المراجعة', tone: 'yellow' as const },
+  accepted: { label: 'مقبول', tone: 'green' as const },
+  rejected: { label: 'مرفوض', tone: 'red' as const },
+};
 function Guardians() {
   const query = useListGuardians(); const guardians = query.data || [];
   return (
@@ -594,9 +614,10 @@ function Guardians() {
 
 function Classrooms() {
   const query = useListClassrooms(); const rooms = query.data || [];
+  const [modal, setModal] = useState(false);
   return (
     <Shell>
-      <PageHeader eyebrow="حضانة EC / البيئة التعليمية" title="الفصول الدراسية" description="توزيع الأطفال والسعة التشغيلية للفصول." action={<Button data-testid="button-add-classroom" variant="soft"><Plus size={18} />إعداد فصل جديد</Button>} />
+      <PageHeader eyebrow="حضانة EC / البيئة التعليمية" title="الفصول الدراسية" description="توزيع الأطفال والسعة التشغيلية للفصول." action={<Button data-testid="button-add-classroom" variant="soft" onClick={() => setModal(true)}><Plus size={18} />إعداد فصل جديد</Button>} />
       
       <QueryState loading={query.isLoading} error={query.isError} empty={!rooms.length} onRetry={() => query.refetch()}>
         <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
@@ -642,10 +663,18 @@ function Classrooms() {
           })}
         </div>
       </QueryState>
+      <ClassroomForm open={modal} onOpenChange={setModal} />
     </Shell>
   );
 }
 
+const classroomSchema = z.object({
+  name: z.string().trim().min(1, 'يرجى إدخال اسم الفصل.'),
+  level: z.string().trim().min(1, 'يرجى إدخال المستوى.'),
+  teacherName: z.string().trim().min(1, 'يرجى إدخال اسم المعلمة.'),
+  capacity: z.number({ invalid_type_error: 'السعة مطلوبة.' }).int('يجب أن تكون السعة عدداً صحيحاً.').positive('يجب أن تكون السعة أكبر من صفر.'),
+  color: z.string().regex(/^#[0-9a-f]{6}$/i, 'يرجى اختيار لون صالح.'),
+});
 function Staff() {
   const query = useListStaff(); const staff = query.data || [];
   return (
@@ -875,6 +904,9 @@ function Router() {
         <Route path="/sign-in/*?" component={() => <AuthPage type="in" />} />
         <Route path="/sign-up/*?" component={() => <AuthPage type="up" />} />
         <Route path="/dashboard"><Protected><Dashboard /></Protected></Route>
+        <Route path="/applications"><Protected><Applications /></Protected></Route>
+        <Route path="/applications/new"><Protected><NewApplication /></Protected></Route>
+        <Route path="/applications/:id"><Protected><ApplicationDetail /></Protected></Route>
         <Route path="/children"><Protected><Children /></Protected></Route>
         <Route path="/children/:id"><Protected><ChildProfile /></Protected></Route>
         <Route path="/guardians"><Protected><Guardians /></Protected></Route>
@@ -952,3 +984,208 @@ function App() {
   ); 
 }
 export default App;
+
+function NewApplication() {
+  return <Shell><Link href="/applications" data-testid="link-back-applications" className="mb-6 inline-flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-foreground"><ArrowRightIcon />العودة إلى الطلبات</Link><PageHeader title="إنشاء طلب تسجيل" description="سيظهر الطلب مباشرة في قائمة الطلبات الجديدة." /><ApplicationEditor /></Shell>;
+}
+
+function Applications() {
+  const [status, setStatus] = useState<ApplicationStatusFilter>('all');
+  const query = useListApplications(status === 'all' ? undefined : { status });
+  const applications = query.data || [];
+  return <Shell><PageHeader eyebrow="رفق / القبول" title="طلبات التسجيل والتجديد" description="تابع كل طلب من الاستلام حتى تفعيل ملف الطفل." action={<Link href="/applications/new" data-testid="link-create-application" className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm"><Plus size={17} />طلب تسجيل جديد</Link>} />
+    <div className="mb-5 flex gap-2 overflow-x-auto pb-1">{([['all','الكل'],['new','جديد'],['reviewing','قيد المراجعة'],['accepted','مقبول'],['rejected','مرفوض']] as const).map(([value, label]) => <button key={value} data-testid={`button-filter-applications-${value}`} onClick={() => setStatus(value)} className={`whitespace-nowrap rounded-xl px-4 py-2.5 text-sm font-semibold ${status === value ? 'bg-primary text-primary-foreground' : 'border border-border bg-card text-muted-foreground hover:bg-muted'}`}>{label}</button>)}</div>
+    <QueryState loading={query.isLoading} error={query.isError} empty={!applications.length} onRetry={() => query.refetch()}><div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">{applications.map((application) => <Link href={`/applications/${application.id}`} key={application.id} data-testid={`row-application-${application.id}`} className="grid gap-3 border-b border-border p-5 last:border-0 hover:bg-muted/40 sm:grid-cols-[1.4fr_.8fr_1fr_.7fr] sm:items-center"><div className="flex items-center gap-3"><Avatar name={`${application.firstName} ${application.lastName}`} /><div><p data-testid={`text-application-name-${application.id}`} className="font-bold">{application.firstName} {application.lastName}</p><p className="text-xs text-muted-foreground">طلب رقم #{application.id} · {new Date(application.createdAt).toLocaleDateString('ar-SA')}</p></div></div><Pill tone={application.type === 'renewal' ? 'yellow' : 'blue'}>{application.type === 'renewal' ? 'تجديد' : 'تسجيل جديد'}</Pill><div><p className="text-sm font-semibold">{application.guardianName}</p><p className="text-xs text-muted-foreground">{application.guardianPhone}</p></div><span data-testid={`status-application-${application.id}`}><Pill tone={applicationStatuses[application.status].tone}>{applicationStatuses[application.status].label}</Pill></span></Link>)}</div></QueryState>
+  </Shell>;
+}
+
+function ApplicationDetail() {
+  const [, params] = useRoute('/applications/:id'); const id = Number(params?.id);
+  const query = useGetApplication(id); const application = query.data;
+  const [file, setFile] = useState<File | null>(null); const [message, setMessage] = useState(''); const [uploadProgress, setUploadProgress] = useState(0); const [isUploading, setIsUploading] = useState(false);
+  const attach = useAttachApplicationDocument(); const requestUploadUrl = useRequestUploadUrl(); const statusMutation = useUpdateApplicationStatus(); const accept = useAcceptApplication();
+  const qc = useQueryClient();
+  const maxDocumentSize = 10 * 1024 * 1024;
+  const allowedDocumentTypes = new Set([
+    'application/pdf', 'image/jpeg', 'image/png', 'image/webp', 'text/plain',
+    'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  ]);
+  const refresh = () => { qc.invalidateQueries({ queryKey: getGetApplicationQueryKey(id) }); qc.invalidateQueries({ queryKey: getListApplicationsQueryKey() }); };
+  const moveStatus = (status: 'reviewing' | 'rejected') => { setMessage(''); statusMutation.mutate({ id, data: { status } }, { onSuccess: () => { refresh(); setMessage(status === 'reviewing' ? 'تم نقل الطلب إلى المراجعة.' : 'تم رفض الطلب.'); }, onError: () => setMessage('تعذر تحديث حالة الطلب. حاول مرة أخرى.') }); };
+  const putFile = (uploadUrl: string, document: File) => new Promise<void>((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open('PUT', uploadUrl);
+    request.setRequestHeader('Content-Type', document.type || 'application/octet-stream');
+    request.upload.onprogress = (event) => { if (event.lengthComputable) setUploadProgress(Math.round((event.loaded / event.total) * 100)); };
+    request.onload = () => request.status >= 200 && request.status < 300 ? resolve() : reject(new Error(`Upload failed (${request.status})`));
+    request.onerror = () => reject(new Error('Upload failed'));
+    request.send(document);
+  });
+  const recordDocument = async () => {
+    if (!file) return;
+    if (!allowedDocumentTypes.has(file.type.toLowerCase()) || file.size < 1 || file.size > maxDocumentSize) {
+      setMessage('اختر ملفاً مدعوماً لا يتجاوز حجمه 10 ميجابايت.');
+      setFile(null);
+      return;
+    }
+    setMessage(''); setUploadProgress(0); setIsUploading(true);
+    try {
+      const uploaded = await requestUploadUrl.mutateAsync({ data: { applicationId: id, name: file.name, size: file.size, contentType: file.type } });
+      await putFile(uploaded.uploadUrl, file);
+      await attach.mutateAsync({ id, data: { name: file.name, contentType: file.type || 'application/octet-stream', size: file.size, objectPath: uploaded.objectPath } });
+      refresh(); setFile(null); setMessage(`تم رفع المستند وإرفاقه: ${file.name}`);
+    } catch {
+      setMessage('تعذر رفع المستند أو إرفاقه. حاول مرة أخرى.');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+  if (query.isLoading) return <Shell><Skeleton className="h-12 w-48" /><Skeleton className="mt-6 h-96 w-full" /></Shell>;
+  if (query.isError || !application) return <Shell><QueryState error onRetry={() => query.refetch()}>{null}</QueryState></Shell>;
+  const status = applicationStatuses[application.status];
+  return <Shell><Link href="/applications" data-testid="link-back-applications" className="mb-6 inline-flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-foreground"><ArrowRightIcon />العودة إلى الطلبات</Link>
+    <div className="mb-6 rounded-3xl bg-primary p-6 text-primary-foreground shadow-lg"><div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-center"><div><div className="flex flex-wrap items-center gap-3"><h1 data-testid="text-application-title" className="text-3xl font-bold">{application.firstName} {application.lastName}</h1><Pill tone={status.tone}>{status.label}</Pill><Pill tone={application.type === 'renewal' ? 'yellow' : 'blue'}>{application.type === 'renewal' ? 'طلب تجديد' : 'تسجيل جديد'}</Pill></div><p className="mt-2 text-sm text-primary-foreground/65">طلب رقم #{application.id} · آخر تحديث {new Date(application.updatedAt).toLocaleDateString('ar-SA')}</p></div><div className="flex flex-wrap gap-2">{application.status === 'new' && <Button variant="soft" data-testid="button-review-application" disabled={statusMutation.isPending} onClick={() => moveStatus('reviewing')}><Clock3 size={16} />بدء المراجعة</Button>}{application.status !== 'accepted' && application.status !== 'rejected' && <Button variant="danger" data-testid="button-reject-application" disabled={statusMutation.isPending} onClick={() => moveStatus('rejected')}><X size={16} />رفض</Button>}{application.status === 'reviewing' && <Button variant="soft" data-testid="button-accept-application" disabled={accept.isPending} onClick={() => accept.mutate({ id }, { onSuccess: (accepted) => { refresh(); qc.invalidateQueries({ queryKey: getListChildrenQueryKey() }); if (accepted.childId) qc.invalidateQueries({ queryKey: getGetChildQueryKey(accepted.childId) }); setMessage('تم قبول الطلب وتفعيل ملف الطفل.'); }, onError: (error) => setMessage((error as { status?: number }).status === 409 ? 'لا يمكن قبول الطلب لأن الفصل المختار ممتلئ. اختر فصلاً آخر أو ارفع سعته أولاً.' : 'تعذر قبول الطلب وتفعيل الطفل. حاول مرة أخرى.') })}><Check size={16} />{accept.isPending ? 'جارٍ التفعيل...' : 'قبول وتفعيل الطفل'}</Button>}</div></div></div>
+    {message && <p data-testid="status-application-action" className="mb-5 rounded-xl border border-border bg-card p-3 text-sm font-semibold">{message}</p>}
+    {application.status === 'accepted' && application.childId && <Link href={`/children/${application.childId}`} data-testid="link-activated-child" className="mb-6 flex items-center justify-between rounded-2xl border border-emerald-200 bg-emerald-50 p-4 font-bold text-emerald-900"><span className="flex items-center gap-2"><Check size={18} />تم تفعيل الطفل برقم #{application.childId}</span><span className="text-sm">فتح ملف الطفل <ChevronLeft className="inline" size={16} /></span></Link>}
+    <div className="grid gap-6 xl:grid-cols-[1.2fr_.8fr]"><ApplicationEditor key={application.updatedAt} application={application} /><section className="rounded-2xl border border-border bg-card p-6 shadow-sm"><h2 className="text-lg font-bold">المستندات</h2><p className="mt-1 text-sm text-muted-foreground">ارفع مستنداً ليُحفظ بأمان ضمن الطلب (بحد أقصى 10 ميجابايت).</p><label className="mt-5 block cursor-pointer rounded-xl border border-dashed border-primary/30 bg-muted/40 p-5 text-center text-sm font-semibold"><FileText className="mx-auto mb-2 text-primary" /><span>{file ? file.name : 'اختيار ملف من الجهاز'}</span><input data-testid="input-application-document" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.txt,.doc,.docx,application/pdf,image/jpeg,image/png,image/webp,text/plain,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" className="sr-only" disabled={isUploading || application.status === 'accepted'} onChange={(e) => { const selected = e.target.files?.[0] || null; if (selected && (!allowedDocumentTypes.has(selected.type.toLowerCase()) || selected.size < 1 || selected.size > maxDocumentSize)) { setFile(null); setMessage('اختر ملفاً مدعوماً لا يتجاوز حجمه 10 ميجابايت.'); e.currentTarget.value = ''; return; } setMessage(''); setFile(selected); }} /></label>{file && <div data-testid="text-selected-document" className="mt-3 rounded-xl bg-accent/30 p-3 text-xs"><p className="font-bold">{file.name}</p><p className="mt-1 text-muted-foreground">{file.type || 'نوع غير محدد'} · {new Intl.NumberFormat('ar-SA').format(file.size)} بايت</p></div>}{isUploading && <div className="mt-3"><div className="mb-1 flex justify-between text-xs text-muted-foreground"><span>جارٍ رفع المستند...</span><span>{uploadProgress}%</span></div><div className="h-2 overflow-hidden rounded-full bg-muted"><div className="h-full bg-primary transition-all" style={{ width: `${uploadProgress}%` }} /></div></div>}<Button data-testid="button-record-application-document" className="mt-4 w-full" variant="soft" disabled={!file || application.status === 'accepted' || isUploading || requestUploadUrl.isPending || attach.isPending} onClick={recordDocument}>{isUploading || requestUploadUrl.isPending || attach.isPending ? `جارٍ الرفع... ${uploadProgress}%` : 'رفع وإرفاق المستند'}</Button><div className="mt-6 space-y-3">{application.documents.map((document) => <div key={document.id} data-testid={`row-application-document-${document.id}`} className="rounded-xl border border-border p-3"><div className="flex items-start justify-between gap-3"><div><p className="text-sm font-bold">{document.name}</p><p className="mt-1 break-all text-xs text-muted-foreground">{document.contentType} · {new Intl.NumberFormat('ar-SA').format(document.size)} بايت</p></div><button type="button" data-testid={`button-open-application-document-${document.id}`} onClick={() => window.open(`/api/applications/${application.id}/documents/${document.id}/content`, '_blank', 'noopener')} className="shrink-0 rounded-lg bg-muted px-3 py-1.5 text-xs font-semibold text-primary hover:bg-accent">تنزيل</button></div></div>)}{!application.documents.length && <p className="text-center text-sm text-muted-foreground">لا توجد مستندات مرفوعة.</p>}</div></section></div>
+  </Shell>;
+}
+
+type ApplicationStatusFilter = 'all' | keyof typeof applicationStatuses;
+
+function ApplicationEditor({ application }: { application?: Application }) {
+  const initial: ApplicationInput = {
+    firstName: application?.firstName || '', lastName: application?.lastName || '',
+    gender: application?.gender || 'female', birthDate: application?.birthDate || '',
+    level: application?.level || 'تمهيدي', classroomId: application?.classroomId ?? null,
+    notes: application?.notes || null, guardianName: application?.guardianName || '',
+    guardianPhone: application?.guardianPhone || '', guardianEmail: application?.guardianEmail || null,
+  };
+  const [form, setForm] = useState(initial);
+  const [error, setError] = useState('');
+  const classrooms = useListClassrooms();
+  const create = useCreateApplication();
+  const update = useUpdateApplication();
+  const qc = useQueryClient();
+  const [, setLocation] = useLocation();
+  const set = (key: keyof ApplicationInput, value: string | number | null) => setForm((current) => ({ ...current, [key]: value }));
+  const pending = create.isPending || update.isPending;
+  const submit = (event: React.FormEvent) => {
+    event.preventDefault(); setError('');
+    const data = { ...form, notes: form.notes || null, guardianEmail: form.guardianEmail || null };
+    if (application) {
+      update.mutate({ id: application.id, data }, { onSuccess: () => {
+        qc.invalidateQueries({ queryKey: getGetApplicationQueryKey(application.id) });
+        qc.invalidateQueries({ queryKey: getListApplicationsQueryKey() });
+      }, onError: () => setError('تعذر حفظ بيانات الطلب. يرجى التحقق من الحقول والمحاولة مرة أخرى.') });
+    } else {
+      create.mutate({ data }, { onSuccess: (created) => {
+        qc.invalidateQueries({ queryKey: getListApplicationsQueryKey() });
+        setLocation(`/applications/${created.id}`);
+      }, onError: () => setError('تعذر إنشاء الطلب. يرجى التحقق من الحقول والمحاولة مرة أخرى.') });
+    }
+  };
+  const fieldClass = 'mt-2 w-full rounded-xl border border-input bg-background px-3 py-3 text-sm font-normal outline-none focus:border-primary focus:ring-2 focus:ring-primary/10';
+  return <form onSubmit={submit} className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+    <div className="mb-5"><h2 className="text-lg font-bold">{application ? 'بيانات الطفل وولي الأمر' : 'طلب تسجيل جديد'}</h2><p className="mt-1 text-sm text-muted-foreground">أدخل بيانات الطفل ووسيلة التواصل الأساسية.</p></div>
+    <div className="grid gap-4 sm:grid-cols-2">
+      <label className="text-sm font-semibold">الاسم الأول<input required data-testid="input-application-first-name" value={form.firstName} onChange={(e) => set('firstName', e.target.value)} className={fieldClass} /></label>
+      <label className="text-sm font-semibold">اسم العائلة<input required data-testid="input-application-last-name" value={form.lastName} onChange={(e) => set('lastName', e.target.value)} className={fieldClass} /></label>
+      <label className="text-sm font-semibold">الجنس<select data-testid="select-application-gender" value={form.gender} onChange={(e) => set('gender', e.target.value)} className={fieldClass}><option value="female">بنت</option><option value="male">ولد</option></select></label>
+      <label className="text-sm font-semibold">تاريخ الميلاد<input required type="date" data-testid="input-application-birth-date" value={form.birthDate} onChange={(e) => set('birthDate', e.target.value)} className={fieldClass} /></label>
+      <label className="text-sm font-semibold">المستوى<input required data-testid="input-application-level" value={form.level} onChange={(e) => set('level', e.target.value)} className={fieldClass} /></label>
+      <label className="text-sm font-semibold">الفصل<select data-testid="select-application-classroom" value={form.classroomId ?? ''} onChange={(e) => set('classroomId', e.target.value ? Number(e.target.value) : null)} className={fieldClass}><option value="">غير محدد</option>{(classrooms.data || []).map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}</select></label>
+      <label className="text-sm font-semibold">اسم ولي الأمر<input required data-testid="input-application-guardian-name" value={form.guardianName} onChange={(e) => set('guardianName', e.target.value)} className={fieldClass} /></label>
+      <label className="text-sm font-semibold">رقم الجوال<input required minLength={5} type="tel" data-testid="input-application-guardian-phone" value={form.guardianPhone} onChange={(e) => set('guardianPhone', e.target.value)} className={fieldClass} /></label>
+      <label className="text-sm font-semibold sm:col-span-2">البريد الإلكتروني<input type="email" data-testid="input-application-guardian-email" value={form.guardianEmail || ''} onChange={(e) => set('guardianEmail', e.target.value)} className={fieldClass} /></label>
+    </div>
+    <label className="mt-4 block text-sm font-semibold">ملاحظات<textarea rows={3} data-testid="input-application-notes" value={form.notes || ''} onChange={(e) => set('notes', e.target.value)} className={`${fieldClass} resize-none`} /></label>
+    {error && <p data-testid="status-application-save-error" className="mt-4 rounded-xl bg-destructive/10 p-3 text-sm font-semibold text-destructive">{error}</p>}
+    <div className="mt-6 flex justify-end gap-3">{!application && <Link href="/applications" data-testid="link-cancel-application" className="rounded-xl px-4 py-2.5 text-sm font-semibold text-muted-foreground hover:bg-muted">إلغاء</Link>}<Button type="submit" data-testid="button-save-application" disabled={pending}>{pending ? 'جارٍ الحفظ...' : application ? 'حفظ التعديلات' : 'إنشاء الطلب'}</Button></div>
+  </form>;
+}
+
+function ClassroomForm({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+  const create = useCreateClassroom();
+  const qc = useQueryClient();
+  const [serverError, setServerError] = useState('');
+  const form = useForm<ClassroomFormValues>({
+    resolver: zodResolver(classroomSchema),
+    defaultValues: { name: '', level: 'تمهيدي', teacherName: '', capacity: 20, color: '#165032' },
+  });
+  const resetAndClose = () => {
+    form.reset();
+    setServerError('');
+    onOpenChange(false);
+  };
+  const submit = (values: ClassroomFormValues) => {
+    setServerError('');
+    create.mutate({ data: values }, {
+      onSuccess: async () => {
+        await Promise.all([
+          qc.invalidateQueries({ queryKey: getListClassroomsQueryKey() }),
+          qc.invalidateQueries({ queryKey: getListChildrenQueryKey() }),
+          qc.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() }),
+          qc.invalidateQueries({ queryKey: getGetDashboardActivityQueryKey() }),
+        ]);
+        resetAndClose();
+      },
+      onError: (error) => {
+        const status = (error as { status?: number }).status;
+        setServerError(status === 400
+          ? 'رفض الخادم بيانات الفصل. راجع الحقول والسعة ثم حاول مرة أخرى.'
+          : 'تعذر إنشاء الفصل بسبب خطأ في الخادم. حاول مرة أخرى بعد قليل.');
+      },
+    });
+  };
+  return (
+    <Dialog open={open} onOpenChange={(next) => {
+      if (!next && !create.isPending) resetAndClose();
+      else if (next) onOpenChange(true);
+    }}>
+      <DialogContent dir="rtl" className="max-w-xl rounded-[2rem] border-border bg-card p-7 sm:p-8">
+        <DialogHeader className="text-right sm:text-right">
+          <DialogTitle className="text-2xl font-bold">إعداد فصل جديد</DialogTitle>
+          <DialogDescription className="pt-1">أدخل بيانات الفصل وسعته التشغيلية ليصبح متاحاً في طلبات التسجيل.</DialogDescription>
+        </DialogHeader>
+        <Form {...form}>
+          <form data-testid="form-create-classroom" onSubmit={form.handleSubmit(submit)} className="mt-3 space-y-5" noValidate>
+            <div className="grid gap-5 sm:grid-cols-2">
+              <FormField control={form.control} name="name" render={({ field }) => (
+                <FormItem><FormLabel>اسم الفصل</FormLabel><FormControl><Input data-testid="input-classroom-name" autoFocus placeholder="مثال: فصل البراعم" disabled={create.isPending} className="h-12 rounded-xl bg-background" {...field} /></FormControl><FormMessage /></FormItem>
+              )} />
+              <FormField control={form.control} name="level" render={({ field }) => (
+                <FormItem><FormLabel>المستوى</FormLabel><FormControl><Input data-testid="input-classroom-level" placeholder="مثال: تمهيدي" disabled={create.isPending} className="h-12 rounded-xl bg-background" {...field} /></FormControl><FormMessage /></FormItem>
+              )} />
+              <FormField control={form.control} name="teacherName" render={({ field }) => (
+                <FormItem><FormLabel>اسم المعلمة</FormLabel><FormControl><Input data-testid="input-classroom-teacher" placeholder="اسم معلمة الفصل" disabled={create.isPending} className="h-12 rounded-xl bg-background" {...field} /></FormControl><FormMessage /></FormItem>
+              )} />
+              <FormField control={form.control} name="capacity" render={({ field }) => (
+                <FormItem><FormLabel>السعة</FormLabel><FormControl><Input data-testid="input-classroom-capacity" type="number" min={1} step={1} inputMode="numeric" disabled={create.isPending} className="h-12 rounded-xl bg-background" {...field} onChange={(event) => field.onChange(event.target.valueAsNumber)} /></FormControl><FormMessage /></FormItem>
+              )} />
+            </div>
+            <FormField control={form.control} name="color" render={({ field }) => (
+              <FormItem>
+                <FormLabel>لون الفصل</FormLabel>
+                <div className="flex items-center gap-3 rounded-xl border border-input bg-background p-3">
+                  <FormControl><Input data-testid="input-classroom-color" type="color" disabled={create.isPending} className="h-10 w-14 cursor-pointer rounded-lg border-0 p-0" {...field} /></FormControl>
+                  <span data-testid="text-classroom-color" className="text-sm font-semibold text-muted-foreground">{field.value}</span>
+                </div>
+                <FormMessage />
+              </FormItem>
+            )} />
+            {serverError && <p role="alert" data-testid="status-classroom-create-error" className="rounded-xl bg-destructive/10 p-3 text-sm font-bold text-destructive">{serverError}</p>}
+            <div className="flex justify-end gap-3 border-t border-border pt-5">
+              <Button type="button" variant="ghost" data-testid="button-cancel-classroom" disabled={create.isPending} onClick={resetAndClose}>إلغاء</Button>
+              <Button type="submit" data-testid="button-submit-classroom" disabled={create.isPending}>
+                {create.isPending ? 'جارٍ إنشاء الفصل...' : 'إنشاء الفصل'}
+              </Button>
+            </div>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+type ClassroomFormValues = z.infer<typeof classroomSchema>;

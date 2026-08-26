@@ -143,6 +143,174 @@ export interface ChildUpdate {
   notes?: string | null;
 }
 
+export type ApplicationType = typeof ApplicationType[keyof typeof ApplicationType];
+
+
+export const ApplicationType = {
+  new: 'new',
+  renewal: 'renewal',
+} as const;
+
+export type ApplicationStatus = typeof ApplicationStatus[keyof typeof ApplicationStatus];
+
+
+export const ApplicationStatus = {
+  new: 'new',
+  reviewing: 'reviewing',
+  accepted: 'accepted',
+  rejected: 'rejected',
+} as const;
+
+export type ApplicationGender = typeof ApplicationGender[keyof typeof ApplicationGender];
+
+
+export const ApplicationGender = {
+  male: 'male',
+  female: 'female',
+} as const;
+
+export interface ApplicationDocument {
+  id: number;
+  applicationId: number;
+  name: string;
+  contentType: string;
+  size: number;
+  /** @pattern ^/objects/uploads/[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$ */
+  objectPath: string;
+  createdAt: string;
+}
+
+export interface Application {
+  id: number;
+  type: ApplicationType;
+  status: ApplicationStatus;
+  /** @nullable */
+  childId: number | null;
+  /** @nullable */
+  sourceChildId: number | null;
+  firstName: string;
+  lastName: string;
+  gender: ApplicationGender;
+  birthDate: string;
+  level: string;
+  /** @nullable */
+  classroomId: number | null;
+  /** @nullable */
+  notes: string | null;
+  guardianName: string;
+  guardianPhone: string;
+  /** @nullable */
+  guardianEmail: string | null;
+  documents: ApplicationDocument[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type ApplicationInputGender = typeof ApplicationInputGender[keyof typeof ApplicationInputGender];
+
+
+export const ApplicationInputGender = {
+  male: 'male',
+  female: 'female',
+} as const;
+
+export interface ApplicationInput {
+  /** @minLength 1 */
+  firstName: string;
+  /** @minLength 1 */
+  lastName: string;
+  gender: ApplicationInputGender;
+  birthDate: string;
+  /** @minLength 1 */
+  level: string;
+  /** @nullable */
+  classroomId?: number | null;
+  /** @nullable */
+  notes?: string | null;
+  /** @minLength 1 */
+  guardianName: string;
+  /** @minLength 5 */
+  guardianPhone: string;
+  /** @nullable */
+  guardianEmail?: string | null;
+}
+
+export type ApplicationUpdateGender = typeof ApplicationUpdateGender[keyof typeof ApplicationUpdateGender];
+
+
+export const ApplicationUpdateGender = {
+  male: 'male',
+  female: 'female',
+} as const;
+
+export interface ApplicationUpdate {
+  /** @minLength 1 */
+  firstName?: string;
+  /** @minLength 1 */
+  lastName?: string;
+  gender?: ApplicationUpdateGender;
+  birthDate?: string;
+  /** @minLength 1 */
+  level?: string;
+  /** @nullable */
+  classroomId?: number | null;
+  /** @nullable */
+  notes?: string | null;
+  /** @minLength 1 */
+  guardianName?: string;
+  /** @minLength 5 */
+  guardianPhone?: string;
+  /** @nullable */
+  guardianEmail?: string | null;
+}
+
+export interface ApplicationDocumentInput {
+  /** @minLength 1 */
+  name: string;
+  /** @minLength 1 */
+  contentType: string;
+  /**
+     * @minimum 1
+     * @maximum 10485760
+     */
+  size: number;
+  /** @pattern ^/objects/uploads/[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$ */
+  objectPath: string;
+}
+
+export interface UploadUrlRequest {
+  /** @minimum 1 */
+  applicationId: number;
+  /** @minLength 1 */
+  name: string;
+  /**
+     * @minimum 1
+     * @maximum 10485760
+     */
+  size: number;
+  /** @minLength 1 */
+  contentType: string;
+}
+
+export interface UploadUrlResponse {
+  uploadUrl: string;
+  /** @pattern ^/objects/uploads/[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$ */
+  objectPath: string;
+}
+
+export type ApplicationStatusUpdateStatus = typeof ApplicationStatusUpdateStatus[keyof typeof ApplicationStatusUpdateStatus];
+
+
+export const ApplicationStatusUpdateStatus = {
+  new: 'new',
+  reviewing: 'reviewing',
+  rejected: 'rejected',
+} as const;
+
+export interface ApplicationStatusUpdate {
+  status: ApplicationStatusUpdateStatus;
+}
+
 export interface Guardian {
   id: number;
   name: string;
@@ -161,6 +329,19 @@ export interface Classroom {
   capacity: number;
   childrenCount: number;
   color: string;
+}
+
+export interface ClassroomInput {
+  /** @minLength 1 */
+  name: string;
+  /** @minLength 1 */
+  level: string;
+  /** @minLength 1 */
+  teacherName: string;
+  /** @minimum 1 */
+  capacity: number;
+  /** @minLength 1 */
+  color?: string;
 }
 
 export type StaffMemberStatus = typeof StaffMemberStatus[keyof typeof StaffMemberStatus];
@@ -266,6 +447,29 @@ export type ListChildrenParams = {
 search?: string;
 classroomId?: number;
 };
+
+export type ListApplicationsParams = {
+status?: ListApplicationsStatus;
+type?: ListApplicationsType;
+};
+
+export type ListApplicationsStatus = typeof ListApplicationsStatus[keyof typeof ListApplicationsStatus];
+
+
+export const ListApplicationsStatus = {
+  new: 'new',
+  reviewing: 'reviewing',
+  accepted: 'accepted',
+  rejected: 'rejected',
+} as const;
+
+export type ListApplicationsType = typeof ListApplicationsType[keyof typeof ListApplicationsType];
+
+
+export const ListApplicationsType = {
+  new: 'new',
+  renewal: 'renewal',
+} as const;
 
 export type ListInvoicesParams = {
 status?: ListInvoicesStatus;
