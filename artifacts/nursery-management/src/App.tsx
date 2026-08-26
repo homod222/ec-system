@@ -19,7 +19,7 @@ import {
   getGetApplicationQueryKey, getListApplicationsQueryKey, getGetFinanceSummaryQueryKey, getListInvoicesQueryKey,
   useAcceptApplication, useAttachApplicationDocument, useCreateApplication, useGetApplication, useRequestUploadUrl,
   useCreateChild, useCreateClassroom, useCreateInvoiceCheckoutSession, useDeleteChild, useGetChild,
-  useGetDashboardActivity, useGetDashboardSummary, useGetFinanceSummary, useGetSessionContext, useGetTodayAttendance, useListChildren,
+  useGetDashboardActivity, useGetDashboardSummary, useGetFinanceSummary, useGetKwdUsdExchangeRate, useGetSessionContext, useGetTodayAttendance, useListChildren,
   useListClassrooms, useListGuardians, useListApplications, useListInvoices, useListStaff, useRecordAttendance,
   useSendInvoiceReminder, useStartChildRenewal, useUpdateApplication, useUpdateApplicationStatus, useUpdateChild,
 } from '@workspace/api-client-react';
@@ -791,8 +791,10 @@ function Attendance() {
 }
 
 function Finance() {
-  const summary = useGetFinanceSummary(); const invoiceQuery = useListInvoices(); 
+  const summary = useGetFinanceSummary(); const invoiceQuery = useListInvoices();
+  const exchangeRateQuery = useGetKwdUsdExchangeRate();
   const invoices = invoiceQuery.data || []; const data = summary.data;
+  const exchangeRate = exchangeRateQuery.data;
   const qc = useQueryClient(); const { toast } = useToast();
   const search = useSearch(); const [, setLocation] = useLocation();
 
@@ -829,6 +831,26 @@ function Finance() {
         <StatCard icon={CircleAlert} label="فواتير متأخرة الدفع" value={`${data?.overdueCount ?? 0}`} tone="coral" />
         <StatCard icon={Check} label="فواتير مسددة بالكامل" value={`${data?.paidCount ?? 0}`} tone="sage" />
       </div>
+
+      <section data-testid="exchange-rate-summary" className="mt-6 flex flex-col gap-3 rounded-2xl border border-primary/15 bg-secondary/40 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-sm font-bold text-foreground">سعر التحويل للدفع عبر Stripe</p>
+          {exchangeRate ? (
+            <p className="mt-1 text-sm text-muted-foreground">
+              1 د.ك = {exchangeRate.rate.toLocaleString('ar-KW', { minimumFractionDigits: 4, maximumFractionDigits: 4 })} دولار أمريكي
+            </p>
+          ) : (
+            <p className="mt-1 text-sm font-bold text-destructive">
+              {exchangeRateQuery.isLoading ? 'جارٍ تحميل سعر التحويل…' : 'لا يتوفر حاليًا سعر تحويل حديث؛ لن يبدأ الدفع حتى يتوفر سعر صالح.'}
+            </p>
+          )}
+        </div>
+        {exchangeRate && (
+          <p className="text-xs font-medium text-muted-foreground">
+            آخر تحديث ناجح: {new Date(exchangeRate.updatedAt).toLocaleString('ar-KW', { dateStyle: 'medium', timeStyle: 'short' })}
+          </p>
+        )}
+      </section>
       
       <div className="mt-8 grid gap-8 xl:grid-cols-[1.2fr_1fr]">
         <section className="rounded-[2rem] border border-border bg-card p-8 shadow-sm">
@@ -870,7 +892,7 @@ function Finance() {
           
           <QueryState loading={invoiceQuery.isLoading} error={invoiceQuery.isError} empty={!invoices.length} onRetry={() => invoiceQuery.refetch()}>
             <div className="space-y-5">
-              {invoices.slice(0, 6).map((invoice) => <InvoiceRow key={invoice.id} invoice={invoice} />)}
+              {invoices.slice(0, 6).map((invoice) => <InvoiceRow key={invoice.id} invoice={invoice} exchangeRate={exchangeRate?.rate} />)}
             </div>
           </QueryState>
         </section>
@@ -879,7 +901,7 @@ function Finance() {
   );
 }
 
-function InvoiceRow({ invoice }: { invoice: Invoice }) { 
+function InvoiceRow({ invoice, exchangeRate }: { invoice: Invoice; exchangeRate?: number }) {
   const { toast } = useToast();
   const checkout = useCreateInvoiceCheckoutSession();
   const reminder = useSendInvoiceReminder();
@@ -929,9 +951,17 @@ function InvoiceRow({ invoice }: { invoice: Invoice }) {
         </div>
         {unpaid && (
           <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
-            <Button data-testid={`button-pay-${invoice.id}`} variant="primary" className="!px-3 !py-2 !text-xs" onClick={handlePay} disabled={checkout.isPending}>
-              {checkout.isPending ? 'جارٍ التحويل…' : 'دفع الآن'}
-            </Button>
+            <div className="flex flex-col gap-1">
+              <Button data-testid={`button-pay-${invoice.id}`} variant="primary" className="!px-3 !py-2 !text-xs" onClick={handlePay} disabled={checkout.isPending || !exchangeRate}>
+                {checkout.isPending ? 'جارٍ التحويل…' : 'دفع الآن'}
+              </Button>
+              <p data-testid={`text-usd-estimate-${invoice.id}`} className="max-w-40 text-center text-[11px] leading-4 text-muted-foreground">
+                {exchangeRate
+                  ? `تقريبًا ${(invoice.amount * exchangeRate).toLocaleString('ar-KW', { style: 'currency', currency: 'USD' })}`
+                  : 'السعر الحديث غير متاح'}
+                {exchangeRate && <><br />يُثبّت المبلغ النهائي عند إنشاء جلسة الدفع</>}
+              </p>
+            </div>
             <Button data-testid={`button-remind-${invoice.id}`} variant="soft" className="!px-3 !py-2 !text-xs" onClick={handleReminder} disabled={reminder.isPending}>
               {reminder.isPending ? 'جارٍ الإرسال…' : 'إرسال تذكير'}
             </Button>

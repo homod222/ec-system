@@ -752,6 +752,21 @@ export const ListInvoicesResponse = zod.array(ListInvoicesResponseItem)
 
 
 /**
+ * @summary Get the current fresh KWD to USD exchange rate
+ */
+export const getKwdUsdExchangeRateResponseRateExclusiveMin = 0;
+
+
+
+export const GetKwdUsdExchangeRateResponse = zod.object({
+  "baseCurrency": zod.enum(['KWD']),
+  "quoteCurrency": zod.enum(['USD']),
+  "rate": zod.number().gt(getKwdUsdExchangeRateResponseRateExclusiveMin),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
  * @summary Create a Stripe checkout session to pay an invoice
  */
 export const CreateInvoiceCheckoutSessionParams = zod.object({
@@ -907,6 +922,22 @@ export const ListParentInvoicesResponseItem = zod.object({
   "chargedAmount": zod.number().nullish()
 })
 export const ListParentInvoicesResponse = zod.array(ListParentInvoicesResponseItem)
+
+
+/**
+ * @summary Create a Stripe checkout session for a guardian invoice
+ */
+export const CreateParentInvoiceCheckoutSessionParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const CreateParentInvoiceCheckoutSessionBody = zod.object({
+  "returnUrl": zod.string().describe('Absolute URL of the finance page to redirect back to after checkout.')
+})
+
+export const CreateParentInvoiceCheckoutSessionResponse = zod.object({
+  "url": zod.string()
+})
 
 
 /**

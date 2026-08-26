@@ -9,12 +9,16 @@ import {
   CreateInvoiceCheckoutSessionBody,
   CreateInvoiceCheckoutSessionParams,
   CreateInvoiceCheckoutSessionResponse,
+  CreateParentInvoiceCheckoutSessionBody,
+  CreateParentInvoiceCheckoutSessionParams,
+  CreateParentInvoiceCheckoutSessionResponse,
   DeleteChildParams,
   GetChildParams,
   GetChildResponse,
   GetDashboardActivityResponse,
   GetDashboardSummaryResponse,
   GetFinanceSummaryResponse,
+  GetKwdUsdExchangeRateResponse,
   GetSessionContextResponse,
   GetTodayAttendanceResponse,
   GetParentOverviewResponse,
@@ -61,7 +65,7 @@ import {
 } from "@workspace/db";
 import { checkClassroomCapacity } from "../lib/classroomCapacity";
 import { createInvoiceCheckoutSession, isAllowedReturnUrl } from "../lib/financePayments";
-import { ExchangeRateUnavailableError } from "../lib/exchangeRates";
+import { ExchangeRateUnavailableError, getCurrentKwdToUsdRate } from "../lib/exchangeRates";
 import { sendDueReminder } from "../lib/notifications";
 
 const router: IRouter = Router();
@@ -250,6 +254,25 @@ router.get("/session/context", async (req, res, next): Promise<void> => {
   }
 });
 router.use("/parent", requireParentGuardian);
+
+router.get("/exchange-rates/kwd-usd", async (req, res): Promise<void> => {
+  try {
+    const current = await getCurrentKwdToUsdRate();
+    res.json(GetKwdUsdExchangeRateResponse.parse({
+      baseCurrency: "KWD",
+      quoteCurrency: "USD",
+      rate: current.rate,
+      updatedAt: current.fetchedAt.toISOString(),
+    }));
+  } catch (err) {
+    if (err instanceof ExchangeRateUnavailableError) {
+      res.status(503).json({ error: err.message, code: "EXCHANGE_RATE_UNAVAILABLE" });
+      return;
+    }
+    req.log.error({ err }, "Failed to load KWD/USD exchange rate");
+    res.status(500).json({ error: "Failed to load exchange rate" });
+  }
+});
 
 router.use(async (req, res, next) => {
   if (req.path.startsWith("/parent/")) {
@@ -915,7 +938,60 @@ router.get("/parent/invoices", async (_req, res): Promise<void> => {
     amount: invoice.amount,
     dueDate: invoice.dueDate,
     status: invoice.status,
+    paidAt: invoice.paidAt ? invoice.paidAt.toISOString() : null,
+    lastPaymentStatus: invoice.lastPaymentStatus,
+    lastPaymentError: invoice.lastPaymentError,
+    chargedCurrency: invoice.chargedCurrency,
+    chargedAmount: invoice.chargedAmount,
   }))));
+});
+
+router.post("/parent/invoices/:id/checkout-session", async (req, res): Promise<void> => {
+  const params = CreateParentInvoiceCheckoutSessionParams.safeParse(req.params);
+  const body = CreateParentInvoiceCheckoutSessionBody.safeParse(req.body);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  if (!body.success) {
+    res.status(400).json({ error: body.error.message });
+    return;
+  }
+  if (!isAllowedReturnUrl(body.data.returnUrl)) {
+    res.status(400).json({ error: "Invalid return URL" });
+    return;
+  }
+
+  const guardian = res.locals.guardian as typeof guardiansTable.$inferSelect;
+  const [invoice] = await db.select().from(invoicesTable).where(and(
+    eq(invoicesTable.id, params.data.id),
+    eq(invoicesTable.guardianId, guardian.id),
+  ));
+  if (!invoice) {
+    res.status(404).json({ error: "Invoice not found" });
+    return;
+  }
+  if (invoice.status === "paid") {
+    res.status(400).json({ error: "Invoice already paid" });
+    return;
+  }
+
+  try {
+    const session = await createInvoiceCheckoutSession({
+      invoice,
+      guardian,
+      successUrl: `${body.data.returnUrl}?payment=success&invoice=${invoice.id}`,
+      cancelUrl: `${body.data.returnUrl}?payment=cancelled&invoice=${invoice.id}`,
+    });
+    res.json(CreateParentInvoiceCheckoutSessionResponse.parse({ url: session.url }));
+  } catch (err) {
+    req.log.error({ err, invoiceId: invoice.id }, "Failed to create parent Stripe checkout session");
+    if (err instanceof ExchangeRateUnavailableError) {
+      res.status(503).json({ error: err.message, code: "EXCHANGE_RATE_UNAVAILABLE" });
+      return;
+    }
+    res.status(502).json({ error: "Failed to create payment session" });
+  }
 });
 
 router.get("/parent/messages", async (_req, res): Promise<void> => {

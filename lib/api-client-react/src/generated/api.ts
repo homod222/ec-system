@@ -35,6 +35,7 @@ import type {
   Classroom,
   ClassroomInput,
   DashboardSummary,
+  ExchangeRate,
   FinanceSummary,
   Guardian,
   HealthStatus,
@@ -160,7 +161,12 @@ export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, 
   return withQueryKey(query, queryOptions.queryKey);
 }
 
-// End of generated API hooks.
+
+
+
+
+
+
 export const getGetDashboardSummaryUrl = () => {
 
 
@@ -231,6 +237,12 @@ export function useGetDashboardSummary<TData = Awaited<ReturnType<typeof getDash
 
   return withQueryKey(query, queryOptions.queryKey);
 }
+
+
+
+
+
+
 
 export const getGetDashboardActivityUrl = () => {
 
@@ -2038,6 +2050,83 @@ export function useListInvoices<TData = Awaited<ReturnType<typeof listInvoices>>
 
 
 
+export const getGetKwdUsdExchangeRateUrl = () => {
+
+
+
+
+  return `/api/exchange-rates/kwd-usd`
+}
+
+/**
+ * @summary Get the current fresh KWD to USD exchange rate
+ */
+export const getKwdUsdExchangeRate = async ( options?: Parameters<typeof customFetch>[1]): Promise<ExchangeRate> => {
+
+  return customFetch<ExchangeRate>(getGetKwdUsdExchangeRateUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetKwdUsdExchangeRateQueryKey = () => {
+    return [
+    `/api/exchange-rates/kwd-usd`
+    ] as const;
+    }
+
+
+export const getGetKwdUsdExchangeRateQueryOptions = <TData = Awaited<ReturnType<typeof getKwdUsdExchangeRate>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getKwdUsdExchangeRate>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetKwdUsdExchangeRateQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getKwdUsdExchangeRate>>> = ({ signal }) => getKwdUsdExchangeRate({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getKwdUsdExchangeRate>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetKwdUsdExchangeRateQueryResult = NonNullable<Awaited<ReturnType<typeof getKwdUsdExchangeRate>>>
+export type GetKwdUsdExchangeRateQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get the current fresh KWD to USD exchange rate
+ */
+
+export function useGetKwdUsdExchangeRate<TData = Awaited<ReturnType<typeof getKwdUsdExchangeRate>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getKwdUsdExchangeRate>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetKwdUsdExchangeRateQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export const getCreateInvoiceCheckoutSessionUrl = (id: number,) => {
 
 
@@ -2697,7 +2786,7 @@ export const getListParentInvoicesQueryKey = () => {
     }
 
 
-export const getListParentInvoicesQueryOptions = <TData = Awaited<ReturnType<typeof listParentInvoices>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listParentInvoices>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getListParentInvoicesQueryOptions = <TData = Awaited<ReturnType<typeof listParentInvoices>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listParentInvoices>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
@@ -2716,14 +2805,14 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 }
 
 export type ListParentInvoicesQueryResult = NonNullable<Awaited<ReturnType<typeof listParentInvoices>>>
-export type ListParentInvoicesQueryError = ErrorType<void>
+export type ListParentInvoicesQueryError = ErrorType<unknown>
 
 
 /**
  * @summary Get invoices belonging to the authenticated guardian
  */
 
-export function useListParentInvoices<TData = Awaited<ReturnType<typeof listParentInvoices>>, TError = ErrorType<void>>(
+export function useListParentInvoices<TData = Awaited<ReturnType<typeof listParentInvoices>>, TError = ErrorType<unknown>>(
   options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listParentInvoices>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
@@ -2740,6 +2829,78 @@ export function useListParentInvoices<TData = Awaited<ReturnType<typeof listPare
 
 
 
+
+export const getCreateParentInvoiceCheckoutSessionUrl = (id: number,) => {
+
+
+
+
+  return `/api/parent/invoices/${id}/checkout-session`
+}
+
+/**
+ * @summary Create a Stripe checkout session for a guardian invoice
+ */
+export const createParentInvoiceCheckoutSession = async (id: number,
+    invoiceCheckoutSessionInput: InvoiceCheckoutSessionInput, options?: Parameters<typeof customFetch>[1]): Promise<InvoiceCheckoutSession> => {
+
+  return customFetch<InvoiceCheckoutSession>(getCreateParentInvoiceCheckoutSessionUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(invoiceCheckoutSessionInput)
+  }
+);}
+
+
+
+
+
+export const getCreateParentInvoiceCheckoutSessionMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createParentInvoiceCheckoutSession>>, TError,{id: number;data: BodyType<InvoiceCheckoutSessionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createParentInvoiceCheckoutSession>>, TError,{id: number;data: BodyType<InvoiceCheckoutSessionInput>}, TContext> => {
+
+const mutationKey = ['createParentInvoiceCheckoutSession'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createParentInvoiceCheckoutSession>>, {id: number;data: BodyType<InvoiceCheckoutSessionInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  createParentInvoiceCheckoutSession(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateParentInvoiceCheckoutSessionMutationResult = NonNullable<Awaited<ReturnType<typeof createParentInvoiceCheckoutSession>>>
+    export type CreateParentInvoiceCheckoutSessionMutationBody = BodyType<InvoiceCheckoutSessionInput>
+    export type CreateParentInvoiceCheckoutSessionMutationError = ErrorType<void>
+
+    /**
+ * @summary Create a Stripe checkout session for a guardian invoice
+ */
+export const useCreateParentInvoiceCheckoutSession = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createParentInvoiceCheckoutSession>>, TError,{id: number;data: BodyType<InvoiceCheckoutSessionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createParentInvoiceCheckoutSession>>,
+        TError,
+        {id: number;data: BodyType<InvoiceCheckoutSessionInput>},
+        TContext
+      > => {
+      return useMutation(getCreateParentInvoiceCheckoutSessionMutationOptions(options));
+    }
 
 export const getListParentMessagesUrl = () => {
 
