@@ -25,7 +25,7 @@ export function Landing() {
       {/* Navbar */}
       <nav className="mx-auto flex max-w-7xl items-center justify-between px-5 py-6 sm:px-8">
         <div className="flex items-center gap-3">
-          <img src={`${basePath}/ec-official-logo.png`} alt="حضانة EC ثنائية اللغة" className="h-16 w-auto sm:h-20" />
+          <img src={`${basePath}/ec-official-logo.png`} alt="حضانة EC ثنائية اللغة" className="h-auto w-40 object-contain sm:w-48" />
         </div>
         <div className="hidden items-center gap-8 text-sm font-bold text-muted-foreground md:flex">
           <a href="#about" className="hover:text-primary transition-colors">من نحن</a>
@@ -159,7 +159,7 @@ export function Landing() {
 
       {/* Footer */}
       <footer className="border-t border-border bg-white px-5 py-12 sm:px-8 text-center text-sm font-medium text-muted-foreground">
-        <img src={`${basePath}/ec-official-logo.png`} alt="حضانة EC" className="h-20 w-auto mx-auto mb-6" />
+        <img src={`${basePath}/ec-official-logo.png`} alt="حضانة EC" className="mx-auto mb-6 h-auto w-48 object-contain sm:w-56" />
         <p>جميع الحقوق محفوظة © {new Date().getFullYear()} حضانة EC ثنائية اللغة - Education Group</p>
       </footer>
     </div>
