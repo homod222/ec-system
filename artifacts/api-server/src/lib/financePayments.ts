@@ -1,8 +1,13 @@
 import type Stripe from "stripe";
 import { db, invoicesTable, type Guardian, type Invoice } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { getUncachableStripeClient } from "./stripeClient";
 import { logger } from "./logger";
+import {
+  EXCHANGE_RATE_LOCK_ID,
+  getCurrentKwdToUsdRate,
+  getStoredFreshKwdToUsdRate,
+} from "./exchangeRates";
 
 const INVOICE_PRODUCT_NAME = "رسوم الحضانة";
 
@@ -43,23 +48,17 @@ async function getOrCreateInvoiceProduct(stripe: Stripe): Promise<string> {
  * account/region limitation, not something fixable by adding a bank account
  * from application code). The user chose to keep invoices in KWD and let the
  * integration pick a Stripe-supported charge currency, so we charge in USD
- * using a fixed conversion rate.
- *
- * KWD is one of the world's higher-valued, historically stable currencies
- * (Kuwait's central bank pegs it to an undisclosed basket of currencies), so a
- * fixed rate is a reasonable approximation, but it WILL drift from the market
- * rate over time. This should be reviewed periodically or replaced with a
- * live FX-rate lookup if precise conversion becomes important.
+ * using a recently fetched market rate. Checkout is stopped if no sufficiently
+ * fresh rate is available, rather than silently charging with stale data.
  */
-const KWD_TO_USD_RATE = 3.26; // approximate, set 2026-08-26
 const CHARGE_CURRENCY = "usd";
 
 /**
  * KWD is a three-decimal currency; USD is a two-decimal currency. Convert the
  * KWD invoice amount to USD, then to the smallest unit (cents) Stripe expects.
  */
-function toStripeAmount(amountKwd: number): number {
-  return Math.round(amountKwd * KWD_TO_USD_RATE * 100);
+function toStripeAmount(amountKwd: number, exchangeRate: number): number {
+  return Math.round(amountKwd * exchangeRate * 100);
 }
 
 /**
@@ -94,81 +93,142 @@ export async function createInvoiceCheckoutSession(params: {
   cancelUrl: string;
 }): Promise<{ url: string; sessionId: string }> {
   const stripe = await getUncachableStripeClient();
-
-  // Reuse an existing, still-open Checkout Session for this invoice instead
-  // of creating a second payable link. Without this, repeated or concurrent
-  // "Pay now" clicks before the webhook lands would each mint a fresh
-  // session, and a guardian could complete more than one of them -- a real
-  // double-charge risk.
-  if (params.invoice.stripeCheckoutSessionId) {
-    try {
-      const existing = await stripe.checkout.sessions.retrieve(params.invoice.stripeCheckoutSessionId);
-      if (existing.status === "open" && existing.url) {
-        return { url: existing.url, sessionId: existing.id };
-      }
-    } catch (err) {
-      logger.warn(
-        { err, invoiceId: params.invoice.id },
-        "Could not retrieve existing Stripe checkout session, creating a new one",
-      );
-    }
-  }
-
   const productId = await getOrCreateInvoiceProduct(stripe);
+  // Refresh on demand before entering the shared publication lock. Attempting
+  // an exclusive refresh while holding the shared lock would self-deadlock.
+  await getCurrentKwdToUsdRate();
 
-  const session = await stripe.checkout.sessions.create(
-    {
-      mode: "payment",
-      payment_method_types: ["card"],
-      line_items: [
-        {
-          quantity: 1,
-          price_data: {
-            currency: CHARGE_CURRENCY,
-            unit_amount: toStripeAmount(params.invoice.amount),
-            product: productId,
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock_shared(${EXCHANGE_RATE_LOCK_ID})`);
+    // A database-backed advisory lock serializes checkout creation for the
+    // invoice across concurrent requests and API instances. The second caller
+    // sees and reuses the session stored by the first instead of minting
+    // another payable link.
+    await tx.execute(sql`select pg_advisory_xact_lock(${params.invoice.id})`);
+
+    const [currentInvoice] = await tx
+      .select()
+      .from(invoicesTable)
+      .where(eq(invoicesTable.id, params.invoice.id))
+      .limit(1);
+    if (!currentInvoice || currentInvoice.status === "paid") {
+      throw new Error("Invoice is no longer payable");
+    }
+
+    const {
+      rate: exchangeRate,
+      fetchedAt: exchangeRateFetchedAt,
+      sourceUpdatedAt: exchangeRateSourceUpdatedAt,
+    } = await getStoredFreshKwdToUsdRate();
+    const rateVersion = String(exchangeRateSourceUpdatedAt.getTime());
+
+    let replaceExistingSession = false;
+    if (currentInvoice.stripeCheckoutSessionId) {
+      try {
+        const existing = await stripe.checkout.sessions.retrieve(currentInvoice.stripeCheckoutSessionId);
+        if (
+          existing.status === "open" &&
+          existing.url &&
+          existing.metadata?.exchangeRateVersion === rateVersion
+        ) {
+          return { url: existing.url, sessionId: existing.id };
+        }
+        if (existing.status === "open") {
+          await stripe.checkout.sessions.expire(existing.id);
+          replaceExistingSession = true;
+        } else if (existing.status === "expired") {
+          replaceExistingSession = true;
+        } else {
+          throw new Error("Invoice payment is already processing");
+        }
+      } catch (err) {
+        if (
+          err &&
+          typeof err === "object" &&
+          "statusCode" in err &&
+          (err as { statusCode?: number }).statusCode === 404
+        ) {
+          replaceExistingSession = true;
+        } else {
+          throw err;
+        }
+      }
+    }
+
+    const nextAttempt = currentInvoice.stripeCheckoutAttempt + 1;
+    await tx
+      .update(invoicesTable)
+      .set({ stripeCheckoutAttempt: nextAttempt })
+      .where(eq(invoicesTable.id, currentInvoice.id));
+
+    const session = await stripe.checkout.sessions.create(
+      {
+        mode: "payment",
+        payment_method_types: ["card"],
+        line_items: [
+          {
+            quantity: 1,
+            price_data: {
+              currency: CHARGE_CURRENCY,
+              unit_amount: toStripeAmount(currentInvoice.amount, exchangeRate),
+              product: productId,
+            },
+          },
+        ],
+        customer_email: params.guardian.email ?? undefined,
+        metadata: {
+          invoiceId: String(currentInvoice.id),
+          invoiceNumber: currentInvoice.invoiceNumber,
+          originalAmountKwd: String(currentInvoice.amount),
+          exchangeRateKwdToUsd: String(exchangeRate),
+          exchangeRateFetchedAt: exchangeRateFetchedAt.toISOString(),
+          exchangeRateVersion: rateVersion,
+        },
+        payment_intent_data: {
+          metadata: {
+            invoiceId: String(currentInvoice.id),
+            originalAmountKwd: String(currentInvoice.amount),
+            exchangeRateKwdToUsd: String(exchangeRate),
+            exchangeRateFetchedAt: exchangeRateFetchedAt.toISOString(),
+            exchangeRateVersion: rateVersion,
           },
         },
-      ],
-      customer_email: params.guardian.email ?? undefined,
-      metadata: {
-        invoiceId: String(params.invoice.id),
-        invoiceNumber: params.invoice.invoiceNumber,
-        originalAmountKwd: String(params.invoice.amount),
-        exchangeRateKwdToUsd: String(KWD_TO_USD_RATE),
+        success_url: params.successUrl,
+        cancel_url: params.cancelUrl,
+        // Keep a payable link short-lived even if a provider update or
+        // scheduler failure prevents proactive revocation. Stripe requires at
+        // least 30 minutes, so allow a small clock-skew margin.
+        expires_at: Math.floor(Date.now() / 1_000) + 31 * 60,
       },
-      payment_intent_data: {
-        metadata: {
-          invoiceId: String(params.invoice.id),
-          originalAmountKwd: String(params.invoice.amount),
-          exchangeRateKwdToUsd: String(KWD_TO_USD_RATE),
-        },
+      {
+        // The persisted attempt increments only when replacing/creating under
+        // the invoice lock. If Stripe succeeds but the DB transaction fails,
+        // the increment rolls back and a retry reuses this same key/session.
+        idempotencyKey: `invoice-checkout-${currentInvoice.id}-${nextAttempt}-${rateVersion}`,
       },
-      success_url: params.successUrl,
-      cancel_url: params.cancelUrl,
-    },
-    {
-      // Stable per-invoice key: if two requests race to create a session for
-      // the same invoice before either has written stripeCheckoutSessionId
-      // back to the DB, Stripe itself serializes them and returns the same
-      // session object to both callers instead of minting two. Stripe drops
-      // idempotency keys after ~24h, which lines up with the default
-      // Checkout Session expiry, so a genuinely new session can still be
-      // created once the old one has expired.
-      idempotencyKey: `invoice-checkout-${params.invoice.id}`,
-    },
-  );
+    );
 
-  if (!session.url) {
-    throw new Error("Stripe did not return a checkout URL");
-  }
+    if (session.status !== "open" || !session.url) {
+      throw new Error("Stripe did not return an open checkout session");
+    }
 
-  await db
-    .update(invoicesTable)
-    .set({ stripeCheckoutSessionId: session.id })
-    .where(eq(invoicesTable.id, params.invoice.id));
+    await tx
+      .update(invoicesTable)
+      .set({ stripeCheckoutSessionId: session.id })
+      .where(eq(invoicesTable.id, currentInvoice.id));
 
-  logger.info({ invoiceId: params.invoice.id, sessionId: session.id }, "Created Stripe checkout session for invoice");
+    logger.info(
+      {
+        invoiceId: currentInvoice.id,
+        sessionId: session.id,
+        exchangeRate,
+        rateVersion,
+        checkoutAttempt: nextAttempt,
+        replacedExistingSession: replaceExistingSession,
+      },
+      "Created Stripe checkout session for invoice",
+    );
 
-  return { url: session.url, sessionId: session.id };
+    return { url: session.url, sessionId: session.id };
+  });
 }

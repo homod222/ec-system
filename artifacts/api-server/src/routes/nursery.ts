@@ -61,6 +61,7 @@ import {
 } from "@workspace/db";
 import { checkClassroomCapacity } from "../lib/classroomCapacity";
 import { createInvoiceCheckoutSession, isAllowedReturnUrl } from "../lib/financePayments";
+import { ExchangeRateUnavailableError } from "../lib/exchangeRates";
 import { sendDueReminder } from "../lib/notifications";
 
 const router: IRouter = Router();
@@ -729,6 +730,10 @@ router.post("/invoices/:id/checkout-session", async (req, res): Promise<void> =>
     res.json(CreateInvoiceCheckoutSessionResponse.parse({ url: session.url }));
   } catch (err) {
     req.log.error({ err, invoiceId: invoice.id }, "Failed to create Stripe checkout session");
+    if (err instanceof ExchangeRateUnavailableError) {
+      res.status(503).json({ error: err.message, code: "EXCHANGE_RATE_UNAVAILABLE" });
+      return;
+    }
     res.status(502).json({ error: "Failed to create payment session" });
   }
 });

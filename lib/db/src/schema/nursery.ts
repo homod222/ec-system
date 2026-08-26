@@ -75,6 +75,7 @@ export const invoicesTable = pgTable("invoices", {
   dueDate: date("due_date", { mode: "string" }).notNull(),
   status: text("status").notNull(),
   stripeCheckoutSessionId: text("stripe_checkout_session_id"),
+  stripeCheckoutAttempt: integer("stripe_checkout_attempt").notNull().default(0),
   stripePaymentIntentId: text("stripe_payment_intent_id"),
   paidAt: timestamp("paid_at", { withTimezone: true }),
   lastPaymentStatus: text("last_payment_status"),
@@ -88,6 +89,13 @@ export const invoicesTable = pgTable("invoices", {
   exchangeRate: numeric("exchange_rate", { precision: 10, scale: 4, mode: "number" }),
 });
 
+export const exchangeRatesTable = pgTable("exchange_rates", {
+  pair: text("pair").primaryKey(),
+  rate: numeric("rate", { precision: 12, scale: 6, mode: "number" }).notNull(),
+  source: text("source").notNull(),
+  sourceUpdatedAt: timestamp("source_updated_at", { withTimezone: true }).notNull(),
+  fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
+});
 export const paymentNotificationsTable = pgTable("payment_notifications", {
   id: serial("id").primaryKey(),
   invoiceId: integer("invoice_id").notNull(),

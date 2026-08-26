@@ -4,6 +4,7 @@ import { runMigrations } from "stripe-replit-sync";
 import { getStripeSync } from "./lib/stripeClient";
 import { startScheduledDueReminders } from "./lib/scheduledDueReminders";
 import { runApplicationMigrations } from "./lib/applicationMigrations";
+import { initializeExchangeRateScheduler } from "./lib/exchangeRates";
 
 const rawPort = process.env["PORT"];
 
@@ -44,6 +45,7 @@ async function initStripe(): Promise<void> {
 async function start(): Promise<void> {
   await runApplicationMigrations();
   await initStripe();
+  await initializeExchangeRateScheduler();
   app.listen(port, (err) => {
     if (err) {
       logger.error({ err }, "Error listening on port");

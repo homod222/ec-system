@@ -889,7 +889,12 @@ function InvoiceRow({ invoice }: { invoice: Invoice }) {
     const returnUrl = `${window.location.origin}${basePath}/finance`;
     checkout.mutate({ id: invoice.id, data: { returnUrl } }, {
       onSuccess: (result) => { window.location.href = result.url; },
-      onError: () => toast({ title: 'تعذّر بدء عملية الدفع', description: 'حاول مرة أخرى أو تواصل مع الدعم الفني.', variant: 'destructive' }),
+      onError: (error) => {
+        const description = error instanceof Error && error.message.includes('تعذّر تحديث سعر صرف')
+          ? error.message.replace(/^HTTP \d+ [^:]*:\s*/, '')
+          : 'حاول مرة أخرى أو تواصل مع الدعم الفني.';
+        toast({ title: 'تعذّر بدء عملية الدفع', description, variant: 'destructive' });
+      },
     });
   };
 
