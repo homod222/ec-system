@@ -8,7 +8,20 @@ vi.mock("@clerk/express", () => ({
   clerkMiddleware: () => (req: unknown, _res: unknown, next: () => void) => next(),
   getAuth: (req: { headers: Record<string, string | undefined> }) => ({
     userId: req.headers["x-test-user"] ?? null,
+    sessionClaims: { role: "owner" },
   }),
+  clerkClient: {
+    users: {
+      getUser: vi.fn(async () => ({
+        publicMetadata: { role: "owner" },
+        privateMetadata: {},
+        emailAddresses: [{
+          emailAddress: "integration@example.test",
+          verification: { status: "verified" },
+        }],
+      })),
+    },
+  },
 }));
 
 vi.mock("../src/middlewares/clerkProxyMiddleware", () => ({
@@ -20,6 +33,21 @@ vi.mock("../src/lib/objectStorage", () => {
   class ObjectNotFoundError extends Error {}
 
   class ObjectStorageService {
+    createObjectEntityPath() {
+      const objectPath = `/objects/uploads/${randomUUID()}`;
+      storageObjects.set(objectPath, { size: 12, contentType: "application/pdf" });
+      return objectPath;
+    }
+
+    async uploadObjectEntity(
+      objectPath: string,
+      _source: unknown,
+      contentType: string,
+      expectedSize: number,
+    ) {
+      storageObjects.set(objectPath, { size: expectedSize, contentType });
+    }
+
     async getObjectEntityUploadURL() {
       const id = randomUUID();
       const objectPath = `/objects/uploads/${id}`;
@@ -134,6 +162,13 @@ describe.sequential("application registration regression flow", () => {
         contentType: "application/pdf",
       })
       .expect(200);
+    await request(app)
+      .put(upload.body.uploadUrl)
+      .set(auth(ownerA))
+      .set("content-type", "application/pdf")
+      .set("content-length", "12")
+      .send(Buffer.from("test content"))
+      .expect(204);
 
     const document = await request(app)
       .post(`/api/applications/${applicationId}/documents`)
@@ -211,6 +246,13 @@ describe.sequential("application registration regression flow", () => {
         contentType: "application/pdf",
       })
       .expect(200);
+    await request(app)
+      .put(upload.body.uploadUrl)
+      .set(auth(ownerA))
+      .set("content-type", "application/pdf")
+      .set("content-length", "12")
+      .send(Buffer.from("test content"))
+      .expect(204);
     const document = await request(app)
       .post(`/api/applications/${created.body.id}/documents`)
       .set(auth(ownerA))

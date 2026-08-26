@@ -93,11 +93,22 @@ export const paymentNotificationsTable = pgTable("payment_notifications", {
   invoiceId: integer("invoice_id").notNull(),
   channel: text("channel").notNull().default("whatsapp"),
   type: text("type").notNull(),
+  source: text("source").notNull().default("manual"),
+  reminderStage: text("reminder_stage"),
   recipientPhone: text("recipient_phone").notNull(),
   message: text("message").notNull(),
   status: text("status").notNull(),
   errorMessage: text("error_message"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const notificationDispatchClaimsTable = pgTable("notification_dispatch_claims", {
+  id: serial("id").primaryKey(),
+  deduplicationKey: text("deduplication_key").notNull().unique(),
+  invoiceId: integer("invoice_id").notNull(),
+  reminderStage: text("reminder_stage").notNull(),
+  status: text("status").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 export const activitiesTable = pgTable("activities", {
   id: serial("id").primaryKey(),

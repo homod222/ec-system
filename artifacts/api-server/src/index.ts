@@ -2,6 +2,8 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { runMigrations } from "stripe-replit-sync";
 import { getStripeSync } from "./lib/stripeClient";
+import { startScheduledDueReminders } from "./lib/scheduledDueReminders";
+import { runApplicationMigrations } from "./lib/applicationMigrations";
 
 const rawPort = process.env["PORT"];
 
@@ -40,6 +42,7 @@ async function initStripe(): Promise<void> {
   }
 }
 async function start(): Promise<void> {
+  await runApplicationMigrations();
   await initStripe();
   app.listen(port, (err) => {
     if (err) {
@@ -47,6 +50,7 @@ async function start(): Promise<void> {
       process.exit(1);
     }
     logger.info({ port }, "Server listening");
+    startScheduledDueReminders();
   });
 }
 

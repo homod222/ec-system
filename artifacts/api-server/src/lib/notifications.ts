@@ -95,9 +95,11 @@ async function sendWhatsAppMessage(to: string, body: string): Promise<WhatsAppSe
 
 async function dispatchAndRecord(params: {
   invoice: Invoice;
-  guardian: Guardian;
+  guardian: Pick<Guardian, "phone">;
   type: "due_reminder" | "payment_confirmation";
   message: string;
+  source?: "manual" | "automatic";
+  reminderStage?: "due_soon" | "overdue";
 }): Promise<{ status: "sent" | "failed"; errorMessage?: string }> {
   const result = await sendWhatsAppMessage(params.guardian.phone, params.message);
   const status = result.ok ? "sent" : "failed";
@@ -107,6 +109,8 @@ async function dispatchAndRecord(params: {
     invoiceId: params.invoice.id,
     channel: "whatsapp",
     type: params.type,
+    source: params.source ?? "manual",
+    reminderStage: params.reminderStage ?? null,
     recipientPhone: params.guardian.phone,
     message: params.message,
     status,
@@ -124,14 +128,21 @@ const arDate = new Intl.DateTimeFormat("ar-KW", { day: "numeric", month: "long",
 const money = (amount: number) =>
   new Intl.NumberFormat("ar-KW", { style: "currency", currency: "KWD", maximumFractionDigits: 3 }).format(amount);
 
-export async function sendDueReminder(invoice: Invoice, guardian: Guardian) {
+export async function sendDueReminder(
+  invoice: Invoice,
+  guardian: Pick<Guardian, "phone">,
+  options: {
+    source?: "manual" | "automatic";
+    reminderStage?: "due_soon" | "overdue";
+  } = {},
+) {
   const message =
     `تذكير بالاستحقاق: فاتورة ${invoice.invoiceNumber} بمبلغ ${money(invoice.amount)} ` +
     `مستحقة بتاريخ ${arDate.format(new Date(invoice.dueDate))}. يرجى السداد في أقرب وقت ممكن.`;
-  return dispatchAndRecord({ invoice, guardian, type: "due_reminder", message });
+  return dispatchAndRecord({ invoice, guardian, type: "due_reminder", message, ...options });
 }
 
-export async function sendPaymentConfirmation(invoice: Invoice, guardian: Guardian) {
+export async function sendPaymentConfirmation(invoice: Invoice, guardian: Pick<Guardian, "phone">) {
   const message =
     `تم استلام سداد فاتورة ${invoice.invoiceNumber} بمبلغ ${money(invoice.amount)}. شكرًا لكم.`;
   return dispatchAndRecord({ invoice, guardian, type: "payment_confirmation", message });
