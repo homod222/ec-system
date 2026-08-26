@@ -1,7 +1,7 @@
 import { Link } from 'wouter';
 import { useAuth } from '@clerk/react';
 import { Redirect } from 'wouter';
-import { ArrowUpRight, Check, CalendarCheck, ShieldCheck, CircleDollarSign, ChevronLeft, Sparkles, Star } from 'lucide-react';
+import { ArrowUpRight, Check, CalendarCheck, ShieldCheck, Sparkles, Star } from 'lucide-react';
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
 
@@ -25,7 +25,7 @@ export function Landing() {
       {/* Navbar */}
       <nav className="mx-auto flex max-w-7xl items-center justify-between px-5 py-6 sm:px-8">
         <div className="flex items-center gap-3">
-          <img src={`${basePath}/logo.svg`} alt="حضانة EC ثنائية اللغة" className="h-12 w-auto" />
+          <img src={`${basePath}/ec-official-logo.png`} alt="حضانة EC ثنائية اللغة" className="h-16 w-auto sm:h-20" />
         </div>
         <div className="hidden items-center gap-8 text-sm font-bold text-muted-foreground md:flex">
           <a href="#about" className="hover:text-primary transition-colors">من نحن</a>
@@ -78,12 +78,12 @@ export function Landing() {
           <div className="relative hidden lg:block animate-rise delay-100">
             {/* Main Image */}
             <div className="relative z-10 overflow-hidden rounded-[2rem] border-8 border-white shadow-2xl rotate-2 hover:rotate-0 transition-transform duration-500">
-              <img src="../../../attached_assets/7_Untitled-1-05_1787769806562.png" alt="طفلة سعيدة في الحضانة" className="w-full h-auto object-cover" />
+              <img src={`${basePath}/media/hero-child.webp`} alt="طفلة سعيدة في حضانة EC" className="aspect-[4/5] w-full object-cover" />
             </div>
             
             {/* Floating Image 1 */}
             <div className="absolute -bottom-10 -right-10 z-20 w-56 overflow-hidden rounded-[1.5rem] border-8 border-white shadow-xl -rotate-6 animate-float">
-              <img src="../../../attached_assets/6_Untitled-1-03_1787769806562.png" alt="نشاط مرح" className="w-full h-auto object-cover" />
+              <img src={`${basePath}/media/creative-play.webp`} alt="نشاط إبداعي في حضانة EC" className="aspect-[4/5] w-full object-cover" />
             </div>
             
             {/* Decor */}
@@ -122,10 +122,10 @@ export function Landing() {
         <div className="mx-auto max-w-7xl px-5 sm:px-8">
           <div className="grid lg:grid-cols-2 gap-16 items-center">
             <div className="grid grid-cols-2 gap-4">
-              <img src="../../../attached_assets/5_Untitled-1-08_1787769806562.png" alt="أطفال يدرسون" className="rounded-3xl object-cover h-64 w-full shadow-md hover:shadow-xl transition-shadow" />
-              <img src="../../../attached_assets/1_Untitled-1-09_1787769806562.png" alt="نشاط الطهي" className="rounded-3xl object-cover h-64 w-full shadow-md hover:shadow-xl transition-shadow translate-y-8" />
-              <img src="../../../attached_assets/3_Untitled-1-07_1787769806562.png" alt="يوم الفضاء" className="rounded-3xl object-cover h-64 w-full shadow-md hover:shadow-xl transition-shadow" />
-              <img src="../../../attached_assets/0_Untitled-1-06_1787769806562.png" alt="وقت اللعب" className="rounded-3xl object-cover h-64 w-full shadow-md hover:shadow-xl transition-shadow translate-y-8" />
+               <img src={`${basePath}/media/classroom-learning.webp`} alt="أطفال يتعلمون في الفصل" className="rounded-3xl object-cover h-64 w-full shadow-md hover:shadow-xl transition-shadow" />
+               <img src={`${basePath}/media/cooking-activity.webp`} alt="نشاط الطهي التعليمي" className="rounded-3xl object-cover h-64 w-full shadow-md hover:shadow-xl transition-shadow translate-y-8" />
+               <img src={`${basePath}/media/space-day.webp`} alt="فعالية يوم الفضاء" className="rounded-3xl object-cover h-64 w-full shadow-md hover:shadow-xl transition-shadow" />
+               <img src={`${basePath}/media/outdoor-play.webp`} alt="اللعب في مرافق الحضانة" className="rounded-3xl object-cover h-64 w-full shadow-md hover:shadow-xl transition-shadow translate-y-8" />
             </div>
             
             <div className="lg:pr-10">
@@ -159,7 +159,7 @@ export function Landing() {
 
       {/* Footer */}
       <footer className="border-t border-border bg-white px-5 py-12 sm:px-8 text-center text-sm font-medium text-muted-foreground">
-        <img src={`${basePath}/logo.svg`} alt="حضانة EC" className="h-10 mx-auto mb-6 grayscale hover:grayscale-0 transition-all" />
+        <img src={`${basePath}/ec-official-logo.png`} alt="حضانة EC" className="h-20 w-auto mx-auto mb-6" />
         <p>جميع الحقوق محفوظة © {new Date().getFullYear()} حضانة EC ثنائية اللغة - Education Group</p>
       </footer>
     </div>

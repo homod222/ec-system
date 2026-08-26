@@ -88,7 +88,7 @@ function Shell({ children }: { children: React.ReactNode }) {
     <div className="app-noise min-h-[100dvh] bg-background selection:bg-primary/20" dir="rtl">
       <aside className={`fixed inset-y-0 right-0 z-40 flex w-[280px] flex-col bg-sidebar px-5 py-6 text-sidebar-foreground shadow-2xl transition-transform duration-300 lg:translate-x-0 ${open ? 'translate-x-0' : 'translate-x-full'}`}>
         <div className="mb-10 flex items-center justify-between px-2">
-          <img src={`${basePath}/logo.svg`} alt="حضانة EC" className="h-12 w-auto brightness-0 invert" />
+          <img src={`${basePath}/ec-official-logo.png`} alt="حضانة EC" className="h-20 w-auto rounded-xl bg-white/95 px-2 py-1 shadow-sm" />
           <button data-testid="button-close-menu" className="rounded-xl p-2 text-sidebar-foreground/60 hover:bg-sidebar-accent lg:hidden" onClick={() => setOpen(false)}><X size={20} /></button>
         </div>
         
@@ -844,7 +844,7 @@ function AuthPage({ type }: { type: 'in' | 'up' }) {
       <div className="absolute inset-0 bg-background/90 backdrop-blur-3xl" />
       <div className="absolute right-8 top-8 z-10">
         <Link href="/" data-testid="link-auth-logo" className="block hover:opacity-80 transition-opacity">
-          <img src={`${basePath}/logo.svg`} alt="حضانة EC" className="h-14 w-auto drop-shadow-sm" />
+          <img src={`${basePath}/ec-official-logo.png`} alt="حضانة EC" className="h-24 w-auto drop-shadow-sm" />
         </Link>
       </div>
       <div className="relative z-10 w-full max-w-md animate-rise">
@@ -889,7 +889,7 @@ const appearance = {
   options: { 
     logoPlacement: 'inside' as const, 
     logoLinkUrl: basePath || '/', 
-    logoImageUrl: `${window.location.origin}${basePath}/logo.svg` 
+    logoImageUrl: `${window.location.origin}${basePath}/ec-official-logo.png` 
   }, 
   variables: { 
     colorPrimary: '#165032', 
