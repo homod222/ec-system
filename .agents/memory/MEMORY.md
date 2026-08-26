@@ -1,0 +1,1 @@
+- [OpenAPI integer compatibility](openapi-integer-compatibility.md) — Current Zod generator emits unsupported `zod.int()` for OpenAPI integers.
