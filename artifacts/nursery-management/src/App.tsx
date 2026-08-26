@@ -38,7 +38,12 @@ const navItems = [
   { href: '/finance', label: 'المالية', icon: Wallet },
 ];
 const arDate = new Intl.DateTimeFormat('ar-SA', { weekday: 'long', day: 'numeric', month: 'long' });
-const money = (n: number) => new Intl.NumberFormat('ar-SA', { style: 'currency', currency: 'SAR', maximumFractionDigits: 0 }).format(n || 0);
+const money = (n: number) => new Intl.NumberFormat('ar-KW', {
+  style: 'currency',
+  currency: 'KWD',
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 3,
+}).format(n || 0);
 const initials = (name: string) => name.split(' ').slice(0, 2).map((s) => s[0]).join('');
 const today = new Date().toISOString().slice(0, 10);
 
