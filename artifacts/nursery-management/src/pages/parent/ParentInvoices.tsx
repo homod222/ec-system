@@ -10,7 +10,7 @@ const money = (n: number) => new Intl.NumberFormat('ar-KW', {
   minimumFractionDigits: 0,
 }).format(n || 0);
 
-export function ParentInvoices() {
+export function ParentInvoices({ withShell = true }: { withShell?: boolean } = {}) {
   const query = useListParentInvoices();
   const exchangeRateQuery = useGetKwdUsdExchangeRate();
   const checkout = useCreateParentInvoiceCheckoutSession();
@@ -34,8 +34,8 @@ export function ParentInvoices() {
     });
   };
 
-  return (
-    <ParentShell>
+  const content = (
+    <>
       <ParentPageHeader 
         title="الفواتير والرسوم" 
         description="سجل شفاف لجميع المدفوعات والرسوم المستحقة لضمان استمرارية الخدمات."
@@ -124,6 +124,8 @@ export function ParentInvoices() {
           ))}
         </div>
       </ParentQueryState>
-    </ParentShell>
+    </>
   );
+
+  return withShell ? <ParentShell>{content}</ParentShell> : content;
 }
