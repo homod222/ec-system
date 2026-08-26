@@ -10,12 +10,36 @@ import { logger } from "./logger";
  * serves guardians in other countries, guardian phone numbers should be
  * captured with an explicit country code at intake instead of relying on
  * this heuristic.
+ *
+ * Kuwaiti mobile/landline numbers are exactly 8 local digits (no trunk "0"
+ * prefix, unlike neighboring markets such as the UAE/KSA). After stripping
+ * a country code, the remaining local number MUST be 8 digits -- anything
+ * else means the stored value is malformed (typo, extra digit, wrong
+ * country format) and would silently reach WhatsApp's API as an invalid
+ * recipient. We reject those explicitly instead of sending a best-effort
+ * guess.
  */
-export function normalizePhoneForWhatsApp(phone: string): string {
+export function normalizePhoneForWhatsApp(phone: string): { ok: true; value: string } | { ok: false; error: string } {
   const digits = phone.replace(/\D/g, "");
-  if (digits.startsWith("965") && digits.length > 8) return digits;
-  if (digits.startsWith("00965")) return digits.slice(2);
-  return `965${digits.replace(/^0+/, "")}`;
+  let local: string;
+  if (digits.startsWith("00965")) {
+    local = digits.slice(5);
+  } else if (digits.startsWith("965") && digits.length > 8) {
+    local = digits.slice(3);
+  } else {
+    local = digits.replace(/^0+/, "");
+  }
+
+  if (!/^\d{8}$/.test(local)) {
+    return {
+      ok: false,
+      error:
+        `رقم هاتف غير صالح لإرسال واتساب: "${phone}". يجب أن يتكون رقم الجوال الكويتي من 8 أرقام ` +
+        `بعد حذف مفتاح الدولة (965) وأي أصفار بادئة، بينما الرقم المُدخل ينتج عنه ${local.length || 0} رقم.`,
+    };
+  }
+
+  return { ok: true, value: `965${local}` };
 }
 
 type WhatsAppSendResult = { ok: true } | { ok: false; error: string };
@@ -38,6 +62,11 @@ async function sendWhatsAppMessage(to: string, body: string): Promise<WhatsAppSe
     };
   }
 
+  const normalized = normalizePhoneForWhatsApp(to);
+  if (!normalized.ok) {
+    return { ok: false, error: normalized.error };
+  }
+
   try {
     const resp = await fetch(`https://graph.facebook.com/v20.0/${phoneNumberId}/messages`, {
       method: "POST",
@@ -47,7 +76,7 @@ async function sendWhatsAppMessage(to: string, body: string): Promise<WhatsAppSe
       },
       body: JSON.stringify({
         messaging_product: "whatsapp",
-        to: normalizePhoneForWhatsApp(to),
+        to: normalized.value,
         type: "text",
         text: { body },
       }),
