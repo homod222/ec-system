@@ -5,7 +5,8 @@
  * API for the nursery management platform
  * OpenAPI spec version: 0.1.0
  */
+import type { ListInvoicesStatus } from './listInvoicesStatus';
 
-export interface HealthStatus {
-  status: string;
-}
+export type ListInvoicesParams = {
+status?: ListInvoicesStatus;
+};

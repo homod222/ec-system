@@ -1,0 +1,7 @@
+<svg width="160" height="48" viewBox="0 0 160 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect x="2" y="6" width="36" height="36" rx="12" fill="#F6C85F"/>
+  <path d="M12 29.2C12 22.5 16.8 16.5 20 16.5C23.2 16.5 28 22.5 28 29.2C28 33.3 24.4 36 20 36C15.6 36 12 33.3 12 29.2Z" fill="#17424B"/>
+  <circle cx="17" cy="26" r="1.5" fill="#F7F1E5"/><circle cx="23" cy="26" r="1.5" fill="#F7F1E5"/>
+  <path d="M18 30C19.2 31.2 20.8 31.2 22 30" stroke="#F7F1E5" stroke-width="1.5" stroke-linecap="round"/>
+  <text x="48" y="31" fill="#F7F1E5" font-family="IBM Plex Sans Arabic, sans-serif" font-size="22" font-weight="700">رفق</text>
+</svg>

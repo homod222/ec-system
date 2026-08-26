@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "نظام إدارة الحضانة"
+description = "تطبيق ويب عربي لإدارة الحضانة، يركز على متابعة الأطفال وأولياء الأمور والحضور والفصول والموظفين والمالية من لوحة تحكم يومية واضحة."
+version = "1.0.0"
+id = "artifacts/nursery-management"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 25158
+
+[services.development]
+run = "pnpm --filter @workspace/nursery-management run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/nursery-management", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/nursery-management/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "25158"
+BASE_PATH = "/"

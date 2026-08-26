@@ -3,13 +3,27 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: API for the nursery management platform
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: dashboard
+    description: Nursery overview and activity
+  - name: children
+    description: Child records
+  - name: guardians
+    description: Guardian records
+  - name: classrooms
+    description: Classroom records
+  - name: staff
+    description: Staff records
+  - name: attendance
+    description: Attendance records
+  - name: finance
+    description: Fees, invoices, and payments
 paths:
   /healthz:
     get:
@@ -24,7 +38,235 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Get dashboard summary
+      responses:
+        "200":
+          description: Summary of the nursery
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+  /dashboard/activity:
+    get:
+      operationId: getDashboardActivity
+      tags: [dashboard]
+      summary: Get recent activity
+      responses:
+        "200":
+          description: Recent activity entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Activity"
+  /children:
+    get:
+      operationId: listChildren
+      tags: [children]
+      summary: List children
+      parameters:
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: classroomId
+          in: query
+          required: false
+          schema:
+            type: number
+      responses:
+        "200":
+          description: Child records
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Child"
+    post:
+      operationId: createChild
+      tags: [children]
+      summary: Add a child
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChildInput"
+      responses:
+        "201":
+          description: Created child
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Child"
+        "400":
+          description: Invalid child data
+  /children/{id}:
+    get:
+      operationId: getChild
+      tags: [children]
+      summary: Get a child
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Child record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Child"
+        "404":
+          description: Child not found
+    patch:
+      operationId: updateChild
+      tags: [children]
+      summary: Update a child
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChildUpdate"
+      responses:
+        "200":
+          description: Updated child
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Child"
+    delete:
+      operationId: deleteChild
+      tags: [children]
+      summary: Delete a child
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "204":
+          description: Child deleted
+  /guardians:
+    get:
+      operationId: listGuardians
+      tags: [guardians]
+      summary: List guardians
+      responses:
+        "200":
+          description: Guardian records
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Guardian"
+  /classrooms:
+    get:
+      operationId: listClassrooms
+      tags: [classrooms]
+      summary: List classrooms
+      responses:
+        "200":
+          description: Classroom records
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Classroom"
+  /staff:
+    get:
+      operationId: listStaff
+      tags: [staff]
+      summary: List staff
+      responses:
+        "200":
+          description: Staff records
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StaffMember"
+  /attendance/today:
+    get:
+      operationId: getTodayAttendance
+      tags: [attendance]
+      summary: Get today's child attendance
+      responses:
+        "200":
+          description: Today's attendance
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AttendanceRecord"
+  /attendance:
+    post:
+      operationId: recordAttendance
+      tags: [attendance]
+      summary: Record child attendance
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AttendanceInput"
+      responses:
+        "201":
+          description: Attendance record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AttendanceRecord"
+  /finance/summary:
+    get:
+      operationId: getFinanceSummary
+      tags: [finance]
+      summary: Get finance summary
+      responses:
+        "200":
+          description: Finance overview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FinanceSummary"
+  /invoices:
+    get:
+      operationId: listInvoices
+      tags: [finance]
+      summary: List recent invoices
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [paid, pending, overdue]
+      responses:
+        "200":
+          description: Invoice records
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Invoice"
 components:
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: number
   schemas:
     HealthStatus:
       type: object
@@ -33,4 +275,174 @@ components:
           type: string
       required:
         - status
+    DashboardSummary:
+      type: object
+      required: [totalChildren, presentToday, absentToday, staffCount, monthlyRevenue, pendingPayments, attendanceRate]
+      properties:
+        totalChildren: { type: number }
+        presentToday: { type: number }
+        absentToday: { type: number }
+        staffCount: { type: number }
+        monthlyRevenue: { type: number }
+        pendingPayments: { type: number }
+        attendanceRate: { type: number }
+    Activity:
+      type: object
+      required: [id, type, title, description, createdAt]
+      properties:
+        id: { type: number }
+        type:
+          type: string
+          enum: [attendance, payment, enrollment, message, note]
+        title: { type: string }
+        description: { type: string }
+        createdAt: { type: string }
+        actor: { type: ["string", "null"] }
+    Child:
+      type: object
+      required: [id, firstName, lastName, fullName, gender, birthDate, status, classroomId, classroomName, guardianName, guardianPhone, level, attendanceRate]
+      properties:
+        id: { type: number }
+        firstName: { type: string }
+        lastName: { type: string }
+        fullName: { type: string }
+        gender:
+          type: string
+          enum: [male, female]
+        birthDate: { type: string }
+        status:
+          type: string
+          enum: [active, pending, inactive]
+        classroomId: { type: ["number", "null"] }
+        classroomName: { type: ["string", "null"] }
+        guardianName: { type: string }
+        guardianPhone: { type: string }
+        level: { type: string }
+        attendanceRate: { type: number }
+        avatarUrl: { type: ["string", "null"] }
+        notes: { type: ["string", "null"] }
+    ChildInput:
+      type: object
+      required: [firstName, lastName, gender, birthDate, guardianName, guardianPhone, level]
+      properties:
+        firstName: { type: string, minLength: 1 }
+        lastName: { type: string, minLength: 1 }
+        gender:
+          type: string
+          enum: [male, female]
+        birthDate: { type: string }
+        classroomId: { type: ["number", "null"] }
+        guardianName: { type: string, minLength: 1 }
+        guardianPhone: { type: string, minLength: 5 }
+        level: { type: string, minLength: 1 }
+        notes: { type: ["string", "null"] }
+    ChildUpdate:
+      type: object
+      properties:
+        firstName: { type: string, minLength: 1 }
+        lastName: { type: string, minLength: 1 }
+        gender:
+          type: string
+          enum: [male, female]
+        birthDate: { type: string }
+        classroomId: { type: ["number", "null"] }
+        guardianName: { type: string, minLength: 1 }
+        guardianPhone: { type: string, minLength: 5 }
+        level: { type: string, minLength: 1 }
+        status:
+          type: string
+          enum: [active, pending, inactive]
+        notes: { type: ["string", "null"] }
+    Guardian:
+      type: object
+      required: [id, name, phone, email, childrenCount, balance]
+      properties:
+        id: { type: number }
+        name: { type: string }
+        phone: { type: string }
+        email: { type: ["string", "null"] }
+        childrenCount: { type: number }
+        balance: { type: number }
+    Classroom:
+      type: object
+      required: [id, name, level, teacherName, capacity, childrenCount, color]
+      properties:
+        id: { type: number }
+        name: { type: string }
+        level: { type: string }
+        teacherName: { type: string }
+        capacity: { type: number }
+        childrenCount: { type: number }
+        color: { type: string }
+    StaffMember:
+      type: object
+      required: [id, name, role, phone, status, attendanceRate]
+      properties:
+        id: { type: number }
+        name: { type: string }
+        role: { type: string }
+        phone: { type: string }
+        status:
+          type: string
+          enum: [present, absent, leave]
+        attendanceRate: { type: number }
+        avatarUrl: { type: ["string", "null"] }
+    AttendanceRecord:
+      type: object
+      required: [id, childId, childName, date, status, checkIn, checkOut]
+      properties:
+        id: { type: number }
+        childId: { type: number }
+        childName: { type: string }
+        date: { type: string }
+        status:
+          type: string
+          enum: [present, absent, late, excused]
+        checkIn: { type: ["string", "null"] }
+        checkOut: { type: ["string", "null"] }
+        note: { type: ["string", "null"] }
+    AttendanceInput:
+      type: object
+      required: [childId, date, status]
+      properties:
+        childId: { type: number }
+        date: { type: string }
+        status:
+          type: string
+          enum: [present, absent, late, excused]
+        checkIn: { type: ["string", "null"] }
+        checkOut: { type: ["string", "null"] }
+        note: { type: ["string", "null"] }
+    FinanceSummary:
+      type: object
+      required: [collectedThisMonth, outstanding, overdueCount, paidCount, monthlyTrend]
+      properties:
+        collectedThisMonth: { type: number }
+        outstanding: { type: number }
+        overdueCount: { type: number }
+        paidCount: { type: number }
+        monthlyTrend:
+          type: array
+          items:
+            $ref: "#/components/schemas/FinanceMonth"
+    FinanceMonth:
+      type: object
+      required: [month, collected, expected]
+      properties:
+        month: { type: string }
+        collected: { type: number }
+        expected: { type: number }
+    Invoice:
+      type: object
+      required: [id, invoiceNumber, guardianName, childName, amount, dueDate, status]
+      properties:
+        id: { type: number }
+        invoiceNumber: { type: string }
+        guardianName: { type: string }
+        childName: { type: string }
+        amount: { type: number }
+        dueDate: { type: string }
+        status:
+          type: string
+          enum: [paid, pending, overdue]
 
