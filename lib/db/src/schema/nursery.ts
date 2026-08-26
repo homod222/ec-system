@@ -1,4 +1,5 @@
 import {
+  boolean,
   date,
   integer,
   numeric,
@@ -16,6 +17,7 @@ export const guardiansTable = pgTable("guardians", {
   name: text("name").notNull(),
   phone: text("phone").notNull(),
   email: text("email"),
+  clerkUserId: text("clerk_user_id").unique(),
   balance: numeric("balance", { precision: 10, scale: 2, mode: "number" }).notNull().default(0),
 });
 
@@ -107,6 +109,15 @@ export const activitiesTable = pgTable("activities", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const progressReportsTable = pgTable("progress_reports", {
+  id: serial("id").primaryKey(),
+  childId: integer("child_id").notNull(),
+  title: text("title").notNull(),
+  summary: text("summary").notNull(),
+  period: text("period").notNull(),
+  educatorName: text("educator_name").notNull(),
+  publishedAt: timestamp("published_at", { withTimezone: true }).notNull().defaultNow(),
+});
 export const applicationsTable = pgTable("applications", {
   id: serial("id").primaryKey(),
   ownerId: text("owner_id").notNull().default("__legacy__"),
@@ -146,6 +157,7 @@ export const uploadGrantsTable = pgTable("upload_grants", {
   originalName: text("original_name").notNull(),
   contentType: text("content_type").notNull(),
   size: integer("size").notNull(),
+  status: text("status").notNull().default("issued"),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   consumedAt: timestamp("consumed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -158,6 +170,8 @@ export const insertStaffSchema = createInsertSchema(staffTable).omit({ id: true 
 export const insertAttendanceSchema = createInsertSchema(attendanceTable).omit({ id: true });
 export const insertInvoiceSchema = createInsertSchema(invoicesTable).omit({ id: true });
 export const insertActivitySchema = createInsertSchema(activitiesTable).omit({ id: true, ownerId: true, createdAt: true });
+
+export const insertProgressReportSchema = createInsertSchema(progressReportsTable).omit({ id: true, publishedAt: true });
 
 export const insertPaymentNotificationSchema = createInsertSchema(paymentNotificationsTable).omit({ id: true, createdAt: true });
 export const insertApplicationSchema = createInsertSchema(applicationsTable).omit({ id: true, ownerId: true, createdAt: true, updatedAt: true });
@@ -172,6 +186,8 @@ export type Attendance = typeof attendanceTable.$inferSelect;
 export type Invoice = typeof invoicesTable.$inferSelect;
 export type Activity = typeof activitiesTable.$inferSelect;
 
+export type ProgressReport = typeof progressReportsTable.$inferSelect;
+
 export type PaymentNotification = typeof paymentNotificationsTable.$inferSelect;
 export type Application = typeof applicationsTable.$inferSelect;
 export type ApplicationDocument = typeof applicationDocumentsTable.$inferSelect;
@@ -179,3 +195,43 @@ export type UploadGrant = typeof uploadGrantsTable.$inferSelect;
 export type InsertChild = z.infer<typeof insertChildSchema>;
 export type InsertAttendance = z.infer<typeof insertAttendanceSchema>;
 export type InsertApplication = z.infer<typeof insertApplicationSchema>;
+
+export const childActivitiesTable = pgTable("child_activities", {
+  id: serial("id").primaryKey(),
+  childId: integer("child_id").notNull(),
+  category: text("category").notNull(),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  photoUrl: text("photo_url"),
+  educatorName: text("educator_name").notNull(),
+  occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const insertChildActivitySchema = createInsertSchema(childActivitiesTable).omit({ id: true, occurredAt: true });
+
+export const parentMessagesTable = pgTable("parent_messages", {
+  id: serial("id").primaryKey(),
+  guardianId: integer("guardian_id").notNull(),
+  senderType: text("sender_type").notNull(),
+  senderName: text("sender_name").notNull(),
+  subject: text("subject").notNull(),
+  content: text("content").notNull(),
+  read: boolean("read").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const announcementsTable = pgTable("announcements", {
+  id: serial("id").primaryKey(),
+  ownerId: text("owner_id").notNull().default("__legacy__"),
+  title: text("title").notNull(),
+  content: text("content").notNull(),
+  audience: text("audience").notNull().default("all"),
+  publishedAt: timestamp("published_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type ChildActivity = typeof childActivitiesTable.$inferSelect;
+export type Announcement = typeof announcementsTable.$inferSelect;
+export type ParentMessage = typeof parentMessagesTable.$inferSelect;
+
+export const insertParentMessageSchema = createInsertSchema(parentMessagesTable).omit({ id: true, createdAt: true });
+export const insertAnnouncementSchema = createInsertSchema(announcementsTable).omit({ id: true, ownerId: true, publishedAt: true });

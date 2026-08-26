@@ -14,11 +14,12 @@ import {
 } from 'lucide-react';
 import {
   getGetChildQueryKey, getGetTodayAttendanceQueryKey, getListChildrenQueryKey,
+  getGetSessionContextQueryKey,
   getGetDashboardActivityQueryKey, getGetDashboardSummaryQueryKey, getListClassroomsQueryKey,
   getGetApplicationQueryKey, getListApplicationsQueryKey, getGetFinanceSummaryQueryKey, getListInvoicesQueryKey,
   useAcceptApplication, useAttachApplicationDocument, useCreateApplication, useGetApplication, useRequestUploadUrl,
   useCreateChild, useCreateClassroom, useCreateInvoiceCheckoutSession, useDeleteChild, useGetChild,
-  useGetDashboardActivity, useGetDashboardSummary, useGetFinanceSummary, useGetTodayAttendance, useListChildren,
+  useGetDashboardActivity, useGetDashboardSummary, useGetFinanceSummary, useGetSessionContext, useGetTodayAttendance, useListChildren,
   useListClassrooms, useListGuardians, useListApplications, useListInvoices, useListStaff, useRecordAttendance,
   useSendInvoiceReminder, useStartChildRenewal, useUpdateApplication, useUpdateApplicationStatus, useUpdateChild,
 } from '@workspace/api-client-react';
@@ -32,6 +33,12 @@ import { Landing } from './pages/Landing';
 import type { Application, ApplicationInput, AttendanceRecord, Child, Classroom, Invoice, StaffMember } from '@workspace/api-client-react';
 import { Link, Redirect, Route, Router as WouterRouter, Switch, useLocation, useRoute, useSearch } from 'wouter';
 import { useToast } from '@/hooks/use-toast';
+import { ParentOverview } from './pages/parent/ParentOverview';
+import { ParentAttendance } from './pages/parent/ParentAttendance';
+import { ParentReports } from './pages/parent/ParentReports';
+import { ParentActivities } from './pages/parent/ParentActivities';
+import { ParentInvoices } from './pages/parent/ParentInvoices';
+import { ParentMessages } from './pages/parent/ParentMessages';
 
 const queryClient = new QueryClient();
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
@@ -930,12 +937,63 @@ function InvoiceRow({ invoice }: { invoice: Invoice }) {
   ); 
 }
 
-function Protected({ children }: { children: React.ReactNode }) { 
+function Protected({ children, allowedRole }: { children: React.ReactNode, allowedRole?: 'parent' | 'admin' }) {
   const { isLoaded, isSignedIn } = useAuth(); 
-  if (!isLoaded) return <div className="grid min-h-[100dvh] place-items-center bg-background"><Skeleton className="h-32 w-32 rounded-3xl" /></div>; 
-  return isSignedIn ? <>{children}</> : <Redirect to="/" />; 
+  const [location] = useLocation();
+  const session = useGetSessionContext({
+    query: {
+      enabled: Boolean(isSignedIn),
+      queryKey: getGetSessionContextQueryKey(),
+      retry: false,
+    },
+  });
+
+  if (!isLoaded || (isSignedIn && session.isLoading)) return <div className="grid min-h-[100dvh] place-items-center bg-background"><Skeleton className="h-32 w-32 rounded-3xl" /></div>;
+
+  if (!isSignedIn) return <Redirect to="/" />;
+
+  if (session.data) {
+    const role = session.data.role;
+    const isParentRole = role === 'parent';
+    const isAdminRoute = location.startsWith('/dashboard') || location.startsWith('/children') || location.startsWith('/guardians') || location.startsWith('/classrooms') || location.startsWith('/staff') || location.startsWith('/finance');
+    const isParentRoute = location.startsWith('/parent');
+
+    if (role === 'pending') {
+      if (location === '/access-pending') return <>{children}</>;
+      return <Redirect to="/access-pending" />;
+    }
+    if (allowedRole === 'admin' && isParentRole) {
+      return <Redirect to="/parent" />;
+    }
+    if (allowedRole === 'parent' && !isParentRole) {
+      return <Redirect to="/dashboard" />;
+    }
+
+    // Fallback protection if no allowedRole is specified but we are inside one of the main route branches
+    if (isParentRole && isAdminRoute) {
+       return <Redirect to="/parent" />;
+    }
+    if (!isParentRole && isParentRoute) {
+       return <Redirect to="/dashboard" />;
+    }
+  }
+
+  return <>{children}</>;
 }
 
+function AccessPending() {
+  const { signOut } = useClerk();
+  return (
+    <div dir="rtl" className="grid min-h-[100dvh] place-items-center bg-background px-5">
+      <div className="w-full max-w-lg rounded-[2rem] border border-border bg-card p-10 text-center shadow-xl">
+        <ShieldCheck className="mx-auto mb-5 text-primary" size={42} />
+        <h1 data-testid="text-access-pending-title" className="text-2xl font-bold text-foreground">الحساب بانتظار تفعيل الصلاحية</h1>
+        <p className="mt-3 text-sm leading-7 text-muted-foreground">تم تسجيل الدخول بنجاح، لكن لم تُحدد صلاحية هذا الحساب بعد. تواصلي مع إدارة الحضانة لتفعيله كحساب ولي أمر أو إدارة.</p>
+        <Button data-testid="button-access-pending-sign-out" className="mt-7" onClick={() => signOut({ redirectUrl: basePath || '/' })}>تسجيل الخروج</Button>
+      </div>
+    </div>
+  );
+}
 function AuthPage({ type }: { type: 'in' | 'up' }) { 
   return (
     <div dir="rtl" className="grid min-h-[100dvh] place-items-center bg-ec-pattern px-4 py-12 relative overflow-hidden">
@@ -967,17 +1025,28 @@ function Router() {
         <Route path="/" component={Landing} />
         <Route path="/sign-in/*?" component={() => <AuthPage type="in" />} />
         <Route path="/sign-up/*?" component={() => <AuthPage type="up" />} />
-        <Route path="/dashboard"><Protected><Dashboard /></Protected></Route>
-        <Route path="/applications"><Protected><Applications /></Protected></Route>
-        <Route path="/applications/new"><Protected><NewApplication /></Protected></Route>
-        <Route path="/applications/:id"><Protected><ApplicationDetail /></Protected></Route>
-        <Route path="/children"><Protected><Children /></Protected></Route>
-        <Route path="/children/:id"><Protected><ChildProfile /></Protected></Route>
-        <Route path="/guardians"><Protected><Guardians /></Protected></Route>
-        <Route path="/classrooms"><Protected><Classrooms /></Protected></Route>
-        <Route path="/staff"><Protected><Staff /></Protected></Route>
-        <Route path="/attendance"><Protected><Attendance /></Protected></Route>
-        <Route path="/finance"><Protected><Finance /></Protected></Route>
+        <Route path="/access-pending"><Protected><AccessPending /></Protected></Route>
+
+        {/* Parent Portal Routes */}
+        <Route path="/parent"><Protected allowedRole="parent"><ParentOverview /></Protected></Route>
+        <Route path="/parent/attendance"><Protected allowedRole="parent"><ParentAttendance /></Protected></Route>
+        <Route path="/parent/reports"><Protected allowedRole="parent"><ParentReports /></Protected></Route>
+        <Route path="/parent/activities"><Protected allowedRole="parent"><ParentActivities /></Protected></Route>
+        <Route path="/parent/invoices"><Protected allowedRole="parent"><ParentInvoices /></Protected></Route>
+        <Route path="/parent/messages"><Protected allowedRole="parent"><ParentMessages /></Protected></Route>
+
+        {/* Admin Routes */}
+        <Route path="/dashboard"><Protected allowedRole="admin"><Dashboard /></Protected></Route>
+        <Route path="/applications"><Protected allowedRole="admin"><Applications /></Protected></Route>
+        <Route path="/applications/new"><Protected allowedRole="admin"><NewApplication /></Protected></Route>
+        <Route path="/applications/:id"><Protected allowedRole="admin"><ApplicationDetail /></Protected></Route>
+        <Route path="/children"><Protected allowedRole="admin"><Children /></Protected></Route>
+        <Route path="/children/:id"><Protected allowedRole="admin"><ChildProfile /></Protected></Route>
+        <Route path="/guardians"><Protected allowedRole="admin"><Guardians /></Protected></Route>
+        <Route path="/classrooms"><Protected allowedRole="admin"><Classrooms /></Protected></Route>
+        <Route path="/staff"><Protected allowedRole="admin"><Staff /></Protected></Route>
+        <Route path="/attendance"><Protected allowedRole="admin"><Attendance /></Protected></Route>
+        <Route path="/finance"><Protected allowedRole="admin"><Finance /></Protected></Route>
         <Route><Redirect to="/" /></Route>
       </Switch>
     </RoutedErrorBoundary>

@@ -1,6 +1,6 @@
 import { Router, type IRouter, type RequestHandler } from "express";
-import { and, desc, eq } from "drizzle-orm";
-import { getAuth } from "@clerk/express";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { clerkClient, getAuth } from "@clerk/express";
 import {
   CreateChildBody,
   CreateChildResponse,
@@ -15,30 +15,48 @@ import {
   GetDashboardActivityResponse,
   GetDashboardSummaryResponse,
   GetFinanceSummaryResponse,
+  GetSessionContextResponse,
   GetTodayAttendanceResponse,
+  GetParentOverviewResponse,
   ListChildrenQueryParams,
   ListChildrenResponse,
   ListClassroomsResponse,
   ListGuardiansResponse,
   ListInvoicesQueryParams,
   ListInvoicesResponse,
+  ListParentActivitiesQueryParams,
+  ListParentActivitiesResponse,
+  ListParentAnnouncementsResponse,
+  ListParentAttendanceQueryParams,
+  ListParentAttendanceResponse,
+  ListParentChildrenResponse,
+  ListParentInvoicesResponse,
+  ListParentMessagesResponse,
+  ListParentProgressReportsQueryParams,
+  ListParentProgressReportsResponse,
   ListStaffResponse,
   RecordAttendanceBody,
   RecordAttendanceResponse,
   SendInvoiceReminderParams,
   SendInvoiceReminderResponse,
+  SendParentMessageBody,
+  SendParentMessageResponse,
   UpdateChildBody,
   UpdateChildParams,
   UpdateChildResponse,
 } from "@workspace/api-zod";
 import {
   activitiesTable,
+  announcementsTable,
   attendanceTable,
   childrenTable,
   classroomsTable,
+  childActivitiesTable,
   db,
   guardiansTable,
   invoicesTable,
+  parentMessagesTable,
+  progressReportsTable,
   staffTable,
 } from "@workspace/db";
 import { checkClassroomCapacity } from "../lib/classroomCapacity";
@@ -55,6 +73,112 @@ const requireAuth: RequestHandler = (req, res, next) => {
     return;
   }
   next();
+};
+
+type Claims = Record<string, unknown>;
+
+function sessionClaims(req: Parameters<typeof getAuth>[0]): Claims {
+  return (getAuth(req).sessionClaims ?? {}) as Claims;
+}
+
+function publicMetadata(claims: Claims): Claims {
+  const value = claims.publicMetadata ?? claims.public_metadata;
+  return value && typeof value === "object" ? value as Claims : {};
+}
+
+function sessionRole(req: Parameters<typeof getAuth>[0]): string | null {
+  const claims = sessionClaims(req);
+  const metadata = publicMetadata(claims);
+  const value = metadata.role ?? claims.role;
+  if (typeof value === "string") return value.trim().toLowerCase();
+  const roles = metadata.roles ?? claims.roles;
+  if (Array.isArray(roles)) {
+    const firstRole = roles.find((role): role is string => typeof role === "string");
+    if (firstRole) return firstRole.trim().toLowerCase();
+  }
+  return null;
+}
+
+function verifiedEmails(claims: Claims): string[] {
+  const emails = new Set<string>();
+  const add = (value: unknown) => {
+    if (typeof value === "string" && value.includes("@")) emails.add(value.trim().toLowerCase());
+  };
+  if (claims.email_verified === true || claims.email_verified === "true" || claims.verified === true) {
+    add(claims.email ?? claims.email_address);
+  }
+  const candidates = [claims.primary_email_address, ...(Array.isArray(claims.email_addresses) ? claims.email_addresses : [])];
+  for (const candidate of candidates) {
+    if (!candidate || typeof candidate !== "object") continue;
+    const entry = candidate as Claims;
+    const verification = entry.verification && typeof entry.verification === "object"
+      ? entry.verification as Claims
+      : {};
+    if (entry.verified === true || verification.status === "verified") {
+      add(entry.email_address ?? entry.email);
+    }
+  }
+  return [...emails];
+}
+
+async function clerkIdentity(req: Parameters<typeof getAuth>[0]) {
+  const auth = getAuth(req);
+  if (!auth.userId) return { role: null, verifiedEmails: [] as string[] };
+  const claimRole = sessionRole(req);
+  const claimEmails = verifiedEmails(sessionClaims(req));
+  if (claimRole && claimEmails.length) {
+    return { role: claimRole, verifiedEmails: claimEmails };
+  }
+  const user = await clerkClient.users.getUser(auth.userId);
+  const metadataRole = user.publicMetadata.role;
+  const role = claimRole ?? (typeof metadataRole === "string" ? metadataRole.trim().toLowerCase() : null);
+  const emails = claimEmails.length
+    ? claimEmails
+    : user.emailAddresses
+      .filter((entry) => entry.verification?.status === "verified")
+      .map((entry) => entry.emailAddress.trim().toLowerCase());
+  return { role, verifiedEmails: emails };
+}
+
+async function resolveGuardian(req: Parameters<typeof getAuth>[0], emails: string[]) {
+  const auth = getAuth(req);
+  if (!auth.userId) return null;
+  const [linked] = await db.select().from(guardiansTable)
+    .where(eq(guardiansTable.clerkUserId, auth.userId)).limit(1);
+  if (linked) return linked;
+
+  if (!emails.length) return null;
+  const matches = await db.select().from(guardiansTable)
+    .where(inArray(sql<string>`lower(${guardiansTable.email})`, emails)).limit(2);
+  if (matches.length !== 1 || (matches[0].clerkUserId && matches[0].clerkUserId !== auth.userId)) return null;
+  const [claimed] = await db.update(guardiansTable)
+    .set({ clerkUserId: auth.userId })
+    .where(and(eq(guardiansTable.id, matches[0].id), sql`${guardiansTable.clerkUserId} is null`))
+    .returning();
+  if (claimed) return claimed;
+  const [raced] = await db.select().from(guardiansTable)
+    .where(eq(guardiansTable.clerkUserId, auth.userId)).limit(1);
+  return raced ?? null;
+}
+
+const requireParentGuardian: RequestHandler = async (req, res, next) => {
+  try {
+    const identity = await clerkIdentity(req);
+    if (identity.role && identity.role !== "parent" && identity.role !== "guardian") {
+      res.status(403).json({ error: "Parent access required" });
+      return;
+    }
+    const guardian = await resolveGuardian(req, identity.verifiedEmails);
+    if (!guardian) {
+      res.status(403).json({ error: "No guardian record is linked to this verified account" });
+      return;
+    }
+    res.locals.guardian = guardian;
+    next();
+  } catch (error) {
+    req.log.error({ err: error }, "Failed to resolve guardian identity");
+    next(error);
+  }
 };
 
 async function childRows(ownerId: string) {
@@ -103,6 +227,47 @@ async function childRows(ownerId: string) {
 }
 
 router.use(requireAuth);
+router.get("/session/context", async (req, res, next): Promise<void> => {
+  try {
+    const identity = await clerkIdentity(req);
+    const administrativeRoles = new Set(["admin", "nursery_admin", "staff", "manager", "owner", "superadmin"]);
+    if (identity.role && administrativeRoles.has(identity.role)) {
+      res.json(GetSessionContextResponse.parse({ role: "admin" }));
+      return;
+    }
+    if (!identity.role || identity.role === "parent" || identity.role === "guardian") {
+      const guardian = await resolveGuardian(req, identity.verifiedEmails);
+      if (guardian) {
+        res.json(GetSessionContextResponse.parse({ role: "parent" }));
+        return;
+      }
+    }
+    res.json(GetSessionContextResponse.parse({ role: "pending" }));
+  } catch (error) {
+    req.log.error({ err: error }, "Failed to resolve application session context");
+    next(error);
+  }
+});
+router.use("/parent", requireParentGuardian);
+
+router.use(async (req, res, next) => {
+  if (req.path.startsWith("/parent/")) {
+    next();
+    return;
+  }
+  try {
+    const { role } = await clerkIdentity(req);
+    const administrativeRoles = new Set(["admin", "nursery_admin", "staff", "manager", "owner", "superadmin"]);
+    if (!role || !administrativeRoles.has(role)) {
+      res.status(403).json({ error: "Administrative access required" });
+      return;
+    }
+    next();
+  } catch (error) {
+    req.log.error({ err: error }, "Failed to resolve administrative role");
+    next(error);
+  }
+});
 
 router.get("/dashboard/summary", async (req, res): Promise<void> => {
   const ownerId = getAuth(req).userId!;
@@ -591,6 +756,219 @@ router.post("/invoices/:id/reminder", async (req, res): Promise<void> => {
       ? "تم إرسال التذكير عبر واتساب"
       : (result.errorMessage ?? "تعذر إرسال التذكير"),
   }));
+});
+
+async function parentChildRows(guardianId: number) {
+  const [children, classrooms, attendance] = await Promise.all([
+    db.select().from(childrenTable).where(eq(childrenTable.guardianId, guardianId)),
+    db.select().from(classroomsTable),
+    db.select().from(attendanceTable),
+  ]);
+  const classroomMap = new Map(classrooms.map((classroom) => [classroom.id, classroom.name]));
+  return children.map((child) => {
+    const records = attendance.filter((record) => record.childId === child.id);
+    const attended = records.filter((record) => record.status === "present" || record.status === "late").length;
+    return {
+      id: child.id,
+      firstName: child.firstName,
+      lastName: child.lastName,
+      fullName: `${child.firstName} ${child.lastName}`,
+      birthDate: child.birthDate,
+      level: child.level,
+      classroomName: child.classroomId ? classroomMap.get(child.classroomId) ?? null : null,
+      attendanceRate: records.length ? Math.round((attended / records.length) * 100) : 0,
+      avatarUrl: child.avatarUrl,
+    };
+  });
+}
+
+router.get("/parent/overview", async (_req, res): Promise<void> => {
+  const guardian = res.locals.guardian as typeof guardiansTable.$inferSelect;
+  const [children, invoices, messages, announcements] = await Promise.all([
+    parentChildRows(guardian.id),
+    db.select().from(invoicesTable).where(eq(invoicesTable.guardianId, guardian.id)),
+    db.select().from(parentMessagesTable).where(eq(parentMessagesTable.guardianId, guardian.id)),
+    db.select().from(announcementsTable).where(and(
+      eq(announcementsTable.ownerId, guardian.ownerId),
+      inArray(announcementsTable.audience, ["all", "parents"]),
+    )),
+  ]);
+  res.json(GetParentOverviewResponse.parse({
+    guardianId: guardian.id,
+    guardianName: guardian.name,
+    children,
+    outstandingBalance: invoices
+      .filter((invoice) => invoice.status !== "paid")
+      .reduce((sum, invoice) => sum + invoice.amount, 0),
+    unreadMessages: messages.filter((message) => message.senderType === "staff" && !message.read).length,
+    announcementsCount: announcements.length,
+  }));
+});
+
+router.get("/parent/children", async (_req, res): Promise<void> => {
+  const guardian = res.locals.guardian as typeof guardiansTable.$inferSelect;
+  res.json(ListParentChildrenResponse.parse(await parentChildRows(guardian.id)));
+});
+
+router.get("/parent/attendance", async (req, res): Promise<void> => {
+  const parsed = ListParentAttendanceQueryParams.safeParse(req.query);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+  const guardian = res.locals.guardian as typeof guardiansTable.$inferSelect;
+  const children = await db.select().from(childrenTable).where(eq(childrenTable.guardianId, guardian.id));
+  const scopedChildren = parsed.data.childId
+    ? children.filter((child) => child.id === parsed.data.childId)
+    : children;
+  if (parsed.data.childId && !scopedChildren.length) {
+    res.status(404).json({ error: "Child not found" });
+    return;
+  }
+  if (!scopedChildren.length) {
+    res.json(ListParentAttendanceResponse.parse([]));
+    return;
+  }
+  const childMap = new Map(scopedChildren.map((child) => [child.id, `${child.firstName} ${child.lastName}`]));
+  const records = await db.select().from(attendanceTable)
+    .where(inArray(attendanceTable.childId, [...childMap.keys()]))
+    .orderBy(desc(attendanceTable.date));
+  res.json(ListParentAttendanceResponse.parse(records.map((record) => ({
+    ...record,
+    childName: childMap.get(record.childId)!,
+  }))));
+});
+
+router.get("/parent/progress-reports", async (req, res): Promise<void> => {
+  const parsed = ListParentProgressReportsQueryParams.safeParse(req.query);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+  const guardian = res.locals.guardian as typeof guardiansTable.$inferSelect;
+  const children = await db.select().from(childrenTable).where(eq(childrenTable.guardianId, guardian.id));
+  const scopedChildren = parsed.data.childId ? children.filter((child) => child.id === parsed.data.childId) : children;
+  if (parsed.data.childId && !scopedChildren.length) {
+    res.status(404).json({ error: "Child not found" });
+    return;
+  }
+  if (!scopedChildren.length) {
+    res.json(ListParentProgressReportsResponse.parse([]));
+    return;
+  }
+  const childMap = new Map(scopedChildren.map((child) => [child.id, `${child.firstName} ${child.lastName}`]));
+  const reports = await db.select().from(progressReportsTable)
+    .where(inArray(progressReportsTable.childId, [...childMap.keys()]))
+    .orderBy(desc(progressReportsTable.publishedAt));
+  res.json(ListParentProgressReportsResponse.parse(reports.map((report) => ({
+    ...report,
+    childName: childMap.get(report.childId)!,
+    publishedAt: report.publishedAt.toISOString(),
+  }))));
+});
+
+router.get("/parent/activities", async (req, res): Promise<void> => {
+  const parsed = ListParentActivitiesQueryParams.safeParse(req.query);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+  const guardian = res.locals.guardian as typeof guardiansTable.$inferSelect;
+  const children = await db.select().from(childrenTable).where(eq(childrenTable.guardianId, guardian.id));
+  const scopedChildren = parsed.data.childId ? children.filter((child) => child.id === parsed.data.childId) : children;
+  if (parsed.data.childId && !scopedChildren.length) {
+    res.status(404).json({ error: "Child not found" });
+    return;
+  }
+  if (!scopedChildren.length) {
+    res.json(ListParentActivitiesResponse.parse([]));
+    return;
+  }
+  const childMap = new Map(scopedChildren.map((child) => [child.id, `${child.firstName} ${child.lastName}`]));
+  const activities = await db.select().from(childActivitiesTable)
+    .where(inArray(childActivitiesTable.childId, [...childMap.keys()]))
+    .orderBy(desc(childActivitiesTable.occurredAt));
+  res.json(ListParentActivitiesResponse.parse(activities.map((activity) => ({
+    ...activity,
+    childName: childMap.get(activity.childId)!,
+    occurredAt: activity.occurredAt.toISOString(),
+  }))));
+});
+
+router.get("/parent/invoices", async (_req, res): Promise<void> => {
+  const guardian = res.locals.guardian as typeof guardiansTable.$inferSelect;
+  const [invoices, children] = await Promise.all([
+    db.select().from(invoicesTable).where(eq(invoicesTable.guardianId, guardian.id)).orderBy(desc(invoicesTable.dueDate)),
+    db.select().from(childrenTable).where(eq(childrenTable.guardianId, guardian.id)),
+  ]);
+  const childMap = new Map(children.map((child) => [child.id, `${child.firstName} ${child.lastName}`]));
+  res.json(ListParentInvoicesResponse.parse(invoices.map((invoice) => ({
+    id: invoice.id,
+    invoiceNumber: invoice.invoiceNumber,
+    guardianName: guardian.name,
+    childName: childMap.get(invoice.childId) ?? "طفل",
+    amount: invoice.amount,
+    dueDate: invoice.dueDate,
+    status: invoice.status,
+  }))));
+});
+
+router.get("/parent/messages", async (_req, res): Promise<void> => {
+  const guardian = res.locals.guardian as typeof guardiansTable.$inferSelect;
+  const messages = await db.select().from(parentMessagesTable)
+    .where(eq(parentMessagesTable.guardianId, guardian.id))
+    .orderBy(desc(parentMessagesTable.createdAt));
+  res.json(ListParentMessagesResponse.parse(messages.map(({ guardianId: _guardianId, ...message }) => ({
+    ...message,
+    createdAt: message.createdAt.toISOString(),
+  }))));
+});
+
+router.post("/parent/messages", async (req, res): Promise<void> => {
+  const parsed = SendParentMessageBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+  if (!parsed.data.subject.trim() || !parsed.data.content.trim()) {
+    res.status(400).json({ error: "Subject and content cannot be blank" });
+    return;
+  }
+  const guardian = res.locals.guardian as typeof guardiansTable.$inferSelect;
+  const [message] = await db.insert(parentMessagesTable).values({
+    guardianId: guardian.id,
+    senderType: "parent",
+    senderName: guardian.name,
+    subject: parsed.data.subject.trim(),
+    content: parsed.data.content.trim(),
+    read: true,
+  }).returning();
+  req.log.info({ guardianId: guardian.id, messageId: message.id }, "Parent message persisted");
+  res.status(201).json(SendParentMessageResponse.parse({
+    id: message.id,
+    senderType: message.senderType,
+    senderName: message.senderName,
+    subject: message.subject,
+    content: message.content,
+    read: message.read,
+    createdAt: message.createdAt.toISOString(),
+  }));
+});
+
+router.get("/parent/announcements", async (_req, res): Promise<void> => {
+  const guardian = res.locals.guardian as typeof guardiansTable.$inferSelect;
+  const announcements = await db.select().from(announcementsTable)
+    .where(and(
+      eq(announcementsTable.ownerId, guardian.ownerId),
+      inArray(announcementsTable.audience, ["all", "parents"]),
+    ))
+    .orderBy(desc(announcementsTable.publishedAt));
+  res.json(ListParentAnnouncementsResponse.parse(announcements.map((announcement) => ({
+    id: announcement.id,
+    title: announcement.title,
+    content: announcement.content,
+    publishedAt: announcement.publishedAt.toISOString(),
+  }))));
 });
 
 export default router;

@@ -28,6 +28,8 @@ tags:
     description: Nursery registration and renewal applications
   - name: storage
     description: Private application document storage
+  - name: parent
+    description: Guardian-scoped parent portal
 paths:
   /healthz:
     get:
@@ -561,12 +563,183 @@ paths:
                 $ref: "#/components/schemas/InvoiceReminderResult"
         "404":
           description: Invoice not found
+  /parent/overview:
+    get:
+      operationId: getParentOverview
+      tags: [parent]
+      summary: Get the authenticated guardian's overview
+      responses:
+        "200":
+          description: Parent overview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ParentOverview"
+        "401": { description: Authentication required }
+        "403": { description: Parent access required }
+  /session/context:
+    get:
+      operationId: getSessionContext
+      tags: [parent]
+      summary: Resolve the authenticated user's application role
+      responses:
+        "200":
+          description: Application session context
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionContext"
+        "401": { description: Authentication required }
+  /parent/children:
+    get:
+      operationId: listParentChildren
+      tags: [parent]
+      summary: List children belonging to the authenticated guardian
+      responses:
+        "200":
+          description: Guardian children
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ParentChild"
+        "401": { description: Authentication required }
+        "403": { description: Parent access required }
+  /parent/attendance:
+    get:
+      operationId: listParentAttendance
+      tags: [parent]
+      summary: Get attendance history for guardian children
+      parameters:
+        - $ref: "#/components/parameters/OptionalChildId"
+      responses:
+        "200":
+          description: Attendance history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AttendanceRecord"
+        "401": { description: Authentication required }
+        "403": { description: Parent access required }
+  /parent/progress-reports:
+    get:
+      operationId: listParentProgressReports
+      tags: [parent]
+      summary: Get progress reports for guardian children
+      parameters:
+        - $ref: "#/components/parameters/OptionalChildId"
+      responses:
+        "200":
+          description: Progress reports
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProgressReport"
+        "401": { description: Authentication required }
+        "403": { description: Parent access required }
+  /parent/activities:
+    get:
+      operationId: listParentActivities
+      tags: [parent]
+      summary: Get activities and photos for guardian children
+      parameters:
+        - $ref: "#/components/parameters/OptionalChildId"
+      responses:
+        "200":
+          description: Child activities
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ParentChildActivity"
+        "401": { description: Authentication required }
+        "403": { description: Parent access required }
+  /parent/invoices:
+    get:
+      operationId: listParentInvoices
+      tags: [parent]
+      summary: Get invoices belonging to the authenticated guardian
+      responses:
+        "200":
+          description: Guardian invoices
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Invoice"
+        "401": { description: Authentication required }
+        "403": { description: Parent access required }
+  /parent/messages:
+    get:
+      operationId: listParentMessages
+      tags: [parent]
+      summary: Get messages for the authenticated guardian
+      responses:
+        "200":
+          description: Guardian messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ParentMessage"
+        "401": { description: Authentication required }
+        "403": { description: Parent access required }
+    post:
+      operationId: sendParentMessage
+      tags: [parent]
+      summary: Send a message to the nursery
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ParentMessageInput"
+      responses:
+        "201":
+          description: Persisted message
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ParentMessage"
+        "400": { description: Invalid message }
+        "401": { description: Authentication required }
+        "403": { description: Parent access required }
+  /parent/announcements:
+    get:
+      operationId: listParentAnnouncements
+      tags: [parent]
+      summary: Get announcements visible to parents
+      responses:
+        "200":
+          description: Parent announcements
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ParentAnnouncement"
+        "401": { description: Authentication required }
+        "403": { description: Parent access required }
 components:
   parameters:
     Id:
       name: id
       in: path
       required: true
+      schema:
+        type: number
+    OptionalChildId:
+      name: childId
+      in: query
+      required: false
       schema:
         type: number
   schemas:
@@ -889,3 +1062,88 @@ components:
           type: string
           enum: [sent, failed]
         message: { type: string }
+    ParentChild:
+      type: object
+      required: [id, firstName, lastName, fullName, birthDate, level, classroomName, attendanceRate]
+      properties:
+        id: { type: number }
+        firstName: { type: string }
+        lastName: { type: string }
+        fullName: { type: string }
+        birthDate: { type: string }
+        level: { type: string }
+        classroomName: { type: ["string", "null"] }
+        attendanceRate: { type: number }
+        avatarUrl: { type: ["string", "null"] }
+    ParentOverview:
+      type: object
+      required: [guardianId, guardianName, children, outstandingBalance, unreadMessages, announcementsCount]
+      properties:
+        guardianId: { type: number }
+        guardianName: { type: string }
+        children:
+          type: array
+          items:
+            $ref: "#/components/schemas/ParentChild"
+        outstandingBalance: { type: number }
+        unreadMessages: { type: number }
+        announcementsCount: { type: number }
+    SessionContext:
+      type: object
+      required: [role]
+      properties:
+        role:
+          type: string
+          enum: [parent, admin, pending]
+    ProgressReport:
+      type: object
+      required: [id, childId, childName, title, summary, period, educatorName, publishedAt]
+      properties:
+        id: { type: number }
+        childId: { type: number }
+        childName: { type: string }
+        title: { type: string }
+        summary: { type: string }
+        period: { type: string }
+        educatorName: { type: string }
+        publishedAt: { type: string }
+    ParentChildActivity:
+      type: object
+      required: [id, childId, childName, category, title, description, educatorName, occurredAt]
+      properties:
+        id: { type: number }
+        childId: { type: number }
+        childName: { type: string }
+        category: { type: string }
+        title: { type: string }
+        description: { type: string }
+        photoUrl: { type: ["string", "null"] }
+        educatorName: { type: string }
+        occurredAt: { type: string }
+    ParentMessage:
+      type: object
+      required: [id, senderType, senderName, subject, content, read, createdAt]
+      properties:
+        id: { type: number }
+        senderType:
+          type: string
+          enum: [parent, staff]
+        senderName: { type: string }
+        subject: { type: string }
+        content: { type: string }
+        read: { type: boolean }
+        createdAt: { type: string }
+    ParentMessageInput:
+      type: object
+      required: [subject, content]
+      properties:
+        subject: { type: string, minLength: 1, maxLength: 160 }
+        content: { type: string, minLength: 1, maxLength: 5000 }
+    ParentAnnouncement:
+      type: object
+      required: [id, title, content, publishedAt]
+      properties:
+        id: { type: number }
+        title: { type: string }
+        content: { type: string }
+        publishedAt: { type: string }

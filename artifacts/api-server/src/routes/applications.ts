@@ -1,6 +1,6 @@
 import { getAuth } from "@clerk/express";
 import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
-import { Router, type IRouter, type RequestHandler } from "express";
+import { Router, type IRouter } from "express";
 import {
   AcceptApplicationParams,
   AcceptApplicationResponse,
@@ -39,19 +39,12 @@ import {
   ObjectStorageService,
 } from "../lib/objectStorage";
 import { checkClassroomCapacity } from "../lib/classroomCapacity";
+import { requireApplicationAdmin } from "../middlewares/requireApplicationAdmin";
 
 const router: IRouter = Router();
 const storage = new ObjectStorageService();
 const uploadObjectPathPattern = /^\/objects\/uploads\/[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
 const MAX_DOCUMENT_SIZE = 10 * 1024 * 1024;
-
-const requireAuth: RequestHandler = (req, res, next) => {
-  if (!getAuth(req).userId) {
-    res.status(401).json({ error: "Unauthorized" });
-    return;
-  }
-  next();
-};
 
 type ApplicationRow = typeof applicationsTable.$inferSelect;
 
@@ -90,7 +83,7 @@ async function lockApplication(
   return application;
 }
 
-router.use(requireAuth);
+router.use("/applications", requireApplicationAdmin);
 
 router.get("/applications", async (req, res): Promise<void> => {
   const parsed = ListApplicationsQueryParams.safeParse(req.query);
@@ -257,6 +250,7 @@ router.post("/applications/:id/documents", async (req, res): Promise<void> => {
     eq(uploadGrantsTable.originalName, body.data.name),
     eq(uploadGrantsTable.contentType, contentType),
     eq(uploadGrantsTable.size, body.data.size),
+    eq(uploadGrantsTable.status, "completed"),
     isNull(uploadGrantsTable.consumedAt),
     gt(uploadGrantsTable.expiresAt, now),
   ));
@@ -294,7 +288,7 @@ router.post("/applications/:id/documents", async (req, res): Promise<void> => {
     if (application.status === "accepted") return { kind: "accepted" as const };
     await tx.execute(sql`select id from upload_grants where id = ${grant.id} for update`);
     const [consumedGrant] = await tx.update(uploadGrantsTable)
-      .set({ consumedAt: new Date() })
+      .set({ status: "consumed", consumedAt: new Date() })
       .where(and(
         eq(uploadGrantsTable.id, grant.id),
         eq(uploadGrantsTable.objectPath, body.data.objectPath),
@@ -303,6 +297,7 @@ router.post("/applications/:id/documents", async (req, res): Promise<void> => {
         eq(uploadGrantsTable.originalName, body.data.name),
         eq(uploadGrantsTable.contentType, contentType),
         eq(uploadGrantsTable.size, body.data.size),
+        eq(uploadGrantsTable.status, "completed"),
         isNull(uploadGrantsTable.consumedAt),
         gt(uploadGrantsTable.expiresAt, new Date()),
       ))
@@ -562,7 +557,7 @@ router.post("/applications/:id/accept", async (req, res): Promise<void> => {
   res.json(AcceptApplicationResponse.parse(await applicationRecord(result.application)));
 });
 
-router.post("/children/:id/renewals", async (req, res): Promise<void> => {
+router.post("/children/:id/renewals", requireApplicationAdmin, async (req, res): Promise<void> => {
   const params = StartChildRenewalParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });

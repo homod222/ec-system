@@ -45,6 +45,17 @@ import type {
   ListApplicationsParams,
   ListChildrenParams,
   ListInvoicesParams,
+  ListParentActivitiesParams,
+  ListParentAttendanceParams,
+  ListParentProgressReportsParams,
+  ParentAnnouncement,
+  ParentChild,
+  ParentChildActivity,
+  ParentMessage,
+  ParentMessageInput,
+  ParentOverview,
+  ProgressReport,
+  SessionContext,
   StaffMember,
   UploadUrlRequest,
   UploadUrlResponse
@@ -149,12 +160,7 @@ export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, 
   return withQueryKey(query, queryOptions.queryKey);
 }
 
-
-
-
-
-
-
+// End of generated API hooks.
 export const getGetDashboardSummaryUrl = () => {
 
 
@@ -225,12 +231,6 @@ export function useGetDashboardSummary<TData = Awaited<ReturnType<typeof getDash
 
   return withQueryKey(query, queryOptions.queryKey);
 }
-
-
-
-
-
-
 
 export const getGetDashboardActivityUrl = () => {
 
@@ -2180,4 +2180,789 @@ export const useSendInvoiceReminder = <TError = ErrorType<void>,
       > => {
       return useMutation(getSendInvoiceReminderMutationOptions(options));
     }
+
+export const getGetParentOverviewUrl = () => {
+
+
+
+
+  return `/api/parent/overview`
+}
+
+/**
+ * @summary Get the authenticated guardian's overview
+ */
+export const getParentOverview = async ( options?: Parameters<typeof customFetch>[1]): Promise<ParentOverview> => {
+
+  return customFetch<ParentOverview>(getGetParentOverviewUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetParentOverviewQueryKey = () => {
+    return [
+    `/api/parent/overview`
+    ] as const;
+    }
+
+
+export const getGetParentOverviewQueryOptions = <TData = Awaited<ReturnType<typeof getParentOverview>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getParentOverview>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetParentOverviewQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getParentOverview>>> = ({ signal }) => getParentOverview({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getParentOverview>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetParentOverviewQueryResult = NonNullable<Awaited<ReturnType<typeof getParentOverview>>>
+export type GetParentOverviewQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get the authenticated guardian's overview
+ */
+
+export function useGetParentOverview<TData = Awaited<ReturnType<typeof getParentOverview>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getParentOverview>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetParentOverviewQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetSessionContextUrl = () => {
+
+
+
+
+  return `/api/session/context`
+}
+
+/**
+ * @summary Resolve the authenticated user's application role
+ */
+export const getSessionContext = async ( options?: Parameters<typeof customFetch>[1]): Promise<SessionContext> => {
+
+  return customFetch<SessionContext>(getGetSessionContextUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSessionContextQueryKey = () => {
+    return [
+    `/api/session/context`
+    ] as const;
+    }
+
+
+export const getGetSessionContextQueryOptions = <TData = Awaited<ReturnType<typeof getSessionContext>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSessionContext>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSessionContextQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSessionContext>>> = ({ signal }) => getSessionContext({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSessionContext>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetSessionContextQueryResult = NonNullable<Awaited<ReturnType<typeof getSessionContext>>>
+export type GetSessionContextQueryError = ErrorType<void>
+
+
+/**
+ * @summary Resolve the authenticated user's application role
+ */
+
+export function useGetSessionContext<TData = Awaited<ReturnType<typeof getSessionContext>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSessionContext>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetSessionContextQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListParentChildrenUrl = () => {
+
+
+
+
+  return `/api/parent/children`
+}
+
+/**
+ * @summary List children belonging to the authenticated guardian
+ */
+export const listParentChildren = async ( options?: Parameters<typeof customFetch>[1]): Promise<ParentChild[]> => {
+
+  return customFetch<ParentChild[]>(getListParentChildrenUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListParentChildrenQueryKey = () => {
+    return [
+    `/api/parent/children`
+    ] as const;
+    }
+
+
+export const getListParentChildrenQueryOptions = <TData = Awaited<ReturnType<typeof listParentChildren>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listParentChildren>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListParentChildrenQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listParentChildren>>> = ({ signal }) => listParentChildren({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listParentChildren>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListParentChildrenQueryResult = NonNullable<Awaited<ReturnType<typeof listParentChildren>>>
+export type ListParentChildrenQueryError = ErrorType<void>
+
+
+/**
+ * @summary List children belonging to the authenticated guardian
+ */
+
+export function useListParentChildren<TData = Awaited<ReturnType<typeof listParentChildren>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listParentChildren>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListParentChildrenQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListParentAttendanceUrl = (params?: ListParentAttendanceParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/parent/attendance?${stringifiedParams}` : `/api/parent/attendance`
+}
+
+/**
+ * @summary Get attendance history for guardian children
+ */
+export const listParentAttendance = async (params?: ListParentAttendanceParams, options?: Parameters<typeof customFetch>[1]): Promise<AttendanceRecord[]> => {
+
+  return customFetch<AttendanceRecord[]>(getListParentAttendanceUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListParentAttendanceQueryKey = (params?: ListParentAttendanceParams,) => {
+    return [
+    `/api/parent/attendance`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListParentAttendanceQueryOptions = <TData = Awaited<ReturnType<typeof listParentAttendance>>, TError = ErrorType<void>>(params?: ListParentAttendanceParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listParentAttendance>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListParentAttendanceQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listParentAttendance>>> = ({ signal }) => listParentAttendance(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listParentAttendance>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListParentAttendanceQueryResult = NonNullable<Awaited<ReturnType<typeof listParentAttendance>>>
+export type ListParentAttendanceQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get attendance history for guardian children
+ */
+
+export function useListParentAttendance<TData = Awaited<ReturnType<typeof listParentAttendance>>, TError = ErrorType<void>>(
+ params?: ListParentAttendanceParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listParentAttendance>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListParentAttendanceQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListParentProgressReportsUrl = (params?: ListParentProgressReportsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/parent/progress-reports?${stringifiedParams}` : `/api/parent/progress-reports`
+}
+
+/**
+ * @summary Get progress reports for guardian children
+ */
+export const listParentProgressReports = async (params?: ListParentProgressReportsParams, options?: Parameters<typeof customFetch>[1]): Promise<ProgressReport[]> => {
+
+  return customFetch<ProgressReport[]>(getListParentProgressReportsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListParentProgressReportsQueryKey = (params?: ListParentProgressReportsParams,) => {
+    return [
+    `/api/parent/progress-reports`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListParentProgressReportsQueryOptions = <TData = Awaited<ReturnType<typeof listParentProgressReports>>, TError = ErrorType<void>>(params?: ListParentProgressReportsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listParentProgressReports>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListParentProgressReportsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listParentProgressReports>>> = ({ signal }) => listParentProgressReports(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listParentProgressReports>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListParentProgressReportsQueryResult = NonNullable<Awaited<ReturnType<typeof listParentProgressReports>>>
+export type ListParentProgressReportsQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get progress reports for guardian children
+ */
+
+export function useListParentProgressReports<TData = Awaited<ReturnType<typeof listParentProgressReports>>, TError = ErrorType<void>>(
+ params?: ListParentProgressReportsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listParentProgressReports>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListParentProgressReportsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListParentActivitiesUrl = (params?: ListParentActivitiesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/parent/activities?${stringifiedParams}` : `/api/parent/activities`
+}
+
+/**
+ * @summary Get activities and photos for guardian children
+ */
+export const listParentActivities = async (params?: ListParentActivitiesParams, options?: Parameters<typeof customFetch>[1]): Promise<ParentChildActivity[]> => {
+
+  return customFetch<ParentChildActivity[]>(getListParentActivitiesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListParentActivitiesQueryKey = (params?: ListParentActivitiesParams,) => {
+    return [
+    `/api/parent/activities`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListParentActivitiesQueryOptions = <TData = Awaited<ReturnType<typeof listParentActivities>>, TError = ErrorType<void>>(params?: ListParentActivitiesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listParentActivities>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListParentActivitiesQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listParentActivities>>> = ({ signal }) => listParentActivities(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listParentActivities>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListParentActivitiesQueryResult = NonNullable<Awaited<ReturnType<typeof listParentActivities>>>
+export type ListParentActivitiesQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get activities and photos for guardian children
+ */
+
+export function useListParentActivities<TData = Awaited<ReturnType<typeof listParentActivities>>, TError = ErrorType<void>>(
+ params?: ListParentActivitiesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listParentActivities>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListParentActivitiesQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListParentInvoicesUrl = () => {
+
+
+
+
+  return `/api/parent/invoices`
+}
+
+/**
+ * @summary Get invoices belonging to the authenticated guardian
+ */
+export const listParentInvoices = async ( options?: Parameters<typeof customFetch>[1]): Promise<Invoice[]> => {
+
+  return customFetch<Invoice[]>(getListParentInvoicesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListParentInvoicesQueryKey = () => {
+    return [
+    `/api/parent/invoices`
+    ] as const;
+    }
+
+
+export const getListParentInvoicesQueryOptions = <TData = Awaited<ReturnType<typeof listParentInvoices>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listParentInvoices>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListParentInvoicesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listParentInvoices>>> = ({ signal }) => listParentInvoices({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listParentInvoices>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListParentInvoicesQueryResult = NonNullable<Awaited<ReturnType<typeof listParentInvoices>>>
+export type ListParentInvoicesQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get invoices belonging to the authenticated guardian
+ */
+
+export function useListParentInvoices<TData = Awaited<ReturnType<typeof listParentInvoices>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listParentInvoices>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListParentInvoicesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListParentMessagesUrl = () => {
+
+
+
+
+  return `/api/parent/messages`
+}
+
+/**
+ * @summary Get messages for the authenticated guardian
+ */
+export const listParentMessages = async ( options?: Parameters<typeof customFetch>[1]): Promise<ParentMessage[]> => {
+
+  return customFetch<ParentMessage[]>(getListParentMessagesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListParentMessagesQueryKey = () => {
+    return [
+    `/api/parent/messages`
+    ] as const;
+    }
+
+
+export const getListParentMessagesQueryOptions = <TData = Awaited<ReturnType<typeof listParentMessages>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listParentMessages>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListParentMessagesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listParentMessages>>> = ({ signal }) => listParentMessages({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listParentMessages>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListParentMessagesQueryResult = NonNullable<Awaited<ReturnType<typeof listParentMessages>>>
+export type ListParentMessagesQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get messages for the authenticated guardian
+ */
+
+export function useListParentMessages<TData = Awaited<ReturnType<typeof listParentMessages>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listParentMessages>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListParentMessagesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSendParentMessageUrl = () => {
+
+
+
+
+  return `/api/parent/messages`
+}
+
+/**
+ * @summary Send a message to the nursery
+ */
+export const sendParentMessage = async (parentMessageInput: ParentMessageInput, options?: Parameters<typeof customFetch>[1]): Promise<ParentMessage> => {
+
+  return customFetch<ParentMessage>(getSendParentMessageUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(parentMessageInput)
+  }
+);}
+
+
+
+
+
+export const getSendParentMessageMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendParentMessage>>, TError,{data: BodyType<ParentMessageInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof sendParentMessage>>, TError,{data: BodyType<ParentMessageInput>}, TContext> => {
+
+const mutationKey = ['sendParentMessage'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendParentMessage>>, {data: BodyType<ParentMessageInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  sendParentMessage(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SendParentMessageMutationResult = NonNullable<Awaited<ReturnType<typeof sendParentMessage>>>
+    export type SendParentMessageMutationBody = BodyType<ParentMessageInput>
+    export type SendParentMessageMutationError = ErrorType<void>
+
+    /**
+ * @summary Send a message to the nursery
+ */
+export const useSendParentMessage = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendParentMessage>>, TError,{data: BodyType<ParentMessageInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof sendParentMessage>>,
+        TError,
+        {data: BodyType<ParentMessageInput>},
+        TContext
+      > => {
+      return useMutation(getSendParentMessageMutationOptions(options));
+    }
+
+export const getListParentAnnouncementsUrl = () => {
+
+
+
+
+  return `/api/parent/announcements`
+}
+
+/**
+ * @summary Get announcements visible to parents
+ */
+export const listParentAnnouncements = async ( options?: Parameters<typeof customFetch>[1]): Promise<ParentAnnouncement[]> => {
+
+  return customFetch<ParentAnnouncement[]>(getListParentAnnouncementsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListParentAnnouncementsQueryKey = () => {
+    return [
+    `/api/parent/announcements`
+    ] as const;
+    }
+
+
+export const getListParentAnnouncementsQueryOptions = <TData = Awaited<ReturnType<typeof listParentAnnouncements>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listParentAnnouncements>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListParentAnnouncementsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listParentAnnouncements>>> = ({ signal }) => listParentAnnouncements({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listParentAnnouncements>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListParentAnnouncementsQueryResult = NonNullable<Awaited<ReturnType<typeof listParentAnnouncements>>>
+export type ListParentAnnouncementsQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get announcements visible to parents
+ */
+
+export function useListParentAnnouncements<TData = Awaited<ReturnType<typeof listParentAnnouncements>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listParentAnnouncements>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListParentAnnouncementsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 

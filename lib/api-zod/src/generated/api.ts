@@ -78,7 +78,10 @@ export const ListChildrenResponse = zod.array(ListChildrenResponseItem)
  */
 
 
+
 export const createChildBodyGuardianPhoneMin = 5;
+
+
 
 
 export const CreateChildBody = zod.object({
@@ -146,7 +149,11 @@ export const UpdateChildParams = zod.object({
 })
 
 
+
+
 export const updateChildBodyGuardianPhoneMin = 5;
+
+
 
 
 export const UpdateChildBody = zod.object({
@@ -278,7 +285,10 @@ export const ListApplicationsResponse = zod.array(ListApplicationsResponseItem)
  */
 
 
+
+
 export const createApplicationBodyGuardianPhoneMin = 5;
+
 
 
 export const CreateApplicationBody = zod.object({
@@ -375,7 +385,11 @@ export const UpdateApplicationParams = zod.object({
 })
 
 
+
+
+
 export const updateApplicationBodyGuardianPhoneMin = 5;
+
 
 
 export const UpdateApplicationBody = zod.object({
@@ -432,6 +446,7 @@ export const AttachApplicationDocumentParams = zod.object({
 })
 
 
+
 export const attachApplicationDocumentBodySizeMax = 10485760;
 export const attachApplicationDocumentBodySizeMultipleOf = 1;
 
@@ -478,6 +493,8 @@ export const requestUploadUrlBodyApplicationIdMultipleOf = 1;
 
 export const requestUploadUrlBodySizeMax = 10485760;
 export const requestUploadUrlBodySizeMultipleOf = 1;
+
+
 
 
 export const RequestUploadUrlBody = zod.object({
@@ -614,7 +631,10 @@ export const ListClassroomsResponse = zod.array(ListClassroomsResponseItem)
  */
 
 
+
 export const createClassroomBodyCapacityMultipleOf = 1;
+
+
 
 
 export const CreateClassroomBody = zod.object({
@@ -759,3 +779,183 @@ export const SendInvoiceReminderResponse = zod.object({
   "message": zod.string()
 })
 
+
+/**
+ * @summary Get the authenticated guardian's overview
+ */
+export const GetParentOverviewResponse = zod.object({
+  "guardianId": zod.number(),
+  "guardianName": zod.string(),
+  "children": zod.array(zod.object({
+  "id": zod.number(),
+  "firstName": zod.string(),
+  "lastName": zod.string(),
+  "fullName": zod.string(),
+  "birthDate": zod.string(),
+  "level": zod.string(),
+  "classroomName": zod.string().nullable(),
+  "attendanceRate": zod.number(),
+  "avatarUrl": zod.string().nullish()
+})),
+  "outstandingBalance": zod.number(),
+  "unreadMessages": zod.number(),
+  "announcementsCount": zod.number()
+})
+
+
+/**
+ * @summary Resolve the authenticated user's application role
+ */
+export const GetSessionContextResponse = zod.object({
+  "role": zod.enum(['parent', 'admin', 'pending'])
+})
+
+
+/**
+ * @summary List children belonging to the authenticated guardian
+ */
+export const ListParentChildrenResponseItem = zod.object({
+  "id": zod.number(),
+  "firstName": zod.string(),
+  "lastName": zod.string(),
+  "fullName": zod.string(),
+  "birthDate": zod.string(),
+  "level": zod.string(),
+  "classroomName": zod.string().nullable(),
+  "attendanceRate": zod.number(),
+  "avatarUrl": zod.string().nullish()
+})
+export const ListParentChildrenResponse = zod.array(ListParentChildrenResponseItem)
+
+
+/**
+ * @summary Get attendance history for guardian children
+ */
+export const ListParentAttendanceQueryParams = zod.object({
+  "childId": zod.coerce.number().optional()
+})
+
+export const ListParentAttendanceResponseItem = zod.object({
+  "id": zod.number(),
+  "childId": zod.number(),
+  "childName": zod.string(),
+  "date": zod.string(),
+  "status": zod.enum(['present', 'absent', 'late', 'excused']),
+  "checkIn": zod.string().nullable(),
+  "checkOut": zod.string().nullable(),
+  "note": zod.string().nullish()
+})
+export const ListParentAttendanceResponse = zod.array(ListParentAttendanceResponseItem)
+
+
+/**
+ * @summary Get progress reports for guardian children
+ */
+export const ListParentProgressReportsQueryParams = zod.object({
+  "childId": zod.coerce.number().optional()
+})
+
+export const ListParentProgressReportsResponseItem = zod.object({
+  "id": zod.number(),
+  "childId": zod.number(),
+  "childName": zod.string(),
+  "title": zod.string(),
+  "summary": zod.string(),
+  "period": zod.string(),
+  "educatorName": zod.string(),
+  "publishedAt": zod.string()
+})
+export const ListParentProgressReportsResponse = zod.array(ListParentProgressReportsResponseItem)
+
+
+/**
+ * @summary Get activities and photos for guardian children
+ */
+export const ListParentActivitiesQueryParams = zod.object({
+  "childId": zod.coerce.number().optional()
+})
+
+export const ListParentActivitiesResponseItem = zod.object({
+  "id": zod.number(),
+  "childId": zod.number(),
+  "childName": zod.string(),
+  "category": zod.string(),
+  "title": zod.string(),
+  "description": zod.string(),
+  "photoUrl": zod.string().nullish(),
+  "educatorName": zod.string(),
+  "occurredAt": zod.string()
+})
+export const ListParentActivitiesResponse = zod.array(ListParentActivitiesResponseItem)
+
+
+/**
+ * @summary Get invoices belonging to the authenticated guardian
+ */
+export const ListParentInvoicesResponseItem = zod.object({
+  "id": zod.number(),
+  "invoiceNumber": zod.string(),
+  "guardianName": zod.string(),
+  "childName": zod.string(),
+  "amount": zod.number(),
+  "dueDate": zod.string(),
+  "status": zod.enum(['paid', 'pending', 'overdue']),
+  "paidAt": zod.string().nullable(),
+  "lastPaymentStatus": zod.string().nullable(),
+  "lastPaymentError": zod.string().nullish(),
+  "chargedCurrency": zod.string().nullish(),
+  "chargedAmount": zod.number().nullish()
+})
+export const ListParentInvoicesResponse = zod.array(ListParentInvoicesResponseItem)
+
+
+/**
+ * @summary Get messages for the authenticated guardian
+ */
+export const ListParentMessagesResponseItem = zod.object({
+  "id": zod.number(),
+  "senderType": zod.enum(['parent', 'staff']),
+  "senderName": zod.string(),
+  "subject": zod.string(),
+  "content": zod.string(),
+  "read": zod.boolean(),
+  "createdAt": zod.string()
+})
+export const ListParentMessagesResponse = zod.array(ListParentMessagesResponseItem)
+
+
+/**
+ * @summary Send a message to the nursery
+ */
+export const sendParentMessageBodySubjectMax = 160;
+
+export const sendParentMessageBodyContentMax = 5000;
+
+
+
+export const SendParentMessageBody = zod.object({
+  "subject": zod.string().min(1).max(sendParentMessageBodySubjectMax),
+  "content": zod.string().min(1).max(sendParentMessageBodyContentMax)
+})
+
+export const SendParentMessageResponse = zod.object({
+  "id": zod.number(),
+  "senderType": zod.enum(['parent', 'staff']),
+  "senderName": zod.string(),
+  "subject": zod.string(),
+  "content": zod.string(),
+  "read": zod.boolean(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Get announcements visible to parents
+ */
+export const ListParentAnnouncementsResponseItem = zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "content": zod.string(),
+  "publishedAt": zod.string()
+})
+export const ListParentAnnouncementsResponse = zod.array(ListParentAnnouncementsResponseItem)

@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
-import { Readable } from "stream";
+import { Readable, Transform } from "stream";
+import { pipeline } from "stream/promises";
 import { File, Storage } from "@google-cloud/storage";
 
 const REPLIT_SIDECAR_ENDPOINT = "http://127.0.0.1:1106";
@@ -40,6 +41,20 @@ export class ObjectNotFoundError extends Error {
   }
 }
 
+export class ObjectUploadSizeError extends Error {
+  constructor() {
+    super("Uploaded object size does not match the upload grant");
+    this.name = "ObjectUploadSizeError";
+  }
+}
+
+export class ObjectUploadTimeoutError extends Error {
+  constructor() {
+    super("Upload timed out");
+    this.name = "ObjectUploadTimeoutError";
+  }
+}
+
 export class ObjectStorageService {
   getPrivateObjectDir(): string {
     const directory = process.env.PRIVATE_OBJECT_DIR || "";
@@ -49,9 +64,53 @@ export class ObjectStorageService {
     return directory;
   }
 
-  async getObjectEntityUploadURL(): Promise<string> {
-    const { bucketName, objectName } = this.privateObjectLocation(`uploads/${randomUUID()}`);
-    return signObjectURL({ bucketName, objectName, method: "PUT", ttlSec: 300 });
+  createObjectEntityPath(): string {
+    return `/objects/uploads/${randomUUID()}`;
+  }
+
+  async uploadObjectEntity(
+    objectPath: string,
+    source: Readable,
+    contentType: string,
+    expectedSize: number,
+    maxSize: number,
+    timeoutMs: number,
+  ): Promise<void> {
+    let totalSize = 0;
+    const limiter = new Transform({
+      transform(chunk: Buffer, _encoding, callback) {
+        totalSize += chunk.byteLength;
+        if (totalSize > expectedSize || totalSize > maxSize) {
+          callback(new ObjectUploadSizeError());
+          return;
+        }
+        callback(null, chunk);
+      },
+    });
+    const destination = this.objectEntityFile(objectPath).createWriteStream({
+      resumable: false,
+      metadata: { contentType },
+      validation: "crc32c",
+    });
+    const timeout = setTimeout(() => {
+      limiter.destroy(new ObjectUploadTimeoutError());
+    }, timeoutMs);
+    timeout.unref();
+    try {
+      await pipeline(source, limiter, destination);
+      if (totalSize !== expectedSize) {
+        throw new ObjectUploadSizeError();
+      }
+    } catch (error) {
+      try {
+        await this.deleteObject(this.objectEntityFile(objectPath));
+      } catch {
+        // Preserve the upload failure; periodic grant cleanup retries deletion.
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
   normalizeObjectEntityPath(rawPath: string): string {
@@ -69,11 +128,7 @@ export class ObjectStorageService {
   }
 
   async getObjectEntityFile(objectPath: string): Promise<File> {
-    if (!objectPath.startsWith("/objects/")) throw new ObjectNotFoundError();
-    const entityId = objectPath.slice("/objects/".length);
-    if (!entityId) throw new ObjectNotFoundError();
-    const { bucketName, objectName } = this.privateObjectLocation(entityId);
-    const file = objectStorageClient.bucket(bucketName).file(objectName);
+    const file = this.objectEntityFile(objectPath);
     const [exists] = await file.exists();
     if (!exists) throw new ObjectNotFoundError();
     return file;
@@ -114,27 +169,18 @@ export class ObjectStorageService {
         .join("/"),
     };
   }
+
+  private objectEntityFile(objectPath: string): File {
+    if (!objectPath.startsWith("/objects/")) throw new ObjectNotFoundError();
+    const entityId = objectPath.slice("/objects/".length);
+    if (!entityId) throw new ObjectNotFoundError();
+    const { bucketName, objectName } = this.privateObjectLocation(entityId);
+    return objectStorageClient.bucket(bucketName).file(objectName);
+  }
 }
 
 function parseObjectPath(path: string) {
   const parts = path.replace(/^\//, "").split("/");
   if (parts.length < 2) throw new Error("Invalid object storage path");
   return { bucketName: parts[0], objectName: parts.slice(1).join("/") };
-}
-
-async function signObjectURL({
-  bucketName, objectName, method, ttlSec,
-}: { bucketName: string; objectName: string; method: "PUT"; ttlSec: number }): Promise<string> {
-  const response = await fetch(`${REPLIT_SIDECAR_ENDPOINT}/object-storage/signed-object-url`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      bucket_name: bucketName, object_name: objectName, method,
-      expires_at: new Date(Date.now() + ttlSec * 1000).toISOString(),
-    }),
-    signal: AbortSignal.timeout(30_000),
-  });
-  if (!response.ok) throw new Error(`Failed to sign object URL (${response.status})`);
-  const { signed_url } = await response.json() as { signed_url: string };
-  return signed_url;
 }

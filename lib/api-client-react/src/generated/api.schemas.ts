@@ -475,6 +475,106 @@ export interface InvoiceReminderResult {
   message: string;
 }
 
+export interface ParentChild {
+  id: number;
+  firstName: string;
+  lastName: string;
+  fullName: string;
+  birthDate: string;
+  level: string;
+  /** @nullable */
+  classroomName: string | null;
+  attendanceRate: number;
+  /** @nullable */
+  avatarUrl?: string | null;
+}
+
+export interface ParentOverview {
+  guardianId: number;
+  guardianName: string;
+  children: ParentChild[];
+  outstandingBalance: number;
+  unreadMessages: number;
+  announcementsCount: number;
+}
+
+export type SessionContextRole = typeof SessionContextRole[keyof typeof SessionContextRole];
+
+
+export const SessionContextRole = {
+  parent: 'parent',
+  admin: 'admin',
+  pending: 'pending',
+} as const;
+
+export interface SessionContext {
+  role: SessionContextRole;
+}
+
+export interface ProgressReport {
+  id: number;
+  childId: number;
+  childName: string;
+  title: string;
+  summary: string;
+  period: string;
+  educatorName: string;
+  publishedAt: string;
+}
+
+export interface ParentChildActivity {
+  id: number;
+  childId: number;
+  childName: string;
+  category: string;
+  title: string;
+  description: string;
+  /** @nullable */
+  photoUrl?: string | null;
+  educatorName: string;
+  occurredAt: string;
+}
+
+export type ParentMessageSenderType = typeof ParentMessageSenderType[keyof typeof ParentMessageSenderType];
+
+
+export const ParentMessageSenderType = {
+  parent: 'parent',
+  staff: 'staff',
+} as const;
+
+export interface ParentMessage {
+  id: number;
+  senderType: ParentMessageSenderType;
+  senderName: string;
+  subject: string;
+  content: string;
+  read: boolean;
+  createdAt: string;
+}
+
+export interface ParentMessageInput {
+  /**
+     * @minLength 1
+     * @maxLength 160
+     */
+  subject: string;
+  /**
+     * @minLength 1
+     * @maxLength 5000
+     */
+  content: string;
+}
+
+export interface ParentAnnouncement {
+  id: number;
+  title: string;
+  content: string;
+  publishedAt: string;
+}
+
+export type OptionalChildIdParameter = number;
+
 export type ListChildrenParams = {
 search?: string;
 classroomId?: number;
@@ -515,3 +615,15 @@ export const ListInvoicesStatus = {
   pending: 'pending',
   overdue: 'overdue',
 } as const;
+
+export type ListParentAttendanceParams = {
+childId?: OptionalChildIdParameter;
+};
+
+export type ListParentProgressReportsParams = {
+childId?: OptionalChildIdParameter;
+};
+
+export type ListParentActivitiesParams = {
+childId?: OptionalChildIdParameter;
+};

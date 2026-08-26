@@ -1,7 +1,8 @@
 import { Link } from 'wouter';
-import { useAuth } from '@clerk/react';
+import { useAuth, useUser } from '@clerk/react';
 import { Redirect } from 'wouter';
 import { ArrowUpRight, Check, CalendarCheck, ShieldCheck, Sparkles, Star } from 'lucide-react';
+import { getGetSessionContextQueryKey, useGetSessionContext } from '@workspace/api-client-react';
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
 
@@ -18,7 +19,25 @@ function Pill({ children, tone = 'neutral' }: { children: React.ReactNode; tone?
 
 export function Landing() {
   const { isSignedIn } = useAuth(); 
-  if (isSignedIn) return <Redirect to="/dashboard" />;
+  const { user } = useUser();
+  const session = useGetSessionContext({
+    query: {
+      enabled: Boolean(isSignedIn),
+      queryKey: getGetSessionContextQueryKey(),
+      retry: false,
+    },
+  });
+
+  if (isSignedIn && user) {
+    if (session.isLoading) return <div className="grid min-h-[100dvh] place-items-center bg-background"><div className="h-12 w-12 animate-pulse rounded-2xl bg-primary/20" /></div>;
+    if (session.data?.role === 'parent') {
+      return <Redirect to="/parent" />;
+    }
+    if (session.data?.role === 'admin') {
+      return <Redirect to="/dashboard" />;
+    }
+    return <Redirect to="/access-pending" />;
+  }
   
   return (
     <div dir="rtl" className="min-h-[100dvh] bg-background text-foreground selection:bg-primary selection:text-primary-foreground">
