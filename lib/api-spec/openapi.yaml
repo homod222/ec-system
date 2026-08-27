@@ -689,6 +689,63 @@ paths:
                 $ref: "#/components/schemas/InvoiceReminderResult"
         "404":
           description: Invoice not found
+  /billing-plans:
+    get:
+      operationId: listBillingPlans
+      tags: [finance]
+      summary: List owner-scoped installment billing plans
+      responses:
+        "200":
+          description: Billing plans
+          content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/BillingPlan" } } } }
+    post:
+      operationId: createBillingPlan
+      tags: [finance]
+      summary: Create an installment plan and its schedule
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/BillingPlanInput" } } }
+      responses:
+        "201":
+          description: Created billing plan
+          content: { application/json: { schema: { $ref: "#/components/schemas/BillingPlan" } } }
+        "400": { description: Invalid plan or schedule }
+        "404": { description: Child not found }
+  /billing-plans/{id}/status:
+    patch:
+      operationId: updateBillingPlanStatus
+      tags: [finance]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/BillingPlanStatusInput" } } }
+      responses:
+        "200":
+          description: Updated plan
+          content: { application/json: { schema: { $ref: "#/components/schemas/BillingPlan" } } }
+        "404": { description: Plan not found }
+        "409": { description: Invalid status transition }
+  /billing-plans/{id}/generate-next:
+    post:
+      operationId: generateNextBillingInstallment
+      tags: [finance]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: Next scheduled installment generated or already generated
+          content: { application/json: { schema: { $ref: "#/components/schemas/BillingPlanGenerationResult" } } }
+        "404": { description: Plan or scheduled installment not found }
+        "409": { description: Plan is not active }
+  /parent/billing-plans:
+    get:
+      operationId: listParentBillingPlans
+      tags: [parent, finance]
+      summary: List installment plans belonging to the authenticated guardian
+      responses:
+        "200":
+          description: Guardian billing plans
+          content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/BillingPlan" } } } }
+        "403": { description: Parent access required }
   /parent/overview:
     get:
       operationId: getParentOverview
@@ -1526,6 +1583,77 @@ components:
           type: ["string", "null"]
           enum: [payment_link, knet, cash, bank_transfer, cheque, card_terminal, null]
         paymentReference: { type: ["string", "null"] }
+        billingPlanId: { type: ["number", "null"] }
+        installmentId: { type: ["number", "null"] }
+    BillingInstallment:
+      type: object
+      required: [id, sequence, amount, issueDate, dueDate, status, invoiceId]
+      properties:
+        id: { type: number }
+        sequence: { type: number }
+        amount: { type: number }
+        issueDate: { type: string }
+        dueDate: { type: string }
+        status: { type: string, enum: [scheduled, issued, paid, partial, overdue, cancelled] }
+        invoiceId: { type: ["number", "null"] }
+        invoiceNumber: { type: ["string", "null"] }
+    BillingPlan:
+      type: object
+      required: [id, childId, childName, guardianName, title, cadence, totalAmount, discountAmount, netAmount, installmentCount, issueLeadDays, status, collectedAmount, remainingAmount, installments, createdAt, updatedAt]
+      properties:
+        id: { type: number }
+        childId: { type: number }
+        childName: { type: string }
+        guardianName: { type: string }
+        title: { type: string }
+        cadence: { type: string, enum: [once, monthly, quarterly, custom] }
+        totalAmount: { type: number }
+        discountAmount: { type: number }
+        netAmount: { type: number }
+        installmentCount: { type: number }
+        issueLeadDays: { type: number }
+        status: { type: string, enum: [active, paused, completed, cancelled] }
+        collectedAmount: { type: number }
+        remainingAmount: { type: number }
+        installments: { type: array, items: { $ref: "#/components/schemas/BillingInstallment" } }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    CustomInstallmentInput:
+      type: object
+      required: [amount, dueDate]
+      properties:
+        amount: { type: number, exclusiveMinimum: 0, multipleOf: 0.001 }
+        dueDate: { type: string, format: date }
+        issueDate: { type: ["string", "null"], format: date }
+    BillingPlanInput:
+      type: object
+      required: [childId, title, cadence, totalAmount, discountAmount, installmentCount, startDate, issueLeadDays]
+      properties:
+        childId: { type: number }
+        title: { type: string, minLength: 1, maxLength: 120 }
+        cadence: { type: string, enum: [once, monthly, quarterly, custom] }
+        totalAmount: { type: number, exclusiveMinimum: 0, multipleOf: 0.001 }
+        discountAmount: { type: number, minimum: 0, multipleOf: 0.001 }
+        installmentCount: { type: number, minimum: 1, maximum: 36 }
+        startDate: { type: string, format: date }
+        issueLeadDays: { type: number, minimum: 0, maximum: 60 }
+        customInstallments:
+          type: array
+          maxItems: 36
+          items: { $ref: "#/components/schemas/CustomInstallmentInput" }
+    BillingPlanStatusInput:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [active, paused, cancelled] }
+    BillingPlanGenerationResult:
+      type: object
+      required: [planId, installmentId, invoiceId, generated]
+      properties:
+        planId: { type: number }
+        installmentId: { type: number }
+        invoiceId: { type: number }
+        generated: { type: boolean }
     InvoiceLine:
       type: object
       required: [id, type, description, quantity, unitAmount, amount]

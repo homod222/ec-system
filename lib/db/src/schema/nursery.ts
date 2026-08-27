@@ -116,6 +116,8 @@ export const invoicesTable = pgTable("invoices", {
   issuedAt: timestamp("issued_at", { withTimezone: true }),
   cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
   cancellationReason: text("cancellation_reason"),
+  billingPlanId: integer("billing_plan_id"),
+  installmentId: integer("installment_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -510,8 +512,44 @@ export const nurserySettingsTable = pgTable("nursery_settings", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
 
+export const billingPlansTable = pgTable("billing_plans", {
+  id: serial("id").primaryKey(),
+  ownerId: text("owner_id").notNull(),
+  childId: integer("child_id").notNull(),
+  guardianId: integer("guardian_id").notNull(),
+  title: text("title").notNull(),
+  cadence: text("cadence").notNull(),
+  totalAmount: numeric("total_amount", { precision: 12, scale: 3, mode: "number" }).notNull(),
+  discountAmount: numeric("discount_amount", { precision: 12, scale: 3, mode: "number" }).notNull().default(0),
+  netAmount: numeric("net_amount", { precision: 12, scale: 3, mode: "number" }).notNull(),
+  installmentCount: integer("installment_count").notNull(),
+  issueLeadDays: integer("issue_lead_days").notNull().default(7),
+  status: text("status").notNull().default("active"),
+  createdBy: text("created_by").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+});
+
+export const billingInstallmentsTable = pgTable("billing_installments", {
+  id: serial("id").primaryKey(),
+  ownerId: text("owner_id").notNull(),
+  planId: integer("plan_id").notNull(),
+  sequence: integer("sequence").notNull(),
+  amount: numeric("amount", { precision: 12, scale: 3, mode: "number" }).notNull(),
+  issueDate: date("issue_date", { mode: "string" }).notNull(),
+  dueDate: date("due_date", { mode: "string" }).notNull(),
+  status: text("status").notNull().default("scheduled"),
+  invoiceId: integer("invoice_id"),
+  generatedAt: timestamp("generated_at", { withTimezone: true }),
+}, (table) => [
+  uniqueIndex("billing_installments_plan_sequence_unique").on(table.planId, table.sequence),
+  uniqueIndex("billing_installments_invoice_unique").on(table.invoiceId),
+]);
+
 export type ChildContact = typeof childContactsTable.$inferSelect;
 export type InvoiceLine = typeof invoiceLinesTable.$inferSelect;
 export type InvoiceRefund = typeof invoiceRefundsTable.$inferSelect;
 export type InvoiceReceipt = typeof invoiceReceiptsTable.$inferSelect;
 export type NurserySettings = typeof nurserySettingsTable.$inferSelect;
+export type BillingPlan = typeof billingPlansTable.$inferSelect;
+export type BillingInstallment = typeof billingInstallmentsTable.$inferSelect;

@@ -788,6 +788,8 @@ export const ListInvoicesResponseItem = zod.object({
     ])
     .nullish(),
   paymentReference: zod.string().nullish(),
+  billingPlanId: zod.number().nullish(),
+  installmentId: zod.number().nullish(),
 });
 export const ListInvoicesResponse = zod.array(ListInvoicesResponseItem);
 /**
@@ -847,6 +849,8 @@ export const CreateInvoiceResponse = zod
       ])
       .nullish(),
     paymentReference: zod.string().nullish(),
+    billingPlanId: zod.number().nullish(),
+    installmentId: zod.number().nullish(),
   })
   .and(
     zod.object({
@@ -902,6 +906,8 @@ export const GetInvoiceResponse = zod
       ])
       .nullish(),
     paymentReference: zod.string().nullish(),
+    billingPlanId: zod.number().nullish(),
+    installmentId: zod.number().nullish(),
   })
   .and(
     zod.object({
@@ -997,6 +1003,8 @@ export const CancelInvoiceResponse = zod
       ])
       .nullish(),
     paymentReference: zod.string().nullish(),
+    billingPlanId: zod.number().nullish(),
+    installmentId: zod.number().nullish(),
   })
   .and(
     zod.object({
@@ -1094,6 +1102,230 @@ export const SendInvoiceReminderResponse = zod.object({
   status: zod.enum(["sent", "failed"]),
   message: zod.string(),
 });
+/**
+ * @summary List owner-scoped installment billing plans
+ */
+export const ListBillingPlansResponseItem = zod.object({
+  id: zod.number(),
+  childId: zod.number(),
+  childName: zod.string(),
+  guardianName: zod.string(),
+  title: zod.string(),
+  cadence: zod.enum(["once", "monthly", "quarterly", "custom"]),
+  totalAmount: zod.number(),
+  discountAmount: zod.number(),
+  netAmount: zod.number(),
+  installmentCount: zod.number(),
+  issueLeadDays: zod.number(),
+  status: zod.enum(["active", "paused", "completed", "cancelled"]),
+  collectedAmount: zod.number(),
+  remainingAmount: zod.number(),
+  installments: zod.array(
+    zod.object({
+      id: zod.number(),
+      sequence: zod.number(),
+      amount: zod.number(),
+      issueDate: zod.string(),
+      dueDate: zod.string(),
+      status: zod.enum([
+        "scheduled",
+        "issued",
+        "paid",
+        "partial",
+        "overdue",
+        "cancelled",
+      ]),
+      invoiceId: zod.number().nullable(),
+      invoiceNumber: zod.string().nullish(),
+    }),
+  ),
+  createdAt: zod.coerce.date(),
+  updatedAt: zod.coerce.date(),
+});
+export const ListBillingPlansResponse = zod.array(ListBillingPlansResponseItem);
+/**
+ * @summary Create an installment plan and its schedule
+ */
+export const createBillingPlanBodyTitleMax = 120;
+export const createBillingPlanBodyTotalAmountExclusiveMin = 0;
+export const createBillingPlanBodyTotalAmountMultipleOf = 0.001;
+export const createBillingPlanBodyDiscountAmountMin = 0;
+export const createBillingPlanBodyDiscountAmountMultipleOf = 0.001;
+export const createBillingPlanBodyInstallmentCountMax = 36;
+export const createBillingPlanBodyIssueLeadDaysMin = 0;
+export const createBillingPlanBodyIssueLeadDaysMax = 60;
+export const createBillingPlanBodyCustomInstallmentsItemAmountExclusiveMin = 0;
+export const createBillingPlanBodyCustomInstallmentsItemAmountMultipleOf = 0.001;
+export const createBillingPlanBodyCustomInstallmentsMax = 36;
+export const CreateBillingPlanBody = zod.object({
+  childId: zod.number(),
+  title: zod.string().min(1).max(createBillingPlanBodyTitleMax),
+  cadence: zod.enum(["once", "monthly", "quarterly", "custom"]),
+  totalAmount: zod
+    .number()
+    .gt(createBillingPlanBodyTotalAmountExclusiveMin)
+    .multipleOf(createBillingPlanBodyTotalAmountMultipleOf),
+  discountAmount: zod
+    .number()
+    .min(createBillingPlanBodyDiscountAmountMin)
+    .multipleOf(createBillingPlanBodyDiscountAmountMultipleOf),
+  installmentCount: zod
+    .number()
+    .min(1)
+    .max(createBillingPlanBodyInstallmentCountMax),
+  startDate: zod.coerce.date(),
+  issueLeadDays: zod
+    .number()
+    .min(createBillingPlanBodyIssueLeadDaysMin)
+    .max(createBillingPlanBodyIssueLeadDaysMax),
+  customInstallments: zod
+    .array(
+      zod.object({
+        amount: zod
+          .number()
+          .gt(createBillingPlanBodyCustomInstallmentsItemAmountExclusiveMin)
+          .multipleOf(
+            createBillingPlanBodyCustomInstallmentsItemAmountMultipleOf,
+          ),
+        dueDate: zod.coerce.date(),
+        issueDate: zod.coerce.date().nullish(),
+      }),
+    )
+    .max(createBillingPlanBodyCustomInstallmentsMax)
+    .optional(),
+});
+export const CreateBillingPlanResponse = zod.object({
+  id: zod.number(),
+  childId: zod.number(),
+  childName: zod.string(),
+  guardianName: zod.string(),
+  title: zod.string(),
+  cadence: zod.enum(["once", "monthly", "quarterly", "custom"]),
+  totalAmount: zod.number(),
+  discountAmount: zod.number(),
+  netAmount: zod.number(),
+  installmentCount: zod.number(),
+  issueLeadDays: zod.number(),
+  status: zod.enum(["active", "paused", "completed", "cancelled"]),
+  collectedAmount: zod.number(),
+  remainingAmount: zod.number(),
+  installments: zod.array(
+    zod.object({
+      id: zod.number(),
+      sequence: zod.number(),
+      amount: zod.number(),
+      issueDate: zod.string(),
+      dueDate: zod.string(),
+      status: zod.enum([
+        "scheduled",
+        "issued",
+        "paid",
+        "partial",
+        "overdue",
+        "cancelled",
+      ]),
+      invoiceId: zod.number().nullable(),
+      invoiceNumber: zod.string().nullish(),
+    }),
+  ),
+  createdAt: zod.coerce.date(),
+  updatedAt: zod.coerce.date(),
+});
+export const UpdateBillingPlanStatusParams = zod.object({
+  id: zod.coerce.number(),
+});
+export const UpdateBillingPlanStatusBody = zod.object({
+  status: zod.enum(["active", "paused", "cancelled"]),
+});
+export const UpdateBillingPlanStatusResponse = zod.object({
+  id: zod.number(),
+  childId: zod.number(),
+  childName: zod.string(),
+  guardianName: zod.string(),
+  title: zod.string(),
+  cadence: zod.enum(["once", "monthly", "quarterly", "custom"]),
+  totalAmount: zod.number(),
+  discountAmount: zod.number(),
+  netAmount: zod.number(),
+  installmentCount: zod.number(),
+  issueLeadDays: zod.number(),
+  status: zod.enum(["active", "paused", "completed", "cancelled"]),
+  collectedAmount: zod.number(),
+  remainingAmount: zod.number(),
+  installments: zod.array(
+    zod.object({
+      id: zod.number(),
+      sequence: zod.number(),
+      amount: zod.number(),
+      issueDate: zod.string(),
+      dueDate: zod.string(),
+      status: zod.enum([
+        "scheduled",
+        "issued",
+        "paid",
+        "partial",
+        "overdue",
+        "cancelled",
+      ]),
+      invoiceId: zod.number().nullable(),
+      invoiceNumber: zod.string().nullish(),
+    }),
+  ),
+  createdAt: zod.coerce.date(),
+  updatedAt: zod.coerce.date(),
+});
+export const GenerateNextBillingInstallmentParams = zod.object({
+  id: zod.coerce.number(),
+});
+export const GenerateNextBillingInstallmentResponse = zod.object({
+  planId: zod.number(),
+  installmentId: zod.number(),
+  invoiceId: zod.number(),
+  generated: zod.boolean(),
+});
+/**
+ * @summary List installment plans belonging to the authenticated guardian
+ */
+export const ListParentBillingPlansResponseItem = zod.object({
+  id: zod.number(),
+  childId: zod.number(),
+  childName: zod.string(),
+  guardianName: zod.string(),
+  title: zod.string(),
+  cadence: zod.enum(["once", "monthly", "quarterly", "custom"]),
+  totalAmount: zod.number(),
+  discountAmount: zod.number(),
+  netAmount: zod.number(),
+  installmentCount: zod.number(),
+  issueLeadDays: zod.number(),
+  status: zod.enum(["active", "paused", "completed", "cancelled"]),
+  collectedAmount: zod.number(),
+  remainingAmount: zod.number(),
+  installments: zod.array(
+    zod.object({
+      id: zod.number(),
+      sequence: zod.number(),
+      amount: zod.number(),
+      issueDate: zod.string(),
+      dueDate: zod.string(),
+      status: zod.enum([
+        "scheduled",
+        "issued",
+        "paid",
+        "partial",
+        "overdue",
+        "cancelled",
+      ]),
+      invoiceId: zod.number().nullable(),
+      invoiceNumber: zod.string().nullish(),
+    }),
+  ),
+  createdAt: zod.coerce.date(),
+  updatedAt: zod.coerce.date(),
+});
+export const ListParentBillingPlansResponse = zod.array(
+  ListParentBillingPlansResponseItem,
+);
 /**
  * @summary Get the authenticated guardian's overview
  */
@@ -1248,6 +1480,8 @@ export const ListParentInvoicesResponseItem = zod.object({
     ])
     .nullish(),
   paymentReference: zod.string().nullish(),
+  billingPlanId: zod.number().nullish(),
+  installmentId: zod.number().nullish(),
 });
 export const ListParentInvoicesResponse = zod.array(
   ListParentInvoicesResponseItem,

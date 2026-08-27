@@ -27,6 +27,10 @@ import type {
   AttendanceInput,
   AttendanceRecord,
   AuditLog,
+  BillingPlan,
+  BillingPlanGenerationResult,
+  BillingPlanInput,
+  BillingPlanStatusInput,
   CancelInvoiceInput,
   CashPaymentInput,
   Child,
@@ -3280,6 +3284,406 @@ export const useSendInvoiceReminder = <
 > => {
   return useMutation(getSendInvoiceReminderMutationOptions(options));
 };
+
+export const getListBillingPlansUrl = () => {
+  return `/api/billing-plans`;
+};
+
+/**
+ * @summary List owner-scoped installment billing plans
+ */
+export const listBillingPlans = async (
+  options?: Parameters<typeof customFetch>[1],
+): Promise<BillingPlan[]> => {
+  return customFetch<BillingPlan[]>(getListBillingPlansUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListBillingPlansQueryKey = () => {
+  return [`/api/billing-plans`] as const;
+};
+
+export const getListBillingPlansQueryOptions = <
+  TData = Awaited<ReturnType<typeof listBillingPlans>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listBillingPlans>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListBillingPlansQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listBillingPlans>>
+  > = ({ signal }) => listBillingPlans({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listBillingPlans>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListBillingPlansQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listBillingPlans>>
+>;
+export type ListBillingPlansQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List owner-scoped installment billing plans
+ */
+
+export function useListBillingPlans<
+  TData = Awaited<ReturnType<typeof listBillingPlans>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listBillingPlans>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListBillingPlansQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getCreateBillingPlanUrl = () => {
+  return `/api/billing-plans`;
+};
+
+/**
+ * @summary Create an installment plan and its schedule
+ */
+export const createBillingPlan = async (
+  billingPlanInput: BillingPlanInput,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<BillingPlan> => {
+  return customFetch<BillingPlan>(getCreateBillingPlanUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(billingPlanInput),
+  });
+};
+
+export const getCreateBillingPlanMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createBillingPlan>>,
+    TError,
+    { data: BodyType<BillingPlanInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createBillingPlan>>,
+  TError,
+  { data: BodyType<BillingPlanInput> },
+  TContext
+> => {
+  const mutationKey = ["createBillingPlan"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createBillingPlan>>,
+    { data: BodyType<BillingPlanInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createBillingPlan(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateBillingPlanMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createBillingPlan>>
+>;
+export type CreateBillingPlanMutationBody = BodyType<BillingPlanInput>;
+export type CreateBillingPlanMutationError = ErrorType<void>;
+
+/**
+ * @summary Create an installment plan and its schedule
+ */
+export const useCreateBillingPlan = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createBillingPlan>>,
+    TError,
+    { data: BodyType<BillingPlanInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createBillingPlan>>,
+  TError,
+  { data: BodyType<BillingPlanInput> },
+  TContext
+> => {
+  return useMutation(getCreateBillingPlanMutationOptions(options));
+};
+
+export const getUpdateBillingPlanStatusUrl = (id: number) => {
+  return `/api/billing-plans/${id}/status`;
+};
+
+export const updateBillingPlanStatus = async (
+  id: number,
+  billingPlanStatusInput: BillingPlanStatusInput,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<BillingPlan> => {
+  return customFetch<BillingPlan>(getUpdateBillingPlanStatusUrl(id), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(billingPlanStatusInput),
+  });
+};
+
+export const getUpdateBillingPlanStatusMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateBillingPlanStatus>>,
+    TError,
+    { id: number; data: BodyType<BillingPlanStatusInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateBillingPlanStatus>>,
+  TError,
+  { id: number; data: BodyType<BillingPlanStatusInput> },
+  TContext
+> => {
+  const mutationKey = ["updateBillingPlanStatus"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateBillingPlanStatus>>,
+    { id: number; data: BodyType<BillingPlanStatusInput> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateBillingPlanStatus(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateBillingPlanStatusMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateBillingPlanStatus>>
+>;
+export type UpdateBillingPlanStatusMutationBody =
+  BodyType<BillingPlanStatusInput>;
+export type UpdateBillingPlanStatusMutationError = ErrorType<void>;
+
+export const useUpdateBillingPlanStatus = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateBillingPlanStatus>>,
+    TError,
+    { id: number; data: BodyType<BillingPlanStatusInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateBillingPlanStatus>>,
+  TError,
+  { id: number; data: BodyType<BillingPlanStatusInput> },
+  TContext
+> => {
+  return useMutation(getUpdateBillingPlanStatusMutationOptions(options));
+};
+
+export const getGenerateNextBillingInstallmentUrl = (id: number) => {
+  return `/api/billing-plans/${id}/generate-next`;
+};
+
+export const generateNextBillingInstallment = async (
+  id: number,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<BillingPlanGenerationResult> => {
+  return customFetch<BillingPlanGenerationResult>(
+    getGenerateNextBillingInstallmentUrl(id),
+    {
+      ...options,
+      method: "POST",
+    },
+  );
+};
+
+export const getGenerateNextBillingInstallmentMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof generateNextBillingInstallment>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof generateNextBillingInstallment>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["generateNextBillingInstallment"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof generateNextBillingInstallment>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return generateNextBillingInstallment(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type GenerateNextBillingInstallmentMutationResult = NonNullable<
+  Awaited<ReturnType<typeof generateNextBillingInstallment>>
+>;
+
+export type GenerateNextBillingInstallmentMutationError = ErrorType<void>;
+
+export const useGenerateNextBillingInstallment = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof generateNextBillingInstallment>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof generateNextBillingInstallment>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getGenerateNextBillingInstallmentMutationOptions(options));
+};
+
+export const getListParentBillingPlansUrl = () => {
+  return `/api/parent/billing-plans`;
+};
+
+/**
+ * @summary List installment plans belonging to the authenticated guardian
+ */
+export const listParentBillingPlans = async (
+  options?: Parameters<typeof customFetch>[1],
+): Promise<BillingPlan[]> => {
+  return customFetch<BillingPlan[]>(getListParentBillingPlansUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListParentBillingPlansQueryKey = () => {
+  return [`/api/parent/billing-plans`] as const;
+};
+
+export const getListParentBillingPlansQueryOptions = <
+  TData = Awaited<ReturnType<typeof listParentBillingPlans>>,
+  TError = ErrorType<void>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listParentBillingPlans>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListParentBillingPlansQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listParentBillingPlans>>
+  > = ({ signal }) => listParentBillingPlans({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listParentBillingPlans>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListParentBillingPlansQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listParentBillingPlans>>
+>;
+export type ListParentBillingPlansQueryError = ErrorType<void>;
+
+/**
+ * @summary List installment plans belonging to the authenticated guardian
+ */
+
+export function useListParentBillingPlans<
+  TData = Awaited<ReturnType<typeof listParentBillingPlans>>,
+  TError = ErrorType<void>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listParentBillingPlans>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListParentBillingPlansQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
 
 export const getGetParentOverviewUrl = () => {
   return `/api/parent/overview`;

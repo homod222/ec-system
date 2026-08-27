@@ -59,6 +59,7 @@ import {
   classroomsTable,
   childActivitiesTable,
   childContactsTable,
+  billingPlansTable,
   db,
   guardiansTable,
   invoicePaymentsTable,
@@ -528,10 +529,33 @@ router.delete("/children/:id", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  const [deleted] = await db.delete(childrenTable).where(and(
-    eq(childrenTable.id, parsed.data.id),
-    eq(childrenTable.ownerId, nurseryContext(req).ownerId),
-  )).returning();
+  const ownerId = nurseryContext(req).ownerId;
+  const deletion = await db.transaction(async (tx) => {
+    await tx.execute(sql`
+      select id from children
+      where id = ${parsed.data.id} and owner_id = ${ownerId}
+      for update
+    `);
+    const [child] = await tx.select().from(childrenTable).where(and(
+      eq(childrenTable.id, parsed.data.id),
+      eq(childrenTable.ownerId, ownerId),
+    ));
+    if (!child) return { kind: "missing" as const };
+    const [plan] = await tx.select({ id: billingPlansTable.id }).from(billingPlansTable)
+      .where(and(eq(billingPlansTable.childId, child.id), eq(billingPlansTable.ownerId, ownerId)))
+      .limit(1);
+    if (plan) return { kind: "billing-history" as const };
+    const [deleted] = await tx.delete(childrenTable).where(and(
+      eq(childrenTable.id, child.id),
+      eq(childrenTable.ownerId, ownerId),
+    )).returning();
+    return deleted ? { kind: "deleted" as const, deleted } : { kind: "missing" as const };
+  });
+  if (deletion.kind === "billing-history") {
+    res.status(409).json({ error: "Child cannot be deleted because billing plans and financial records must be preserved" });
+    return;
+  }
+  const deleted = deletion.kind === "deleted" ? deletion.deleted : undefined;
   if (!deleted) {
     res.status(404).json({ error: "Child not found" });
     return;

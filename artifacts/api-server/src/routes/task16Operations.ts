@@ -15,16 +15,27 @@ import {
   UpdateStaffBody, UpdateStaffParams, UpdateStaffResponse,
   RecordCashInvoicePaymentBody, RecordCashInvoicePaymentParams, RecordCashInvoicePaymentResponse,
   GetParentDocumentContentParams,
+  CreateBillingPlanBody, CreateBillingPlanResponse,
+  GenerateNextBillingInstallmentParams, GenerateNextBillingInstallmentResponse,
+  ListBillingPlansResponse, ListParentBillingPlansResponse,
+  UpdateBillingPlanStatusBody, UpdateBillingPlanStatusParams, UpdateBillingPlanStatusResponse,
 } from "@workspace/api-zod";
 import {
   applicationDocumentsTable, attendanceTable, childContactsTable, childrenTable, db,
   guardiansTable, invoiceLinesTable, invoicePaymentsTable, invoiceReceiptsTable,
   invoiceRefundsTable, invoicesTable, nurserySettingsTable, staffTable,
+  billingInstallmentsTable, billingPlansTable,
 } from "@workspace/db";
 import {
   auditNurseryOperation, nurseryContext, requireNurseryPermission, resolveNurseryContext,
 } from "./nurseryOperations";
 import { ObjectNotFoundError, ObjectStorageService } from "../lib/objectStorage";
+import {
+  billingPlanDetails,
+  computeBillingSchedule,
+  generateBillingInstallment,
+  refreshBillingProgressForInvoice,
+} from "../lib/billingPlans";
 
 const router: IRouter = Router();
 const storage = new ObjectStorageService();
@@ -37,6 +48,160 @@ const requireAuth: RequestHandler = (req, res, next) => {
 };
 
 router.use(requireAuth, resolveNurseryContext);
+
+router.get("/billing-plans", requireNurseryPermission("read:invoice"), async (req, res) => {
+  const rows = await billingPlanDetails(nurseryContext(req).ownerId);
+  res.json(ListBillingPlansResponse.parse(rows));
+});
+
+router.post("/billing-plans", requireNurseryPermission("write:invoice"), async (req, res) => {
+  const body = CreateBillingPlanBody.safeParse(req.body);
+  if (!body.success) return void res.status(400).json({ error: body.error.message });
+  const { ownerId, actorId } = nurseryContext(req);
+  const child = await ownedChild(ownerId, body.data.childId);
+  if (!child) return void res.status(404).json({ error: "Child not found" });
+  if (body.data.discountAmount >= body.data.totalAmount) {
+    return void res.status(400).json({ error: "Discount must be less than total amount" });
+  }
+  const netAmount = Math.round((body.data.totalAmount - body.data.discountAmount) * 1_000) / 1_000;
+  let schedule;
+  try {
+    schedule = computeBillingSchedule({
+      cadence: body.data.cadence,
+      netAmount,
+      installmentCount: body.data.installmentCount,
+      startDate: body.data.startDate,
+      issueLeadDays: body.data.issueLeadDays,
+      customInstallments: body.data.customInstallments,
+    });
+  } catch (error) {
+    return void res.status(400).json({ error: error instanceof Error ? error.message : "Invalid schedule" });
+  }
+  const plan = await db.transaction(async (tx) => {
+    // Serialize plan creation against child deletion. If creation wins, the
+    // deletion route will see the plan and preserve the financial history.
+    await tx.execute(sql`
+      select id from children
+      where id = ${child.id} and owner_id = ${ownerId}
+      for update
+    `);
+    const [lockedChild] = await tx.select().from(childrenTable).where(and(
+      eq(childrenTable.id, child.id),
+      eq(childrenTable.ownerId, ownerId),
+    ));
+    if (!lockedChild) return null;
+    const [created] = await tx.insert(billingPlansTable).values({
+      ownerId,
+      childId: lockedChild.id,
+      guardianId: lockedChild.guardianId,
+      title: body.data.title,
+      cadence: body.data.cadence,
+      totalAmount: body.data.totalAmount,
+      discountAmount: body.data.discountAmount,
+      netAmount,
+      installmentCount: schedule.length,
+      issueLeadDays: body.data.issueLeadDays,
+      status: "active",
+      createdBy: actorId,
+    }).returning();
+    await tx.insert(billingInstallmentsTable).values(schedule.map((item) => ({
+      ownerId,
+      planId: created.id,
+      ...item,
+      status: "scheduled",
+    })));
+    return created;
+  });
+  if (!plan) return void res.status(409).json({ error: "Child was removed before the billing plan could be created" });
+  await auditNurseryOperation(req, "create", "billing-plan", String(plan.id), null, plan as unknown as Record<string, unknown>);
+  const createdDetail = (await billingPlanDetails(ownerId)).find((item) => item.id === plan.id);
+  if (!createdDetail) throw new Error("Created billing plan could not be loaded");
+  res.status(201).json(CreateBillingPlanResponse.parse(createdDetail));
+});
+
+router.patch("/billing-plans/:id/status", requireNurseryPermission("write:invoice"), async (req, res) => {
+  const params = UpdateBillingPlanStatusParams.safeParse(req.params);
+  const body = UpdateBillingPlanStatusBody.safeParse(req.body);
+  if (!params.success || !body.success) {
+    return void res.status(400).json({ error: params.success ? body.error?.message : params.error.message });
+  }
+  const { ownerId } = nurseryContext(req);
+  const transition = await db.transaction(async (tx) => {
+    // Generation takes this same parent-row lock before it locks an
+    // installment, so status changes and issuance are serialized.
+    await tx.execute(sql`
+      select id from billing_plans
+      where id = ${params.data.id} and owner_id = ${ownerId}
+      for update
+    `);
+    const [before] = await tx.select().from(billingPlansTable).where(and(
+      eq(billingPlansTable.id, params.data.id),
+      eq(billingPlansTable.ownerId, ownerId),
+    ));
+    if (!before) return { kind: "missing" as const };
+    const allowed = (before.status === "active" && ["paused", "cancelled"].includes(body.data.status))
+      || (before.status === "paused" && ["active", "cancelled"].includes(body.data.status));
+    if (!allowed) return { kind: "invalid" as const };
+    let nextStatus: "active" | "paused" | "completed" | "cancelled" = body.data.status;
+    if (before.status === "paused" && body.data.status === "active") {
+      const installments = await tx.select({ status: billingInstallmentsTable.status })
+        .from(billingInstallmentsTable)
+        .where(and(
+          eq(billingInstallmentsTable.planId, before.id),
+          eq(billingInstallmentsTable.ownerId, ownerId),
+        ));
+      if (installments.length > 0 && installments.every((item) => item.status === "paid")) {
+        nextStatus = "completed";
+      }
+    }
+    const [row] = await tx.update(billingPlansTable).set({
+      status: nextStatus,
+      updatedAt: new Date(),
+    }).where(and(
+      eq(billingPlansTable.id, before.id),
+      eq(billingPlansTable.ownerId, ownerId),
+      eq(billingPlansTable.status, before.status),
+    )).returning();
+    if (!row) return { kind: "changed" as const };
+    if (nextStatus === "cancelled") {
+      await tx.update(billingInstallmentsTable).set({ status: "cancelled" }).where(and(
+        eq(billingInstallmentsTable.planId, row.id),
+        eq(billingInstallmentsTable.ownerId, ownerId),
+        eq(billingInstallmentsTable.status, "scheduled"),
+      ));
+    }
+    return { kind: "updated" as const, before, row };
+  });
+  if (transition.kind === "missing") return void res.status(404).json({ error: "Billing plan not found" });
+  if (transition.kind === "invalid") return void res.status(409).json({ error: "Invalid billing plan status transition" });
+  if (transition.kind === "changed") return void res.status(409).json({ error: "Billing plan changed concurrently" });
+  await auditNurseryOperation(req, body.data.status, "billing-plan", String(transition.row.id),
+    transition.before as unknown as Record<string, unknown>, transition.row as unknown as Record<string, unknown>);
+  const detail = (await billingPlanDetails(ownerId)).find((item) => item.id === transition.row.id);
+  res.json(UpdateBillingPlanStatusResponse.parse(detail));
+});
+
+router.post("/billing-plans/:id/generate-next", requireNurseryPermission("write:invoice"), async (req, res) => {
+  const params = GenerateNextBillingInstallmentParams.safeParse(req.params);
+  if (!params.success) return void res.status(400).json({ error: params.error.message });
+  const { ownerId, actorId, role } = nurseryContext(req);
+  const [plan] = await db.select().from(billingPlansTable).where(and(
+    eq(billingPlansTable.id, params.data.id),
+    eq(billingPlansTable.ownerId, ownerId),
+  ));
+  if (!plan) return void res.status(404).json({ error: "Billing plan not found" });
+  if (plan.status !== "active") return void res.status(409).json({ error: "Billing plan is not active" });
+  const [next] = await db.select().from(billingInstallmentsTable).where(and(
+    eq(billingInstallmentsTable.planId, plan.id),
+    eq(billingInstallmentsTable.ownerId, ownerId),
+    eq(billingInstallmentsTable.status, "scheduled"),
+  )).orderBy(billingInstallmentsTable.sequence).limit(1);
+  if (!next) return void res.status(404).json({ error: "No scheduled installment found" });
+  const result = await generateBillingInstallment(next.id, ownerId, { id: actorId, role });
+  if (result.kind === "inactive") return void res.status(409).json({ error: "Billing plan is not active" });
+  if (result.kind === "missing") return void res.status(404).json({ error: "Installment not found" });
+  res.json(GenerateNextBillingInstallmentResponse.parse(result));
+});
 
 const serializeContact = (row: typeof childContactsTable.$inferSelect) => {
   const { ownerId: _, createdAt, updatedAt, ...data } = row;
@@ -245,6 +410,7 @@ router.post("/invoices/:id/payments", requireNurseryPermission("write:payment"),
     throw error;
   });
   if (!receipt) return void res.status(409).json({ error: "Invoice balance changed; payment was not recorded" });
+  await refreshBillingProgressForInvoice(params.data.id);
   await auditNurseryOperation(req, "payment", "invoice", String(params.data.id), null, { amount: body.data.amount, method: body.data.method });
   const { ownerId: _, issuedAt, ...data } = receipt;
   res.status(201).json(RecordInvoicePaymentResponse.parse({ ...data, issuedAt: issuedAt.toISOString() }));
@@ -293,6 +459,7 @@ router.post("/invoices/:id/cash-payment", requireNurseryPermission("write:paymen
     throw error;
   });
   if (!payment) return void res.status(409).json({ error: "Invoice balance changed; payment was not recorded" });
+  await refreshBillingProgressForInvoice(params.data.id);
   await auditNurseryOperation(req, "payment", "invoice", String(params.data.id), null, { amount: body.data.amount, method: "cash" });
   res.json(RecordCashInvoicePaymentResponse.parse({
     invoiceId: params.data.id, status: "paid", method: "cash", amount: payment.created.amount,
@@ -327,6 +494,7 @@ router.post("/invoices/:id/refunds", requireNurseryPermission("write:payment"), 
     throw error;
   });
   if (!row) return void res.status(409).json({ error: "Refundable balance changed; refund was not recorded" });
+  await refreshBillingProgressForInvoice(params.data.id);
   await auditNurseryOperation(req, "refund", "invoice", String(params.data.id), null, row as unknown as Record<string, unknown>);
   const { ownerId: _, createdAt, ...data } = row;
   res.status(201).json(RefundInvoicePaymentResponse.parse({ ...data, createdAt: createdAt.toISOString() }));
@@ -354,9 +522,9 @@ router.post("/invoices/:id/cancel", requireNurseryPermission("write:invoice"), a
   });
   if (result === "missing") return void res.status(404).json({ error: "Invoice not found" });
   if (result === "paid" || result === "changed") return void res.status(409).json({ error: "Invoice changed or has a net payment" });
-  const before = await invoiceDetail(ownerId, params.data.id);
+  await refreshBillingProgressForInvoice(params.data.id);
   const detail = await invoiceDetail(ownerId, params.data.id);
-  await auditNurseryOperation(req, "cancel", "invoice", String(params.data.id), before as unknown as Record<string, unknown>, detail as unknown as Record<string, unknown>);
+  await auditNurseryOperation(req, "cancel", "invoice", String(params.data.id), result as unknown as Record<string, unknown>, detail as unknown as Record<string, unknown>);
   res.json(CancelInvoiceResponse.parse(detail));
 });
 
@@ -404,6 +572,13 @@ async function linkedGuardian(req: Parameters<typeof getAuth>[0]) {
   const [guardian] = await db.select().from(guardiansTable).where(eq(guardiansTable.clerkUserId, userId));
   return guardian ?? null;
 }
+
+router.get("/parent/billing-plans", async (req, res) => {
+  const guardian = await linkedGuardian(req);
+  if (!guardian) return void res.status(403).json({ error: "Parent access required" });
+  const rows = await billingPlanDetails(guardian.ownerId, guardian.id);
+  res.json(ListParentBillingPlansResponse.parse(rows));
+});
 
 router.get("/parent/documents", async (req, res) => {
   const guardian = await linkedGuardian(req);

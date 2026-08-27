@@ -12,6 +12,7 @@ import {
 import { sendPaymentConfirmation } from "./notifications";
 import { logger } from "./logger";
 import type { MyFatoorahPaymentStatus } from "./financePayments";
+import { refreshBillingProgressForInvoice } from "./billingPlans";
 
 type PaymentWebhook = {
   Event?: { Code?: number; Name?: string; Reference?: string };
@@ -125,6 +126,9 @@ async function markPaid(
     return { kind: "paid" as const, invoice: updated };
   });
   if (outcome.kind === "replay" || outcome.kind === "missing") return;
+  if (outcome.kind === "paid" || outcome.kind === "duplicate") {
+    await refreshBillingProgressForInvoice(outcome.invoice.id);
+  }
 
   const [guardian] = await db.select().from(guardiansTable)
     .where(eq(guardiansTable.id, outcome.invoice.guardianId)).limit(1);

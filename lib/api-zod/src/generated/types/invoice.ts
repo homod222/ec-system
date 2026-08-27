@@ -30,4 +30,8 @@ export interface Invoice {
   paymentMethod?: InvoicePaymentMethod;
   /** @nullable */
   paymentReference?: string | null;
+  /** @nullable */
+  billingPlanId?: number | null;
+  /** @nullable */
+  installmentId?: number | null;
 }

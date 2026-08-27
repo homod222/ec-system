@@ -3,6 +3,7 @@ import { logger } from "./lib/logger";
 import { startScheduledDueReminders } from "./lib/scheduledDueReminders";
 import { runApplicationMigrations } from "./lib/applicationMigrations";
 import { startPaymentReconciliationScheduler } from "./lib/paymentReconciliationScheduler";
+import { startBillingPlanScheduler } from "./lib/billingPlanScheduler";
 
 const rawPort = process.env["PORT"];
 
@@ -28,6 +29,7 @@ async function start(): Promise<void> {
     logger.info({ port }, "Server listening");
     startScheduledDueReminders();
     startPaymentReconciliationScheduler();
+    startBillingPlanScheduler();
   });
 }
 

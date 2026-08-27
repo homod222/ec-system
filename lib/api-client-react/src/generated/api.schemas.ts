@@ -589,6 +589,140 @@ export interface Invoice {
   paymentMethod?: InvoicePaymentMethod;
   /** @nullable */
   paymentReference?: string | null;
+  /** @nullable */
+  billingPlanId?: number | null;
+  /** @nullable */
+  installmentId?: number | null;
+}
+
+export type BillingInstallmentStatus =
+  (typeof BillingInstallmentStatus)[keyof typeof BillingInstallmentStatus];
+
+export const BillingInstallmentStatus = {
+  scheduled: "scheduled",
+  issued: "issued",
+  paid: "paid",
+  partial: "partial",
+  overdue: "overdue",
+  cancelled: "cancelled",
+} as const;
+
+export interface BillingInstallment {
+  id: number;
+  sequence: number;
+  amount: number;
+  issueDate: string;
+  dueDate: string;
+  status: BillingInstallmentStatus;
+  /** @nullable */
+  invoiceId: number | null;
+  /** @nullable */
+  invoiceNumber?: string | null;
+}
+
+export type BillingPlanCadence =
+  (typeof BillingPlanCadence)[keyof typeof BillingPlanCadence];
+
+export const BillingPlanCadence = {
+  once: "once",
+  monthly: "monthly",
+  quarterly: "quarterly",
+  custom: "custom",
+} as const;
+
+export type BillingPlanStatus =
+  (typeof BillingPlanStatus)[keyof typeof BillingPlanStatus];
+
+export const BillingPlanStatus = {
+  active: "active",
+  paused: "paused",
+  completed: "completed",
+  cancelled: "cancelled",
+} as const;
+
+export interface BillingPlan {
+  id: number;
+  childId: number;
+  childName: string;
+  guardianName: string;
+  title: string;
+  cadence: BillingPlanCadence;
+  totalAmount: number;
+  discountAmount: number;
+  netAmount: number;
+  installmentCount: number;
+  issueLeadDays: number;
+  status: BillingPlanStatus;
+  collectedAmount: number;
+  remainingAmount: number;
+  installments: BillingInstallment[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CustomInstallmentInput {
+  /** @exclusiveMinimum 0 */
+  amount: number;
+  dueDate: string;
+  /** @nullable */
+  issueDate?: string | null;
+}
+
+export type BillingPlanInputCadence =
+  (typeof BillingPlanInputCadence)[keyof typeof BillingPlanInputCadence];
+
+export const BillingPlanInputCadence = {
+  once: "once",
+  monthly: "monthly",
+  quarterly: "quarterly",
+  custom: "custom",
+} as const;
+
+export interface BillingPlanInput {
+  childId: number;
+  /**
+   * @minLength 1
+   * @maxLength 120
+   */
+  title: string;
+  cadence: BillingPlanInputCadence;
+  /** @exclusiveMinimum 0 */
+  totalAmount: number;
+  /** @minimum 0 */
+  discountAmount: number;
+  /**
+   * @minimum 1
+   * @maximum 36
+   */
+  installmentCount: number;
+  startDate: string;
+  /**
+   * @minimum 0
+   * @maximum 60
+   */
+  issueLeadDays: number;
+  /** @maxItems 36 */
+  customInstallments?: CustomInstallmentInput[];
+}
+
+export type BillingPlanStatusInputStatus =
+  (typeof BillingPlanStatusInputStatus)[keyof typeof BillingPlanStatusInputStatus];
+
+export const BillingPlanStatusInputStatus = {
+  active: "active",
+  paused: "paused",
+  cancelled: "cancelled",
+} as const;
+
+export interface BillingPlanStatusInput {
+  status: BillingPlanStatusInputStatus;
+}
+
+export interface BillingPlanGenerationResult {
+  planId: number;
+  installmentId: number;
+  invoiceId: number;
+  generated: boolean;
 }
 
 export type InvoiceLineType =
@@ -756,6 +890,7 @@ export interface InvoiceCheckoutSessionInput {
 export interface InvoiceCheckoutSession {
   url: string;
 }
+
 export type InvoiceReminderResultStatus =
   (typeof InvoiceReminderResultStatus)[keyof typeof InvoiceReminderResultStatus];
 

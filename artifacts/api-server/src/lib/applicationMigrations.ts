@@ -35,6 +35,8 @@ export async function runApplicationMigrations(): Promise<void> {
       ADD COLUMN IF NOT EXISTS issued_at timestamptz,
       ADD COLUMN IF NOT EXISTS cancelled_at timestamptz,
       ADD COLUMN IF NOT EXISTS cancellation_reason text,
+      ADD COLUMN IF NOT EXISTS billing_plan_id integer,
+      ADD COLUMN IF NOT EXISTS installment_id integer,
       ADD COLUMN IF NOT EXISTS payment_method text,
       ADD COLUMN IF NOT EXISTS payment_reference text,
       ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now(),
@@ -219,6 +221,35 @@ export async function runApplicationMigrations(): Promise<void> {
       calendar jsonb NOT NULL DEFAULT '{}'::jsonb, updated_by text NOT NULL,
       updated_at timestamptz NOT NULL DEFAULT now()
     );
+    CREATE TABLE IF NOT EXISTS billing_plans (
+      id serial PRIMARY KEY,
+      owner_id text NOT NULL,
+      child_id integer NOT NULL,
+      guardian_id integer NOT NULL,
+      title text NOT NULL,
+      cadence text NOT NULL,
+      total_amount numeric(12,3) NOT NULL,
+      discount_amount numeric(12,3) NOT NULL DEFAULT 0,
+      net_amount numeric(12,3) NOT NULL,
+      installment_count integer NOT NULL,
+      issue_lead_days integer NOT NULL DEFAULT 7,
+      status text NOT NULL DEFAULT 'active',
+      created_by text NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS billing_installments (
+      id serial PRIMARY KEY,
+      owner_id text NOT NULL,
+      plan_id integer NOT NULL,
+      sequence integer NOT NULL,
+      amount numeric(12,3) NOT NULL,
+      issue_date date NOT NULL,
+      due_date date NOT NULL,
+      status text NOT NULL DEFAULT 'scheduled',
+      invoice_id integer,
+      generated_at timestamptz
+    );
     CREATE TABLE IF NOT EXISTS progress_reports (
       id serial PRIMARY KEY, owner_id text NOT NULL DEFAULT '__legacy__', child_id integer NOT NULL,
       title text NOT NULL, summary text NOT NULL, period text NOT NULL, educator_name text NOT NULL,
@@ -322,6 +353,13 @@ export async function runApplicationMigrations(): Promise<void> {
     CREATE UNIQUE INDEX IF NOT EXISTS invoice_receipts_owner_payment_unique ON invoice_receipts (owner_id, payment_id);
     CREATE UNIQUE INDEX IF NOT EXISTS invoice_receipts_owner_number_unique ON invoice_receipts (owner_id, receipt_number);
     CREATE UNIQUE INDEX IF NOT EXISTS nursery_settings_owner_unique ON nursery_settings (owner_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS billing_installments_plan_sequence_unique
+      ON billing_installments (plan_id, sequence);
+    CREATE UNIQUE INDEX IF NOT EXISTS billing_installments_invoice_unique
+      ON billing_installments (invoice_id) WHERE invoice_id IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS billing_plans_owner_idx ON billing_plans (owner_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS billing_installments_generation_idx
+      ON billing_installments (status, issue_date);
 
     COMMIT;
   `);
