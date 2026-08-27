@@ -4,4 +4,3 @@
 - [Rebase tool can silently drop content](rebase-tool-silent-content-drop.md) — "no conflict markers" after continueMergeResolution isn't proof the merge is correct; verify against source commits.
 - [Ambiguous tenant ownership](ambiguous-tenant-ownership.md) — quarantine legacy rows when ownership is ambiguous; never expose them through a shared fallback.
 - [WhatsApp reminder delivery semantics](whatsapp-reminder-delivery-semantics.md) — use durable stage claims and leased recovery; Meta sends lack an idempotency key.
-- [Drizzle push false-positive truncation prompts](drizzle-push-constraint-name-prompts.md) — a matching unique index may not satisfy a differently named schema constraint.

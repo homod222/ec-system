@@ -275,6 +275,16 @@ export interface ApplicationDocumentInput {
   objectPath: string;
 }
 
+export interface ParentDocument {
+  id: number;
+  applicationId: number;
+  childId: number;
+  name: string;
+  contentType: string;
+  size: number;
+  createdAt: string;
+}
+
 export interface UploadUrlRequest {
   /** @minimum 1 */
   applicationId: number;
@@ -375,6 +385,31 @@ export interface StaffMember {
   avatarUrl?: string | null;
 }
 
+export type StaffInputStatus =
+  (typeof StaffInputStatus)[keyof typeof StaffInputStatus];
+
+export const StaffInputStatus = {
+  present: "present",
+  absent: "absent",
+  leave: "leave",
+} as const;
+
+export interface StaffInput {
+  /** @minLength 1 */
+  name: string;
+  /** @minLength 1 */
+  role: string;
+  /** @minLength 5 */
+  phone: string;
+  status: StaffInputStatus;
+  /** @nullable */
+  email?: string | null;
+  /** @nullable */
+  jobTitle?: string | null;
+  /** @nullable */
+  hireDate?: string | null;
+}
+
 export type AttendanceRecordStatus =
   (typeof AttendanceRecordStatus)[keyof typeof AttendanceRecordStatus];
 
@@ -423,6 +458,17 @@ export interface AttendanceRecord {
   recordedBy?: string | null;
   /** @nullable */
   note?: string | null;
+  /** @nullable */
+  pickupName?: string | null;
+  /** @nullable */
+  pickupIdentity?: string | null;
+  /** @nullable */
+  correctedAt?: string | null;
+  /** @nullable */
+  correctionReason?: string | null;
+  pickupOverride?: boolean;
+  /** @nullable */
+  pickupOverrideReason?: string | null;
 }
 
 export type AttendanceInputStatus =
@@ -469,6 +515,15 @@ export interface AttendanceInput {
   source?: AttendanceInputSource;
   /** @nullable */
   note?: string | null;
+  /** @nullable */
+  pickupName?: string | null;
+  /** @nullable */
+  pickupIdentity?: string | null;
+  /** @nullable */
+  correctionReason?: string | null;
+  pickupOverride?: boolean;
+  /** @nullable */
+  pickupOverrideReason?: string | null;
 }
 
 export interface FinanceMonth {
@@ -488,9 +543,13 @@ export interface FinanceSummary {
 export type InvoiceStatus = (typeof InvoiceStatus)[keyof typeof InvoiceStatus];
 
 export const InvoiceStatus = {
-  paid: "paid",
+  draft: "draft",
+  issued: "issued",
   pending: "pending",
+  partial: "partial",
+  paid: "paid",
   overdue: "overdue",
+  cancelled: "cancelled",
 } as const;
 
 /**
@@ -503,6 +562,9 @@ export const InvoicePaymentMethod = {
   payment_link: "payment_link",
   knet: "knet",
   cash: "cash",
+  bank_transfer: "bank_transfer",
+  cheque: "cheque",
+  card_terminal: "card_terminal",
 } as const;
 
 export interface Invoice {
@@ -527,6 +589,121 @@ export interface Invoice {
   paymentMethod?: InvoicePaymentMethod;
   /** @nullable */
   paymentReference?: string | null;
+}
+
+export type InvoiceLineType =
+  (typeof InvoiceLineType)[keyof typeof InvoiceLineType];
+
+export const InvoiceLineType = {
+  fee: "fee",
+  discount: "discount",
+  addon: "addon",
+} as const;
+
+export interface InvoiceLine {
+  id: number;
+  type: InvoiceLineType;
+  description: string;
+  quantity: number;
+  unitAmount: number;
+  amount: number;
+}
+
+export type InvoiceLineInputType =
+  (typeof InvoiceLineInputType)[keyof typeof InvoiceLineInputType];
+
+export const InvoiceLineInputType = {
+  fee: "fee",
+  discount: "discount",
+  addon: "addon",
+} as const;
+
+export interface InvoiceLineInput {
+  type: InvoiceLineInputType;
+  /** @minLength 1 */
+  description: string;
+  /** @exclusiveMinimum 0 */
+  quantity: number;
+  /** @minimum 0 */
+  unitAmount: number;
+}
+
+export type InvoiceInputStatus =
+  (typeof InvoiceInputStatus)[keyof typeof InvoiceInputStatus];
+
+export const InvoiceInputStatus = {
+  draft: "draft",
+  issued: "issued",
+} as const;
+
+export interface InvoiceInput {
+  childId: number;
+  dueDate: string;
+  status?: InvoiceInputStatus;
+  /** @minItems 1 */
+  lines: InvoiceLineInput[];
+}
+
+export type InvoiceDetail = Invoice & {
+  lines: InvoiceLine[];
+  paidAmount: number;
+  refundedAmount: number;
+  balance: number;
+};
+
+export type InternalPaymentInputMethod =
+  (typeof InternalPaymentInputMethod)[keyof typeof InternalPaymentInputMethod];
+
+export const InternalPaymentInputMethod = {
+  cash: "cash",
+  bank_transfer: "bank_transfer",
+  cheque: "cheque",
+  card_terminal: "card_terminal",
+} as const;
+
+export interface InternalPaymentInput {
+  method: InternalPaymentInputMethod;
+  /** @exclusiveMinimum 0 */
+  amount: number;
+  /** @nullable */
+  reference?: string | null;
+  /** @nullable */
+  note?: string | null;
+}
+
+export interface RefundInput {
+  /** @nullable */
+  paymentId?: number | null;
+  /** @exclusiveMinimum 0 */
+  amount: number;
+  /** @minLength 1 */
+  reason: string;
+}
+
+export interface InvoiceRefund {
+  id: number;
+  invoiceId: number;
+  /** @nullable */
+  paymentId?: number | null;
+  amount: number;
+  reason: string;
+  recordedBy: string;
+  createdAt: string;
+}
+
+export interface CancelInvoiceInput {
+  /** @minLength 1 */
+  reason: string;
+}
+
+export interface Receipt {
+  id: number;
+  invoiceId: number;
+  paymentId: number;
+  receiptNumber: string;
+  amount: number;
+  issuedBy: string;
+  issuedAt: string;
 }
 
 export interface CashPaymentInput {
@@ -755,6 +932,113 @@ export interface ChildRecordInput {
   occurredOn?: string | null;
   confidential?: boolean;
   data?: ChildRecordInputData;
+}
+
+export type ChildContactType =
+  (typeof ChildContactType)[keyof typeof ChildContactType];
+
+export const ChildContactType = {
+  guardian: "guardian",
+  emergency: "emergency",
+  authorized_pickup: "authorized_pickup",
+  consent: "consent",
+  invitation: "invitation",
+} as const;
+
+export type ChildContactData = { [key: string]: unknown };
+
+export interface ChildContact {
+  id: number;
+  childId: number;
+  type: ChildContactType;
+  name: string;
+  /** @nullable */
+  relationship?: string | null;
+  /** @nullable */
+  phone?: string | null;
+  /** @nullable */
+  email?: string | null;
+  /** @nullable */
+  identityNumber?: string | null;
+  status: string;
+  primary: boolean;
+  data: ChildContactData;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type ChildContactInputType =
+  (typeof ChildContactInputType)[keyof typeof ChildContactInputType];
+
+export const ChildContactInputType = {
+  guardian: "guardian",
+  emergency: "emergency",
+  authorized_pickup: "authorized_pickup",
+  consent: "consent",
+  invitation: "invitation",
+} as const;
+
+export type ChildContactInputData = { [key: string]: unknown };
+
+export interface ChildContactInput {
+  type: ChildContactInputType;
+  /** @minLength 1 */
+  name: string;
+  /** @nullable */
+  relationship?: string | null;
+  /** @nullable */
+  phone?: string | null;
+  /** @nullable */
+  email?: string | null;
+  /** @nullable */
+  identityNumber?: string | null;
+  status?: string;
+  primary?: boolean;
+  data?: ChildContactInputData;
+}
+
+export type NurserySettingsCurrency =
+  (typeof NurserySettingsCurrency)[keyof typeof NurserySettingsCurrency];
+
+export const NurserySettingsCurrency = {
+  KWD: "KWD",
+} as const;
+
+export type NurserySettingsWorkingHours = { [key: string]: unknown };
+
+export type NurserySettingsCalendar = { [key: string]: unknown };
+
+export interface NurserySettings {
+  id: number;
+  nurseryName: string;
+  timezone: string;
+  currency: NurserySettingsCurrency;
+  workingHours: NurserySettingsWorkingHours;
+  calendar: NurserySettingsCalendar;
+  updatedBy: string;
+  updatedAt: string;
+}
+
+export type NurserySettingsInputCurrency =
+  (typeof NurserySettingsInputCurrency)[keyof typeof NurserySettingsInputCurrency];
+
+export const NurserySettingsInputCurrency = {
+  KWD: "KWD",
+} as const;
+
+export type NurserySettingsInputWorkingHours = { [key: string]: unknown };
+
+export type NurserySettingsInputCalendar = { [key: string]: unknown };
+
+export interface NurserySettingsInput {
+  /** @minLength 1 */
+  nurseryName: string;
+  /** @minLength 1 */
+  timezone: string;
+  currency: NurserySettingsInputCurrency;
+  workingHours: NurserySettingsInputWorkingHours;
+  calendar: NurserySettingsInputCalendar;
 }
 
 export type StaffAttendanceStatus =
@@ -1036,9 +1320,13 @@ export type ListInvoicesStatus =
   (typeof ListInvoicesStatus)[keyof typeof ListInvoicesStatus];
 
 export const ListInvoicesStatus = {
-  paid: "paid",
+  draft: "draft",
+  issued: "issued",
   pending: "pending",
+  partial: "partial",
+  paid: "paid",
   overdue: "overdue",
+  cancelled: "cancelled",
 } as const;
 
 export type ListParentAttendanceParams = {
@@ -1051,6 +1339,12 @@ export type ListParentProgressReportsParams = {
 
 export type ListParentActivitiesParams = {
   childId?: OptionalChildIdParameter;
+};
+
+export type ListAttendanceHistoryParams = {
+  childId?: number;
+  dateFrom?: string;
+  dateTo?: string;
 };
 
 export type ListStaffAttendanceParams = {

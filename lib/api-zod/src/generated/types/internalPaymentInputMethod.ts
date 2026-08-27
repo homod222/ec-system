@@ -6,15 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-/**
- * @nullable
- */
-export type InvoicePaymentMethod = typeof InvoicePaymentMethod[keyof typeof InvoicePaymentMethod] | null;
+export type InternalPaymentInputMethod = typeof InternalPaymentInputMethod[keyof typeof InternalPaymentInputMethod];
 
 
-export const InvoicePaymentMethod = {
-  payment_link: 'payment_link',
-  knet: 'knet',
+export const InternalPaymentInputMethod = {
   cash: 'cash',
   bank_transfer: 'bank_transfer',
   cheque: 'cheque',

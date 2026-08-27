@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
-import { useGetTodayAttendance, useListStaffAttendance, useListStaff, useRecordAttendance, useRecordStaffAttendance, getGetTodayAttendanceQueryKey, getListStaffAttendanceQueryKey } from '@workspace/api-client-react';
+import { useListAttendanceHistory, useListChildren, useListStaffAttendance, useListStaff, useRecordAttendance, useRecordStaffAttendance, getGetTodayAttendanceQueryKey, getListAttendanceHistoryQueryKey, getListStaffAttendanceQueryKey } from '@workspace/api-client-react';
+import type { AttendanceRecord } from '@workspace/api-client-react';
 import { Shell, Button, Pill, Avatar, Skeleton, QueryState, PageHeader } from '../../App';
 import { CalendarCheck, Users, Search, Activity, UserCheck, Plus, X } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -7,9 +8,25 @@ import { useQueryClient } from '@tanstack/react-query';
 export function AttendanceExpanded() {
   const [tab, setTab] = useState<'children' | 'staff'>('children');
   const today = new Date().toISOString().slice(0, 10);
+  const [selectedDate, setSelectedDate] = useState(today);
   
-  const childrenQuery = useGetTodayAttendance();
-  const childrenData = childrenQuery.data || [];
+  const historyQuery = useListAttendanceHistory({ dateFrom: selectedDate, dateTo: selectedDate });
+  const rosterQuery = useListChildren();
+  const displayedChildren = useMemo<AttendanceRecord[]>(() => {
+    const history = historyQuery.data || [];
+    if (selectedDate !== today) return history;
+    const byChild = new Map(history.map(record => [record.childId, record]));
+    return (rosterQuery.data || []).filter(child => child.status === 'active').map(child => byChild.get(child.id) || {
+      id: 0,
+      childId: child.id,
+      childName: child.fullName,
+      date: selectedDate,
+      status: 'absent',
+      checkIn: null,
+      checkOut: null,
+      source: 'manual',
+    });
+  }, [historyQuery.data, rosterQuery.data, selectedDate, today]);
   
   const staffQuery = useListStaffAttendance({ dateFrom: today, dateTo: today });
   const staffData = staffQuery.data || [];
@@ -22,21 +39,22 @@ export function AttendanceExpanded() {
   const recordChild = useRecordAttendance();
   const qc = useQueryClient();
 
-  const setChildStatus = (record: (typeof childrenData)[number], status: 'present' | 'absent' | 'late' | 'excused', earlyDeparture = false) => {
+  const setChildStatus = (record: (typeof displayedChildren)[number], status: 'present' | 'absent' | 'late' | 'excused', earlyDeparture = false) => {
     const now = new Date().toISOString();
     recordChild.mutate({
       data: {
         childId: record.childId,
-        date: today,
+        date: selectedDate,
         status,
         checkIn: status === 'present' || status === 'late' ? (record.checkIn || now) : null,
         checkOut: earlyDeparture ? now : record.checkOut,
         departureType: earlyDeparture ? 'early' : record.departureType,
         source: 'manual',
         note: record.note || null,
+        correctionReason: selectedDate !== today ? 'تصحيح سجل تاريخي من لوحة الحضور' : null,
       },
     }, {
-      onSuccess: () => qc.invalidateQueries({ queryKey: getGetTodayAttendanceQueryKey() }),
+      onSuccess: () => { qc.invalidateQueries({ queryKey: getGetTodayAttendanceQueryKey() }); qc.invalidateQueries({ queryKey: getListAttendanceHistoryQueryKey() }); },
     });
   };
 
@@ -57,6 +75,7 @@ export function AttendanceExpanded() {
             <UserCheck size={18} /> سجل الكادر
           </Button>
         </div>
+        {tab === 'children' && <label className="text-sm font-bold">تاريخ السجل<input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} className="mr-3 rounded-xl border border-input bg-card px-3 py-2" /></label>}
         {tab === 'staff' && (
           <Button data-testid="button-add-staff-attendance" onClick={() => setShowStaffForm(true)}>
             <Plus size={18} />تسجيل حضور يدوي
@@ -65,12 +84,12 @@ export function AttendanceExpanded() {
       </div>
 
       {tab === 'children' && (
-        <QueryState loading={childrenQuery.isLoading} error={childrenQuery.isError} empty={!childrenData.length} onRetry={() => childrenQuery.refetch()}>
+        <QueryState loading={historyQuery.isLoading || (selectedDate === today && rosterQuery.isLoading)} error={historyQuery.isError || (selectedDate === today && rosterQuery.isError)} empty={!displayedChildren.length} onRetry={() => { historyQuery.refetch(); if (selectedDate === today) rosterQuery.refetch(); }}>
           <div className="overflow-hidden rounded-[1.5rem] border border-border bg-card shadow-sm">
             <div className="hidden grid-cols-[1.3fr_.7fr_.8fr_2fr] gap-4 border-b border-border bg-secondary/30 px-6 py-4 text-xs font-bold text-muted-foreground md:grid">
               <span>الطفل</span><span>الحالة</span><span>وقت الدخول</span><span>التسجيل اليدوي</span>
             </div>
-            {childrenData.map((record) => (
+            {displayedChildren.map((record) => (
               <div key={record.childId} data-testid={`row-attendance-child-${record.childId}`} className="grid gap-3 border-b border-border px-6 py-5 last:border-0 hover:bg-muted/50 transition-colors md:grid-cols-[1.3fr_.7fr_.8fr_2fr] md:items-center md:gap-4">
                 <div className="flex items-center gap-4">
                   <Avatar name={record.childName} className="h-10 w-10" />
@@ -83,11 +102,12 @@ export function AttendanceExpanded() {
                 </div>
                 <div className="text-sm font-medium text-muted-foreground">{record.checkIn ? new Date(record.checkIn).toLocaleTimeString('ar-SA') : '-'}</div>
                 <div className="flex flex-wrap gap-1.5">
-                  <button data-testid={`button-child-present-${record.childId}`} onClick={() => setChildStatus(record, 'present')} disabled={recordChild.isPending} className="rounded-lg bg-emerald-100 px-2.5 py-1.5 text-xs font-bold text-emerald-800">حاضر</button>
+                   <button data-testid={`button-child-present-${record.childId}`} onClick={() => setChildStatus(record, 'present')} disabled={recordChild.isPending} className="rounded-lg bg-emerald-100 px-2.5 py-1.5 text-xs font-bold text-emerald-800">حاضر</button>
                   <button data-testid={`button-child-late-${record.childId}`} onClick={() => setChildStatus(record, 'late')} disabled={recordChild.isPending} className="rounded-lg bg-amber-100 px-2.5 py-1.5 text-xs font-bold text-amber-800">متأخر</button>
                   <button data-testid={`button-child-absent-${record.childId}`} onClick={() => setChildStatus(record, 'absent')} disabled={recordChild.isPending} className="rounded-lg bg-red-100 px-2.5 py-1.5 text-xs font-bold text-red-800">غائب</button>
                   <button data-testid={`button-child-excused-${record.childId}`} onClick={() => setChildStatus(record, 'excused')} disabled={recordChild.isPending} className="rounded-lg bg-sky-100 px-2.5 py-1.5 text-xs font-bold text-sky-800">بعذر</button>
                   <button data-testid={`button-child-early-${record.childId}`} onClick={() => setChildStatus(record, record.status, true)} disabled={recordChild.isPending || !record.checkIn} className="rounded-lg bg-orange-100 px-2.5 py-1.5 text-xs font-bold text-orange-800 disabled:opacity-40">انصراف مبكر</button>
+                   <button onClick={() => { const pickupName=window.prompt('اسم المستلم'); if (pickupName) { const pickupIdentity=window.prompt('الرقم المدني (اختياري)'); const pickupOverride=window.confirm('استخدمي التجاوز فقط عند عدم تطابق المستلم مع قائمة المصرح لهم. هل يلزم التجاوز؟'); const pickupOverrideReason=pickupOverride ? window.prompt('سبب التجاوز (مطلوب)') : null; if (pickupOverride && !pickupOverrideReason) return; const correctionReason=selectedDate !== today ? window.prompt('سبب التعديل للسجل التاريخي') : null; recordChild.mutate({data:{childId:record.childId,date:selectedDate,status:record.status,checkIn:record.checkIn,checkOut:new Date().toISOString(),departureType:'normal',source:'manual',note:record.note||null,pickupName,pickupIdentity:pickupIdentity||null,correctionReason:correctionReason||null,pickupOverride,pickupOverrideReason}},{onSuccess:()=>{qc.invalidateQueries({queryKey:getGetTodayAttendanceQueryKey()});qc.invalidateQueries({queryKey:getListAttendanceHistoryQueryKey()})}}) }}} disabled={recordChild.isPending || !record.checkIn} className="rounded-lg bg-primary/10 px-2.5 py-1.5 text-xs font-bold text-primary disabled:opacity-40">تسجيل المستلم</button>
                 </div>
               </div>
             ))}

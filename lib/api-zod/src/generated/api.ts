@@ -624,9 +624,29 @@ export const ListStaffResponseItem = zod.object({
   avatarUrl: zod.string().nullish(),
 });
 export const ListStaffResponse = zod.array(ListStaffResponseItem);
+export const createStaffBodyPhoneMin = 5;
+export const CreateStaffBody = zod.object({
+  name: zod.string().min(1),
+  role: zod.string().min(1),
+  phone: zod.string().min(createStaffBodyPhoneMin),
+  status: zod.enum(["present", "absent", "leave"]),
+  email: zod.string().nullish(),
+  jobTitle: zod.string().nullish(),
+  hireDate: zod.string().nullish(),
+});
+export const CreateStaffResponse = zod.object({
+  id: zod.number(),
+  name: zod.string(),
+  role: zod.string(),
+  phone: zod.string(),
+  status: zod.enum(["present", "absent", "leave"]),
+  attendanceRate: zod.number(),
+  avatarUrl: zod.string().nullish(),
+});
 /**
  * @summary Get today's child attendance
  */
+export const getTodayAttendanceResponsePickupOverrideDefault = false;
 export const GetTodayAttendanceResponseItem = zod.object({
   id: zod.number(),
   childId: zod.number(),
@@ -641,6 +661,14 @@ export const GetTodayAttendanceResponseItem = zod.object({
   source: zod.enum(["manual", "device", "import"]),
   recordedBy: zod.string().nullish(),
   note: zod.string().nullish(),
+  pickupName: zod.string().nullish(),
+  pickupIdentity: zod.string().nullish(),
+  correctedAt: zod.string().nullish(),
+  correctionReason: zod.string().nullish(),
+  pickupOverride: zod
+    .boolean()
+    .default(getTodayAttendanceResponsePickupOverrideDefault),
+  pickupOverrideReason: zod.string().nullish(),
 });
 export const GetTodayAttendanceResponse = zod.array(
   GetTodayAttendanceResponseItem,
@@ -649,6 +677,7 @@ export const GetTodayAttendanceResponse = zod.array(
  * @summary Record child attendance
  */
 export const recordAttendanceBodySourceDefault = `manual`;
+export const recordAttendanceBodyPickupOverrideDefault = false;
 export const RecordAttendanceBody = zod.object({
   childId: zod.number(),
   date: zod.string(),
@@ -662,7 +691,15 @@ export const RecordAttendanceBody = zod.object({
     .enum(["manual", "device", "import"])
     .default(recordAttendanceBodySourceDefault),
   note: zod.string().nullish(),
+  pickupName: zod.string().nullish(),
+  pickupIdentity: zod.string().nullish(),
+  correctionReason: zod.string().nullish(),
+  pickupOverride: zod
+    .boolean()
+    .default(recordAttendanceBodyPickupOverrideDefault),
+  pickupOverrideReason: zod.string().nullish(),
 });
+export const recordAttendanceResponsePickupOverrideDefault = false;
 export const RecordAttendanceResponse = zod.object({
   id: zod.number(),
   childId: zod.number(),
@@ -677,6 +714,14 @@ export const RecordAttendanceResponse = zod.object({
   source: zod.enum(["manual", "device", "import"]),
   recordedBy: zod.string().nullish(),
   note: zod.string().nullish(),
+  pickupName: zod.string().nullish(),
+  pickupIdentity: zod.string().nullish(),
+  correctedAt: zod.string().nullish(),
+  correctionReason: zod.string().nullish(),
+  pickupOverride: zod
+    .boolean()
+    .default(recordAttendanceResponsePickupOverrideDefault),
+  pickupOverrideReason: zod.string().nullish(),
 });
 /**
  * @summary Get finance summary
@@ -698,7 +743,17 @@ export const GetFinanceSummaryResponse = zod.object({
  * @summary List recent invoices
  */
 export const ListInvoicesQueryParams = zod.object({
-  status: zod.enum(["paid", "pending", "overdue"]).optional(),
+  status: zod
+    .enum([
+      "draft",
+      "issued",
+      "pending",
+      "partial",
+      "paid",
+      "overdue",
+      "cancelled",
+    ])
+    .optional(),
 });
 export const ListInvoicesResponseItem = zod.object({
   id: zod.number(),
@@ -707,7 +762,15 @@ export const ListInvoicesResponseItem = zod.object({
   childName: zod.string(),
   amount: zod.number(),
   dueDate: zod.string(),
-  status: zod.enum(["paid", "pending", "overdue"]),
+  status: zod.enum([
+    "draft",
+    "issued",
+    "pending",
+    "partial",
+    "paid",
+    "overdue",
+    "cancelled",
+  ]),
   paidAt: zod.string().nullable(),
   lastPaymentStatus: zod.string().nullable(),
   lastPaymentError: zod.string().nullish(),
@@ -718,12 +781,268 @@ export const ListInvoicesResponseItem = zod.object({
       zod.literal("payment_link"),
       zod.literal("knet"),
       zod.literal("cash"),
+      zod.literal("bank_transfer"),
+      zod.literal("cheque"),
+      zod.literal("card_terminal"),
       zod.literal(null),
     ])
     .nullish(),
   paymentReference: zod.string().nullish(),
 });
 export const ListInvoicesResponse = zod.array(ListInvoicesResponseItem);
+/**
+ * @summary Create a detailed internal invoice
+ */
+export const createInvoiceBodyStatusDefault = `draft`;
+export const createInvoiceBodyLinesItemQuantityExclusiveMin = 0;
+export const createInvoiceBodyLinesItemUnitAmountMin = 0;
+export const CreateInvoiceBody = zod.object({
+  childId: zod.number(),
+  dueDate: zod.string(),
+  status: zod.enum(["draft", "issued"]).default(createInvoiceBodyStatusDefault),
+  lines: zod
+    .array(
+      zod.object({
+        type: zod.enum(["fee", "discount", "addon"]),
+        description: zod.string().min(1),
+        quantity: zod
+          .number()
+          .gt(createInvoiceBodyLinesItemQuantityExclusiveMin),
+        unitAmount: zod.number().min(createInvoiceBodyLinesItemUnitAmountMin),
+      }),
+    )
+    .min(1),
+});
+export const CreateInvoiceResponse = zod
+  .object({
+    id: zod.number(),
+    invoiceNumber: zod.string(),
+    guardianName: zod.string(),
+    childName: zod.string(),
+    amount: zod.number(),
+    dueDate: zod.string(),
+    status: zod.enum([
+      "draft",
+      "issued",
+      "pending",
+      "partial",
+      "paid",
+      "overdue",
+      "cancelled",
+    ]),
+    paidAt: zod.string().nullable(),
+    lastPaymentStatus: zod.string().nullable(),
+    lastPaymentError: zod.string().nullish(),
+    chargedCurrency: zod.string().nullish(),
+    chargedAmount: zod.number().nullish(),
+    paymentMethod: zod
+      .union([
+        zod.literal("payment_link"),
+        zod.literal("knet"),
+        zod.literal("cash"),
+        zod.literal("bank_transfer"),
+        zod.literal("cheque"),
+        zod.literal("card_terminal"),
+        zod.literal(null),
+      ])
+      .nullish(),
+    paymentReference: zod.string().nullish(),
+  })
+  .and(
+    zod.object({
+      lines: zod.array(
+        zod.object({
+          id: zod.number(),
+          type: zod.enum(["fee", "discount", "addon"]),
+          description: zod.string(),
+          quantity: zod.number(),
+          unitAmount: zod.number(),
+          amount: zod.number(),
+        }),
+      ),
+      paidAmount: zod.number(),
+      refundedAmount: zod.number(),
+      balance: zod.number(),
+    }),
+  );
+export const GetInvoiceParams = zod.object({
+  id: zod.coerce.number(),
+});
+export const GetInvoiceResponse = zod
+  .object({
+    id: zod.number(),
+    invoiceNumber: zod.string(),
+    guardianName: zod.string(),
+    childName: zod.string(),
+    amount: zod.number(),
+    dueDate: zod.string(),
+    status: zod.enum([
+      "draft",
+      "issued",
+      "pending",
+      "partial",
+      "paid",
+      "overdue",
+      "cancelled",
+    ]),
+    paidAt: zod.string().nullable(),
+    lastPaymentStatus: zod.string().nullable(),
+    lastPaymentError: zod.string().nullish(),
+    chargedCurrency: zod.string().nullish(),
+    chargedAmount: zod.number().nullish(),
+    paymentMethod: zod
+      .union([
+        zod.literal("payment_link"),
+        zod.literal("knet"),
+        zod.literal("cash"),
+        zod.literal("bank_transfer"),
+        zod.literal("cheque"),
+        zod.literal("card_terminal"),
+        zod.literal(null),
+      ])
+      .nullish(),
+    paymentReference: zod.string().nullish(),
+  })
+  .and(
+    zod.object({
+      lines: zod.array(
+        zod.object({
+          id: zod.number(),
+          type: zod.enum(["fee", "discount", "addon"]),
+          description: zod.string(),
+          quantity: zod.number(),
+          unitAmount: zod.number(),
+          amount: zod.number(),
+        }),
+      ),
+      paidAmount: zod.number(),
+      refundedAmount: zod.number(),
+      balance: zod.number(),
+    }),
+  );
+export const RecordInvoicePaymentParams = zod.object({
+  id: zod.coerce.number(),
+});
+export const recordInvoicePaymentBodyAmountExclusiveMin = 0;
+export const RecordInvoicePaymentBody = zod.object({
+  method: zod.enum(["cash", "bank_transfer", "cheque", "card_terminal"]),
+  amount: zod.number().gt(recordInvoicePaymentBodyAmountExclusiveMin),
+  reference: zod.string().nullish(),
+  note: zod.string().nullish(),
+});
+export const RecordInvoicePaymentResponse = zod.object({
+  id: zod.number(),
+  invoiceId: zod.number(),
+  paymentId: zod.number(),
+  receiptNumber: zod.string(),
+  amount: zod.number(),
+  issuedBy: zod.string(),
+  issuedAt: zod.string(),
+});
+export const RefundInvoicePaymentParams = zod.object({
+  id: zod.coerce.number(),
+});
+export const refundInvoicePaymentBodyAmountExclusiveMin = 0;
+export const RefundInvoicePaymentBody = zod.object({
+  paymentId: zod.number().nullish(),
+  amount: zod.number().gt(refundInvoicePaymentBodyAmountExclusiveMin),
+  reason: zod.string().min(1),
+});
+export const RefundInvoicePaymentResponse = zod.object({
+  id: zod.number(),
+  invoiceId: zod.number(),
+  paymentId: zod.number().nullish(),
+  amount: zod.number(),
+  reason: zod.string(),
+  recordedBy: zod.string(),
+  createdAt: zod.string(),
+});
+export const CancelInvoiceParams = zod.object({
+  id: zod.coerce.number(),
+});
+export const CancelInvoiceBody = zod.object({
+  reason: zod.string().min(1),
+});
+export const CancelInvoiceResponse = zod
+  .object({
+    id: zod.number(),
+    invoiceNumber: zod.string(),
+    guardianName: zod.string(),
+    childName: zod.string(),
+    amount: zod.number(),
+    dueDate: zod.string(),
+    status: zod.enum([
+      "draft",
+      "issued",
+      "pending",
+      "partial",
+      "paid",
+      "overdue",
+      "cancelled",
+    ]),
+    paidAt: zod.string().nullable(),
+    lastPaymentStatus: zod.string().nullable(),
+    lastPaymentError: zod.string().nullish(),
+    chargedCurrency: zod.string().nullish(),
+    chargedAmount: zod.number().nullish(),
+    paymentMethod: zod
+      .union([
+        zod.literal("payment_link"),
+        zod.literal("knet"),
+        zod.literal("cash"),
+        zod.literal("bank_transfer"),
+        zod.literal("cheque"),
+        zod.literal("card_terminal"),
+        zod.literal(null),
+      ])
+      .nullish(),
+    paymentReference: zod.string().nullish(),
+  })
+  .and(
+    zod.object({
+      lines: zod.array(
+        zod.object({
+          id: zod.number(),
+          type: zod.enum(["fee", "discount", "addon"]),
+          description: zod.string(),
+          quantity: zod.number(),
+          unitAmount: zod.number(),
+          amount: zod.number(),
+        }),
+      ),
+      paidAmount: zod.number(),
+      refundedAmount: zod.number(),
+      balance: zod.number(),
+    }),
+  );
+export const ListParentDocumentsResponseItem = zod.object({
+  id: zod.number(),
+  applicationId: zod.number(),
+  childId: zod.number(),
+  name: zod.string(),
+  contentType: zod.string(),
+  size: zod.number(),
+  createdAt: zod.string(),
+});
+export const ListParentDocumentsResponse = zod.array(
+  ListParentDocumentsResponseItem,
+);
+export const GetParentDocumentContentParams = zod.object({
+  id: zod.coerce.number(),
+});
+export const GetParentDocumentContentResponse = zod.unknown();
+export const ListParentReceiptsResponseItem = zod.object({
+  id: zod.number(),
+  invoiceId: zod.number(),
+  paymentId: zod.number(),
+  receiptNumber: zod.string(),
+  amount: zod.number(),
+  issuedBy: zod.string(),
+  issuedAt: zod.string(),
+});
+export const ListParentReceiptsResponse = zod.array(
+  ListParentReceiptsResponseItem,
+);
 /**
  * @summary Get the current fresh KWD to USD exchange rate
  */
@@ -837,6 +1156,7 @@ export const ListParentChildrenResponse = zod.array(
 export const ListParentAttendanceQueryParams = zod.object({
   childId: zod.coerce.number().optional(),
 });
+export const listParentAttendanceResponsePickupOverrideDefault = false;
 export const ListParentAttendanceResponseItem = zod.object({
   id: zod.number(),
   childId: zod.number(),
@@ -851,6 +1171,14 @@ export const ListParentAttendanceResponseItem = zod.object({
   source: zod.enum(["manual", "device", "import"]),
   recordedBy: zod.string().nullish(),
   note: zod.string().nullish(),
+  pickupName: zod.string().nullish(),
+  pickupIdentity: zod.string().nullish(),
+  correctedAt: zod.string().nullish(),
+  correctionReason: zod.string().nullish(),
+  pickupOverride: zod
+    .boolean()
+    .default(listParentAttendanceResponsePickupOverrideDefault),
+  pickupOverrideReason: zod.string().nullish(),
 });
 export const ListParentAttendanceResponse = zod.array(
   ListParentAttendanceResponseItem,
@@ -904,7 +1232,15 @@ export const ListParentInvoicesResponseItem = zod.object({
   childName: zod.string(),
   amount: zod.number(),
   dueDate: zod.string(),
-  status: zod.enum(["paid", "pending", "overdue"]),
+  status: zod.enum([
+    "draft",
+    "issued",
+    "pending",
+    "partial",
+    "paid",
+    "overdue",
+    "cancelled",
+  ]),
   paidAt: zod.string().nullable(),
   lastPaymentStatus: zod.string().nullable(),
   lastPaymentError: zod.string().nullish(),
@@ -915,6 +1251,9 @@ export const ListParentInvoicesResponseItem = zod.object({
       zod.literal("payment_link"),
       zod.literal("knet"),
       zod.literal("cash"),
+      zod.literal("bank_transfer"),
+      zod.literal("cheque"),
+      zod.literal("card_terminal"),
       zod.literal(null),
     ])
     .nullish(),
@@ -1058,6 +1397,172 @@ export const CreateChildRecordResponse = zod.object({
   data: zod.record(zod.string(), zod.unknown()),
   createdBy: zod.string(),
   createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+/**
+ * @summary List owner-scoped guardians, emergency contacts, pickups, consents and invitations
+ */
+export const ListChildContactsParams = zod.object({
+  id: zod.coerce.number(),
+});
+export const ListChildContactsResponseItem = zod.object({
+  id: zod.number(),
+  childId: zod.number(),
+  type: zod.enum([
+    "guardian",
+    "emergency",
+    "authorized_pickup",
+    "consent",
+    "invitation",
+  ]),
+  name: zod.string(),
+  relationship: zod.string().nullish(),
+  phone: zod.string().nullish(),
+  email: zod.string().nullish(),
+  identityNumber: zod.string().nullish(),
+  status: zod.string(),
+  primary: zod.boolean(),
+  data: zod.record(zod.string(), zod.unknown()),
+  createdBy: zod.string(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+export const ListChildContactsResponse = zod.array(
+  ListChildContactsResponseItem,
+);
+/**
+ * @summary Add a typed child family record
+ */
+export const CreateChildContactParams = zod.object({
+  id: zod.coerce.number(),
+});
+export const createChildContactBodyStatusDefault = `active`;
+export const createChildContactBodyPrimaryDefault = false;
+export const CreateChildContactBody = zod.object({
+  type: zod.enum([
+    "guardian",
+    "emergency",
+    "authorized_pickup",
+    "consent",
+    "invitation",
+  ]),
+  name: zod.string().min(1),
+  relationship: zod.string().nullish(),
+  phone: zod.string().nullish(),
+  email: zod.string().nullish(),
+  identityNumber: zod.string().nullish(),
+  status: zod.string().default(createChildContactBodyStatusDefault),
+  primary: zod.boolean().default(createChildContactBodyPrimaryDefault),
+  data: zod.record(zod.string(), zod.unknown()).optional(),
+});
+export const CreateChildContactResponse = zod.object({
+  id: zod.number(),
+  childId: zod.number(),
+  type: zod.enum([
+    "guardian",
+    "emergency",
+    "authorized_pickup",
+    "consent",
+    "invitation",
+  ]),
+  name: zod.string(),
+  relationship: zod.string().nullish(),
+  phone: zod.string().nullish(),
+  email: zod.string().nullish(),
+  identityNumber: zod.string().nullish(),
+  status: zod.string(),
+  primary: zod.boolean(),
+  data: zod.record(zod.string(), zod.unknown()),
+  createdBy: zod.string(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+/**
+ * @summary List child attendance over a date range
+ */
+export const ListAttendanceHistoryQueryParams = zod.object({
+  childId: zod.coerce.number().optional(),
+  dateFrom: zod.coerce.string().optional(),
+  dateTo: zod.coerce.string().optional(),
+});
+export const listAttendanceHistoryResponsePickupOverrideDefault = false;
+export const ListAttendanceHistoryResponseItem = zod.object({
+  id: zod.number(),
+  childId: zod.number(),
+  childName: zod.string(),
+  date: zod.string(),
+  status: zod.enum(["present", "absent", "late", "excused"]),
+  checkIn: zod.string().nullable(),
+  checkOut: zod.string().nullable(),
+  departureType: zod
+    .union([zod.literal("normal"), zod.literal("early"), zod.literal(null)])
+    .nullish(),
+  source: zod.enum(["manual", "device", "import"]),
+  recordedBy: zod.string().nullish(),
+  note: zod.string().nullish(),
+  pickupName: zod.string().nullish(),
+  pickupIdentity: zod.string().nullish(),
+  correctedAt: zod.string().nullish(),
+  correctionReason: zod.string().nullish(),
+  pickupOverride: zod
+    .boolean()
+    .default(listAttendanceHistoryResponsePickupOverrideDefault),
+  pickupOverrideReason: zod.string().nullish(),
+});
+export const ListAttendanceHistoryResponse = zod.array(
+  ListAttendanceHistoryResponseItem,
+);
+export const UpdateStaffParams = zod.object({
+  id: zod.coerce.number(),
+});
+export const updateStaffBodyPhoneMin = 5;
+export const UpdateStaffBody = zod.object({
+  name: zod.string().min(1),
+  role: zod.string().min(1),
+  phone: zod.string().min(updateStaffBodyPhoneMin),
+  status: zod.enum(["present", "absent", "leave"]),
+  email: zod.string().nullish(),
+  jobTitle: zod.string().nullish(),
+  hireDate: zod.string().nullish(),
+});
+export const UpdateStaffResponse = zod.object({
+  id: zod.number(),
+  name: zod.string(),
+  role: zod.string(),
+  phone: zod.string(),
+  status: zod.enum(["present", "absent", "leave"]),
+  attendanceRate: zod.number(),
+  avatarUrl: zod.string().nullish(),
+});
+export const DeleteStaffParams = zod.object({
+  id: zod.coerce.number(),
+});
+export const DeleteStaffResponse = zod.void();
+export const GetNurserySettingsResponse = zod.object({
+  id: zod.number(),
+  nurseryName: zod.string(),
+  timezone: zod.string(),
+  currency: zod.enum(["KWD"]),
+  workingHours: zod.record(zod.string(), zod.unknown()),
+  calendar: zod.record(zod.string(), zod.unknown()),
+  updatedBy: zod.string(),
+  updatedAt: zod.string(),
+});
+export const SetNurserySettingsBody = zod.object({
+  nurseryName: zod.string().min(1),
+  timezone: zod.string().min(1),
+  currency: zod.enum(["KWD"]),
+  workingHours: zod.record(zod.string(), zod.unknown()),
+  calendar: zod.record(zod.string(), zod.unknown()),
+});
+export const SetNurserySettingsResponse = zod.object({
+  id: zod.number(),
+  nurseryName: zod.string(),
+  timezone: zod.string(),
+  currency: zod.enum(["KWD"]),
+  workingHours: zod.record(zod.string(), zod.unknown()),
+  calendar: zod.record(zod.string(), zod.unknown()),
+  updatedBy: zod.string(),
   updatedAt: zod.string(),
 });
 /**

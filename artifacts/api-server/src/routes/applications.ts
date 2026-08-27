@@ -27,6 +27,7 @@ import {
   applicationDocumentsTable,
   applicationsTable,
   childrenTable,
+  childContactsTable,
   classroomsTable,
   db,
   guardiansTable,
@@ -523,13 +524,21 @@ router.post("/applications/:id/accept", requireNurseryPermission("accept:applica
         if (capacity.kind === "missing") return { kind: "classroomMissing" as const };
         if (capacity.kind === "full") return { kind: "classroomFull" as const };
       }
-      const [guardian] = await tx.insert(guardiansTable).values({
-        ownerId: application.ownerId,
-        name: application.guardianName,
-        phone: application.guardianPhone,
-        email: application.guardianEmail,
-        balance: 0,
-      }).returning();
+      const email = application.guardianEmail?.trim().toLowerCase();
+      const normalizedPhone = application.guardianPhone.replace(/[^0-9+]/g, "");
+      const identityKey = email ? `email:${email}` : normalizedPhone ? `phone:${normalizedPhone}` : null;
+      if (!identityKey) return { kind: "guardianIdentityMissing" as const };
+      const guardianResult = await tx.execute(sql`
+        INSERT INTO guardians (owner_id, name, phone, email, balance, identity_key)
+        VALUES (${application.ownerId}, ${application.guardianName}, ${application.guardianPhone},
+          ${email ?? null}, 0, ${identityKey})
+        ON CONFLICT (owner_id, identity_key) WHERE identity_key IS NOT NULL
+        DO UPDATE SET name = EXCLUDED.name, phone = EXCLUDED.phone,
+          email = COALESCE(EXCLUDED.email, guardians.email)
+        RETURNING *
+      `);
+      const guardian = guardianResult.rows[0] as typeof guardiansTable.$inferSelect | undefined;
+      if (!guardian) return { kind: "guardianIdentityMissing" as const };
       const [child] = await tx.insert(childrenTable).values({
         ownerId: application.ownerId,
         firstName: application.firstName,
@@ -543,6 +552,17 @@ router.post("/applications/:id/accept", requireNurseryPermission("accept:applica
         status: "active",
       }).returning();
       childId = child.id;
+      await tx.insert(childContactsTable).values({
+        ownerId: application.ownerId,
+        childId,
+        type: "guardian",
+        name: application.guardianName,
+        relationship: "guardian",
+        phone: application.guardianPhone,
+        email: application.guardianEmail,
+        primary: true,
+        createdBy: actorId,
+      });
     }
 
     const [accepted] = await tx.update(applicationsTable).set({
@@ -553,6 +573,8 @@ router.post("/applications/:id/accept", requireNurseryPermission("accept:applica
       eq(applicationsTable.id, application.id),
       eq(applicationsTable.ownerId, application.ownerId),
     )).returning();
+    await tx.update(applicationDocumentsTable).set({ childId })
+      .where(eq(applicationDocumentsTable.applicationId, application.id));
     await tx.insert(activitiesTable).values({
       ownerId: application.ownerId,
       type: "enrollment",
@@ -581,6 +603,10 @@ router.post("/applications/:id/accept", requireNurseryPermission("accept:applica
   }
   if (result.kind === "illegal") {
     res.status(409).json({ error: "Only reviewing applications can be accepted" });
+    return;
+  }
+  if (result.kind === "guardianIdentityMissing") {
+    res.status(400).json({ error: "Guardian must have a usable email or phone identity" });
     return;
   }
   if (result.before) {

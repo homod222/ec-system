@@ -3,6 +3,13 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 
 const storageObjects = vi.hoisted(() => new Map<string, { size: number; contentType: string }>());
+const stripeSessions = vi.hoisted(() => new Map<string, Record<string, any>>());
+const stripeSessionCreate = vi.hoisted(() => vi.fn(async (input: Record<string, any>) => {
+  const id = `cs_test_${stripeSessions.size + 1}`;
+  const session = { id, status: "open", url: `https://checkout.stripe.test/${id}`, metadata: input.metadata };
+  stripeSessions.set(id, session);
+  return session;
+}));
 
 vi.mock("@clerk/express", () => ({
   clerkMiddleware: () => (req: unknown, _res: unknown, next: () => void) => next(),
@@ -27,6 +34,43 @@ vi.mock("@clerk/express", () => ({
 vi.mock("../src/middlewares/clerkProxyMiddleware", () => ({
   CLERK_PROXY_PATH: "/__clerk",
   clerkProxyMiddleware: () => (_req: unknown, _res: unknown, next: () => void) => next(),
+}));
+
+vi.mock("../src/lib/stripeClient", () => ({
+  getUncachableStripeClient: async () => ({
+    products: {
+      search: async () => ({ data: [{ id: "prod_nursery_test" }] }),
+      create: async () => ({ id: "prod_nursery_test" }),
+    },
+    checkout: {
+      sessions: {
+        create: stripeSessionCreate,
+        retrieve: async (id: string) => stripeSessions.get(id) ?? { id, status: "expired" },
+        expire: async (id: string) => {
+          const session = stripeSessions.get(id);
+          if (session) session.status = "expired";
+          return session;
+        },
+      },
+    },
+  }),
+}));
+
+vi.mock("../src/lib/exchangeRates", () => {
+  class ExchangeRateUnavailableError extends Error {}
+  const rate = { rate: 3.25, fetchedAt: new Date("2026-08-27T00:00:00Z"), sourceUpdatedAt: new Date("2026-08-27T00:00:00Z") };
+  return {
+    EXCHANGE_RATE_LOCK_ID: 1_263_555_172,
+    ExchangeRateUnavailableError,
+    getCurrentKwdToUsdRate: async () => rate,
+    getStoredFreshKwdToUsdRate: async () => rate,
+  };
+});
+
+vi.mock("../src/lib/notifications", () => ({
+  sendPaymentConfirmation: vi.fn(async () => undefined),
+  sendInvoiceReminder: vi.fn(async () => ({ status: "skipped", message: "test" })),
+  sendParentMessageNotification: vi.fn(async () => undefined),
 }));
 
 vi.mock("../src/lib/objectStorage", () => {
@@ -94,6 +138,7 @@ const ownerA = `integration-owner-a-${randomUUID()}`;
 const ownerB = `integration-owner-b-${randomUUID()}`;
 const parentA = `integration-parent-a-${randomUUID()}`;
 const parentB = `integration-parent-b-${randomUUID()}`;
+const operationsParent = `integration-parent-operations-${randomUUID()}`;
 const legacyStaffName = `legacy-staff-${randomUUID()}`;
 const auth = (owner: string, role = "owner") => ({
   "x-test-user": owner,
@@ -106,8 +151,8 @@ let pool: Awaited<typeof import("@workspace/db")>["pool"];
 async function createLegacyInvoice(ownerId: string, suffix: string) {
   const guardian = await pool.query<{ id: number }>(
     `insert into guardians (owner_id, name, phone)
-     values ($1, $2, '0000000000') returning id`,
-    [ownerId, `invoice-guardian-${suffix}`],
+     values ($1, $2, $3) returning id`,
+    [ownerId, `invoice-guardian-${suffix}`, `legacy-${suffix}`],
   );
   const child = await pool.query<{ id: number }>(
     `insert into children
@@ -147,6 +192,8 @@ beforeAll(async () => {
   process.env.REPLIT_DEV_DOMAIN ||= "integration.test";
   ({ default: app } = await import("../src/app"));
   ({ pool } = await import("@workspace/db"));
+  const { runApplicationMigrations } = await import("../src/lib/applicationMigrations");
+  await runApplicationMigrations();
 });
 
 afterAll(async () => {
@@ -170,6 +217,12 @@ afterAll(async () => {
     [owners],
   );
   for (const query of [
+    "delete from invoice_receipts where owner_id = any($1::text[])",
+    "delete from invoice_refunds where owner_id = any($1::text[])",
+    "delete from invoice_payments where owner_id = any($1::text[])",
+    "delete from invoice_lines where owner_id = any($1::text[])",
+    "delete from child_contacts where owner_id = any($1::text[])",
+    "delete from nursery_settings where owner_id = any($1::text[])",
     "delete from audit_logs where owner_id = any($1::text[])",
     "delete from role_permissions where owner_id = any($1::text[])",
     "delete from operational_records where owner_id = any($1::text[])",
@@ -189,6 +242,65 @@ afterAll(async () => {
 });
 
 describe.sequential("application registration regression flow", () => {
+  it("backfills legacy paid invoices into the settled ledger idempotently", async () => {
+    const cash = await createLegacyInvoice(ownerA, `paid-cash-${randomUUID()}`);
+    const stripe = await createLegacyInvoice(ownerA, `paid-stripe-${randomUUID()}`);
+    await pool.query(
+      `update invoices
+       set status = 'paid', paid_at = '2026-08-01T09:00:00Z',
+           payment_method = 'cash', payment_reference = 'CASH-LEGACY'
+       where id = $1`,
+      [cash.id],
+    );
+    await pool.query(
+      `update invoices
+       set status = 'paid', paid_at = '2026-08-02T09:00:00Z',
+           payment_method = 'payment_link', payment_reference = 'pi_legacy_paid',
+           stripe_payment_intent_id = 'pi_legacy_paid'
+       where id = $1`,
+      [stripe.id],
+    );
+    const { runApplicationMigrations } = await import("../src/lib/applicationMigrations");
+    await runApplicationMigrations();
+    await runApplicationMigrations();
+
+    const ledger = await pool.query<{
+      invoice_id: number; owner_id: string; method: string; amount: number;
+      reference: string; status: string;
+    }>(
+      `select invoice_id, owner_id, method, amount::float8 as amount, reference, status
+       from invoice_payments where invoice_id = any($1::int[]) order by invoice_id`,
+      [[cash.id, stripe.id]],
+    );
+    expect(ledger.rows).toHaveLength(2);
+    expect(ledger.rows).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        invoice_id: cash.id, owner_id: ownerA, method: "cash",
+        amount: 25, reference: "CASH-LEGACY", status: "completed",
+      }),
+      expect.objectContaining({
+        invoice_id: stripe.id, owner_id: ownerA, method: "payment_link",
+        amount: 25, reference: "pi_legacy_paid", status: "completed",
+      }),
+    ]));
+    for (const invoiceId of [cash.id, stripe.id]) {
+      await request(app).get(`/api/invoices/${invoiceId}`).set(auth(ownerA)).expect(200)
+        .expect(({ body }) => expect(body).toMatchObject({ paidAmount: 25, balance: 0, status: "paid" }));
+      await request(app).post(`/api/invoices/${invoiceId}/checkout-session`).set(auth(ownerA))
+        .send({ returnUrl: `https://${process.env.REPLIT_DEV_DOMAIN}/nursery-management/finance` }).expect(409);
+    }
+    await request(app).get("/api/reports?domain=financial").set(auth(ownerA)).expect(200)
+      .expect(({ body }) => {
+        for (const invoiceId of [cash.id, stripe.id]) {
+          expect(body.records).toEqual(expect.arrayContaining([
+            expect.objectContaining({ id: invoiceId, data: expect.objectContaining({ paidAmount: 25 }) }),
+          ]));
+        }
+      });
+    await request(app).get("/api/finance/summary").set(auth(ownerA)).expect(200)
+      .expect(({ body }) => expect(body.collectedThisMonth).toBeGreaterThanOrEqual(50));
+  });
+
   it("enforces operational role permissions and owner isolation", async () => {
     const insertedStaff = await pool.query<{ id: number }>(
       "insert into staff (owner_id, name, role, phone) values ('__legacy__', $1, 'teacher', '0000000000') returning id",
@@ -686,5 +798,206 @@ describe.sequential("application registration regression flow", () => {
 
     await request(app).get("/api/applications/2147483647").set(auth(ownerA)).expect(404);
     await request(app).post("/api/children/2147483647/renewals").set(auth(ownerA)).expect(404);
+  });
+
+  it("runs the internal dossier, invoice, payment, attendance, report and parent visibility flow", async () => {
+    const created = await request(app).post("/api/applications").set(auth(ownerB))
+      .send({ ...applicationInput, firstName: "تشغيل", guardianEmail: "operations@example.test" }).expect(201);
+    const upload = await request(app).post("/api/storage/uploads/request-url").set(auth(ownerB)).send({
+      applicationId: created.body.id, name: "operations.pdf", size: 12, contentType: "application/pdf",
+    }).expect(200);
+    await request(app).put(upload.body.uploadUrl).set(auth(ownerB))
+      .set("content-type", "application/pdf").set("content-length", "12")
+      .send(Buffer.from("test content")).expect(204);
+    await request(app).post(`/api/applications/${created.body.id}/documents`).set(auth(ownerB)).send({
+      name: "operations.pdf", size: 12, contentType: "application/pdf", objectPath: upload.body.objectPath,
+    }).expect(201);
+    await request(app).patch(`/api/applications/${created.body.id}/status`).set(auth(ownerB))
+      .send({ status: "reviewing" }).expect(200);
+    const accepted = await request(app).post(`/api/applications/${created.body.id}/accept`)
+      .set(auth(ownerB)).expect(200);
+    const childId = accepted.body.childId as number;
+    const repeated = await request(app).post(`/api/applications/${created.body.id}/accept`)
+      .set(auth(ownerB)).expect(200);
+    expect(repeated.body.childId).toBe(childId);
+    const sharedApplications = await Promise.all(["أ", "ب"].map((suffix) => request(app)
+      .post("/api/applications").set(auth(ownerB)).send({
+        ...applicationInput, firstName: `تزامن${suffix}`, guardianEmail: "shared-guardian@example.test",
+      }).expect(201)));
+    await Promise.all(sharedApplications.map((application) => request(app)
+      .patch(`/api/applications/${application.body.id}/status`).set(auth(ownerB)).send({ status: "reviewing" }).expect(200)));
+    const sharedAccepted = await Promise.all(sharedApplications.map((application) => request(app)
+      .post(`/api/applications/${application.body.id}/accept`).set(auth(ownerB)).expect(200)));
+    const sharedGuardianIds = await pool.query<{ guardian_id: number }>(
+      "select guardian_id from children where id = any($1::int[])",
+      [sharedAccepted.map((application) => application.body.childId)],
+    );
+    expect(new Set(sharedGuardianIds.rows.map((row) => row.guardian_id)).size).toBe(1);
+
+    await request(app).post(`/api/children/${childId}/contacts`).set(auth(ownerB)).send({
+      type: "authorized_pickup", name: "المستلم", relationship: "uncle", identityNumber: "CID-10",
+    }).expect(201);
+    await request(app).get(`/api/children/${childId}/contacts`).set(auth(ownerB)).expect(200)
+      .expect(({ body }) => expect(body).toEqual(expect.arrayContaining([
+        expect.objectContaining({ type: "authorized_pickup", identityNumber: "CID-10" }),
+      ])));
+    const operationsGuardian = await pool.query<{ id: number }>("select guardian_id as id from children where id = $1", [childId]);
+    await pool.query("update guardians set clerk_user_id = $1 where id = $2", [operationsParent, operationsGuardian.rows[0].id]);
+
+    const invoice = await request(app).post("/api/invoices").set(auth(ownerB)).send({
+      childId, dueDate: "2026-12-31", status: "issued",
+      lines: [
+        { type: "fee", description: "Tuition", quantity: 1, unitAmount: 100 },
+        { type: "addon", description: "Meals", quantity: 1, unitAmount: 20 },
+        { type: "discount", description: "Sibling discount", quantity: 1, unitAmount: 10 },
+      ],
+    }).expect(201);
+    expect(invoice.body).toMatchObject({ amount: 110, balance: 110, status: "issued" });
+    const receipt = await request(app).post(`/api/invoices/${invoice.body.id}/payments`)
+      .set(auth(ownerB)).send({ method: "cash", amount: 110, reference: "CASH-10" }).expect(201);
+    const stripeInvoice = await request(app).post("/api/invoices").set(auth(ownerB)).send({
+      childId, dueDate: "2026-12-31", status: "issued",
+      lines: [{ type: "fee", description: "Stripe reconciliation", quantity: 1, unitAmount: 45 }],
+    }).expect(201);
+    await pool.query(
+      `insert into invoice_payments
+        (owner_id, invoice_id, method, amount, currency, status, reference, recorded_by)
+       values ($1, $2, 'payment_link', 45, 'KWD', 'succeeded', 'pi_legacy_test', 'Stripe')`,
+      [ownerB, stripeInvoice.body.id],
+    );
+    await pool.query(
+      "update invoices set status = 'paid', payment_method = 'payment_link', payment_reference = 'pi_legacy_test' where id = $1",
+      [stripeInvoice.body.id],
+    );
+    await request(app).get(`/api/invoices/${stripeInvoice.body.id}`).set(auth(ownerB)).expect(200)
+      .expect(({ body }) => expect(body).toMatchObject({ paidAmount: 45, refundedAmount: 0, balance: 0, status: "paid" }));
+    await request(app).get("/api/reports?domain=financial").set(auth(ownerB)).expect(200)
+      .expect(({ body }) => expect(body.records).toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: stripeInvoice.body.id, data: expect.objectContaining({ paidAmount: 45 }) }),
+      ])));
+    await request(app).post(`/api/invoices/${stripeInvoice.body.id}/payments`).set(auth(ownerB))
+      .send({ method: "cash", amount: 45 }).expect(409);
+    await request(app).post(`/api/invoices/${stripeInvoice.body.id}/refunds`).set(auth(ownerB))
+      .send({ amount: 10, reason: "Stripe refund regression" }).expect(201);
+    await request(app).get(`/api/invoices/${stripeInvoice.body.id}`).set(auth(ownerB)).expect(200)
+      .expect(({ body }) => expect(body).toMatchObject({ paidAmount: 45, refundedAmount: 10, balance: 10, status: "partial" }));
+    const draftInvoice = await request(app).post("/api/invoices").set(auth(ownerB)).send({
+      childId, dueDate: "2026-12-31", status: "draft",
+      lines: [{ type: "fee", description: "Draft checkout", quantity: 1, unitAmount: 25 }],
+    }).expect(201);
+    const adminReturnUrl = `https://${process.env.REPLIT_DEV_DOMAIN}/nursery-management/finance`;
+    const parentReturnUrl = `https://${process.env.REPLIT_DEV_DOMAIN}/nursery-management/parent/invoices`;
+    await request(app).post(`/api/invoices/${draftInvoice.body.id}/checkout-session`).set(auth(ownerB))
+      .send({ returnUrl: adminReturnUrl }).expect(409);
+    await request(app).post(`/api/parent/invoices/${draftInvoice.body.id}/checkout-session`).set(auth(operationsParent, "parent"))
+      .send({ returnUrl: parentReturnUrl }).expect(409);
+    const cancelledCheckoutInvoice = await request(app).post("/api/invoices").set(auth(ownerB)).send({
+      childId, dueDate: "2026-12-31", status: "issued",
+      lines: [{ type: "fee", description: "Cancelled checkout", quantity: 1, unitAmount: 25 }],
+    }).expect(201);
+    await request(app).post(`/api/invoices/${cancelledCheckoutInvoice.body.id}/cancel`).set(auth(ownerB))
+      .send({ reason: "Do not collect" }).expect(200);
+    await request(app).post(`/api/invoices/${cancelledCheckoutInvoice.body.id}/checkout-session`).set(auth(ownerB))
+      .send({ returnUrl: adminReturnUrl }).expect(409);
+    const partialCheckoutInvoice = await request(app).post("/api/invoices").set(auth(ownerB)).send({
+      childId, dueDate: "2026-12-31", status: "issued",
+      lines: [{ type: "fee", description: "Partial checkout", quantity: 1, unitAmount: 100 }],
+    }).expect(201);
+    await request(app).post(`/api/invoices/${partialCheckoutInvoice.body.id}/payments`).set(auth(ownerB))
+      .send({ method: "cash", amount: 30 }).expect(201);
+    await request(app).post(`/api/invoices/${partialCheckoutInvoice.body.id}/checkout-session`).set(auth(ownerB))
+      .send({ returnUrl: adminReturnUrl }).expect(200);
+    const checkoutInput = stripeSessionCreate.mock.calls.at(-1)?.[0] as any;
+    expect(checkoutInput.line_items[0].price_data.unit_amount).toBe(22_750);
+    expect(checkoutInput.metadata.settlementAmountKwd).toBe("70");
+    const { reconcileInvoicePayment } = await import("../src/lib/paymentReconciliation");
+    const paymentIntent = {
+      id: "pi_partial_checkout_test",
+      metadata: checkoutInput.payment_intent_data.metadata,
+      amount_received: 22_750,
+      amount: 22_750,
+      currency: "usd",
+    };
+    const settlementEvent = Buffer.from(JSON.stringify({
+      type: "payment_intent.succeeded", data: { object: paymentIntent },
+    }));
+    await reconcileInvoicePayment(settlementEvent);
+    await reconcileInvoicePayment(settlementEvent);
+    await request(app).get(`/api/invoices/${partialCheckoutInvoice.body.id}`).set(auth(ownerB)).expect(200)
+      .expect(({ body }) => expect(body).toMatchObject({ paidAmount: 100, balance: 0, status: "paid" }));
+    const stripeSettlementRows = await pool.query<{ count: string }>(
+      "select count(*)::text as count from invoice_payments where invoice_id = $1 and reference = $2",
+      [partialCheckoutInvoice.body.id, paymentIntent.id],
+    );
+    expect(Number(stripeSettlementRows.rows[0].count)).toBe(1);
+    const concurrentInvoice = await request(app).post("/api/invoices").set(auth(ownerB)).send({
+      childId, dueDate: "2026-12-31", status: "issued",
+      lines: [{ type: "fee", description: "Concurrent balance", quantity: 1, unitAmount: 100 }],
+    }).expect(201);
+    const concurrentPayments = await Promise.all([1, 2].map(() => request(app)
+      .post(`/api/invoices/${concurrentInvoice.body.id}/payments`).set(auth(ownerB))
+      .send({ method: "cash", amount: 60 })));
+    expect(concurrentPayments.map((response) => response.status).sort()).toEqual([201, 409]);
+    const concurrentRefunds = await Promise.all([1, 2].map(() => request(app)
+      .post(`/api/invoices/${concurrentInvoice.body.id}/refunds`).set(auth(ownerB))
+      .send({ amount: 40, reason: "Concurrency test" })));
+    expect(concurrentRefunds.map((response) => response.status).sort()).toEqual([201, 409]);
+    const paymentRefundInvoice = await request(app).post("/api/invoices").set(auth(ownerB)).send({
+      childId, dueDate: "2026-12-31", status: "issued",
+      lines: [{ type: "fee", description: "Payment refund race", quantity: 1, unitAmount: 100 }],
+    }).expect(201);
+    await request(app).post(`/api/invoices/${paymentRefundInvoice.body.id}/payments`).set(auth(ownerB))
+      .send({ method: "cash", amount: 30 }).expect(201);
+    const paymentRefundRace = await Promise.all([
+      request(app).post(`/api/invoices/${paymentRefundInvoice.body.id}/payments`).set(auth(ownerB))
+        .send({ method: "cash", amount: 50 }),
+      request(app).post(`/api/invoices/${paymentRefundInvoice.body.id}/refunds`).set(auth(ownerB))
+        .send({ amount: 30, reason: "Race refund" }),
+    ]);
+    expect(paymentRefundRace.map((response) => response.status).sort()).toEqual([201, 201]);
+    await request(app).get(`/api/invoices/${paymentRefundInvoice.body.id}`).set(auth(ownerB)).expect(200)
+      .expect(({ body }) => expect(body).toMatchObject({ paidAmount: 80, refundedAmount: 30, balance: 50, status: "partial" }));
+    const cancellationInvoice = await request(app).post("/api/invoices").set(auth(ownerB)).send({
+      childId, dueDate: "2026-12-31", status: "issued",
+      lines: [{ type: "fee", description: "Cancel race", quantity: 1, unitAmount: 50 }],
+    }).expect(201);
+    const [cancelled, racedPayment] = await Promise.all([
+      request(app).post(`/api/invoices/${cancellationInvoice.body.id}/cancel`).set(auth(ownerB)).send({ reason: "Void" }),
+      request(app).post(`/api/invoices/${cancellationInvoice.body.id}/payments`).set(auth(ownerB)).send({ method: "cash", amount: 50 }),
+    ]);
+    expect([cancelled.status, racedPayment.status].sort()).toEqual([200, 409]);
+
+    await request(app).post("/api/attendance").set(auth(ownerB)).send({
+      childId, date: "2026-08-31", status: "present", checkOut: "13:00", pickupIdentity: "NOT-AUTHORIZED",
+    }).expect(403);
+    await request(app).post("/api/attendance").set(auth(ownerB)).send({
+      childId, date: "2026-09-01", status: "present", checkIn: "07:30",
+      checkOut: "13:00", pickupName: "المستلم", pickupIdentity: "CID-10",
+    }).expect(201);
+    await request(app).post("/api/attendance").set(auth(ownerB)).send({
+      childId, date: "2026-09-01", status: "late", checkIn: "08:10",
+      correctionReason: "تصحيح وقت الوصول",
+    }).expect(201);
+    await request(app).get(`/api/attendance/history?childId=${childId}&dateFrom=2026-09-01&dateTo=2026-09-01`)
+      .set(auth(ownerB)).expect(200)
+      .expect(({ body }) => expect(body[0]).toMatchObject({ status: "late", correctionReason: "تصحيح وقت الوصول" }));
+    await request(app).get("/api/reports?domain=financial").set(auth(ownerB)).expect(200)
+      .expect(({ body }) => expect(body.totalAmount).toBeGreaterThanOrEqual(110));
+
+    const parentDocuments = await request(app).get("/api/parent/documents").set(auth(operationsParent, "parent")).expect(200);
+    expect(parentDocuments.body).toEqual(expect.arrayContaining([expect.objectContaining({ name: "operations.pdf" })]));
+    expect(parentDocuments.body[0].objectPath).toBeUndefined();
+    await request(app).get(`/api/parent/documents/${parentDocuments.body[0].id}/content`)
+      .set(auth(operationsParent, "parent")).expect(200).expect("Content-Type", /application\/octet-stream/);
+    await request(app).get("/api/parent/receipts").set(auth(operationsParent, "parent")).expect(200)
+      .expect(({ body }) => expect(body).toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: receipt.body.id, amount: 110 }),
+      ])));
+
+    await request(app).post("/api/invoices").set(auth(ownerB, "teacher")).send({
+      childId, dueDate: "2026-12-31",
+      lines: [{ type: "fee", description: "Denied", quantity: 1, unitAmount: 1 }],
+    }).expect(403);
+    await request(app).get(`/api/children/${childId}/contacts`).set(auth(ownerA)).expect(404);
   });
 });

@@ -1,4 +1,5 @@
-import { useCreateParentInvoiceCheckoutSession, useGetKwdUsdExchangeRate, useListParentInvoices } from '@workspace/api-client-react';
+import { useState } from 'react';
+import { getParentDocumentContent, useCreateParentInvoiceCheckoutSession, useGetKwdUsdExchangeRate, useListParentInvoices, useListParentDocuments, useListParentReceipts } from '@workspace/api-client-react';
 import { ParentShell } from '../../components/ParentShell';
 import { ParentPageHeader, ParentQueryState } from '../../components/ParentShared';
 import { CreditCard, FileText, CheckCircle2, AlertCircle, Clock } from 'lucide-react';
@@ -24,10 +25,13 @@ function isExchangeRateUnavailable(error: unknown): boolean {
 export function ParentInvoices({ withShell = true }: { withShell?: boolean } = {}) {
   const query = useListParentInvoices();
   const exchangeRateQuery = useGetKwdUsdExchangeRate();
+  const documentsQuery = useListParentDocuments();
+  const receiptsQuery = useListParentReceipts();
   const checkout = useCreateParentInvoiceCheckoutSession();
   const { toast } = useToast();
   const invoices = query.data || [];
   const exchangeRate = exchangeRateQuery.data;
+  const [openingDocument, setOpeningDocument] = useState<number | null>(null);
 
   const handlePay = (invoiceId: number) => {
     const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
@@ -45,6 +49,22 @@ export function ParentInvoices({ withShell = true }: { withShell?: boolean } = {
         if (rateUnavailable) void exchangeRateQuery.refetch();
       },
     });
+  };
+  const openDocument = async (document: { id: number; name: string; contentType: string }) => {
+    setOpeningDocument(document.id);
+    try {
+      // The generated client applies the authenticated request middleware; never expose storage paths.
+      const blob = await getParentDocumentContent(document.id);
+      const url = URL.createObjectURL(blob);
+      const tab = window.open(url, '_blank', 'noopener,noreferrer');
+      if (!tab) {
+        const link = globalThis.document.createElement('a');
+        link.href = url; link.download = document.name; link.click();
+      }
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch {
+      toast({ title: 'تعذر فتح المستند', description: 'تحقق من الصلاحية أو حاول مرة أخرى.', variant: 'destructive' });
+    } finally { setOpeningDocument(null); }
   };
 
   const content = (
@@ -129,7 +149,7 @@ export function ParentInvoices({ withShell = true }: { withShell?: boolean } = {
                   </button>
                 </div>
               ) : (
-                <button data-testid={`button-receipt-invoice-${invoice.id}`} className="w-full flex items-center justify-center gap-2 rounded-xl bg-white border border-[#165032]/10 py-3.5 text-sm font-bold text-[#165032] hover:bg-[#165032]/5 transition-colors">
+                <button data-testid={`button-receipt-invoice-${invoice.id}`} onClick={() => window.print()} className="w-full flex items-center justify-center gap-2 rounded-xl bg-white border border-[#165032]/10 py-3.5 text-sm font-bold text-[#165032] hover:bg-[#165032]/5 transition-colors">
                   <FileText size={18} /> تحميل الإيصال
                 </button>
               )}
@@ -137,6 +157,16 @@ export function ParentInvoices({ withShell = true }: { withShell?: boolean } = {
           ))}
         </div>
       </ParentQueryState>
+      <section className="mt-8 rounded-[2rem] border border-[#165032]/10 bg-white p-7 shadow-sm">
+        <h2 className="text-xl font-bold text-[#0f2416]">الإيصالات والمستندات</h2>
+        <p className="mt-1 text-sm text-[#165032]/60">يمكنك طباعة الإيصالات والاطلاع على مستندات التسجيل المتاحة.</p>
+        <ParentQueryState loading={receiptsQuery.isLoading || documentsQuery.isLoading} error={receiptsQuery.isError || documentsQuery.isError} empty={!(receiptsQuery.data?.length || documentsQuery.data?.length)} onRetry={() => { receiptsQuery.refetch(); documentsQuery.refetch(); }}>
+          <div className="mt-5 grid gap-3 md:grid-cols-2">
+            {(receiptsQuery.data || []).map(receipt => <button key={`r${receipt.id}`} onClick={() => window.print()} className="rounded-xl border border-[#165032]/10 p-4 text-right hover:bg-[#FDFBF7]"><p className="font-bold">إيصال {receipt.receiptNumber}</p><p className="mt-1 text-sm text-[#165032]/60">{money(receipt.amount)} · {new Date(receipt.issuedAt).toLocaleDateString('ar-SA')}</p><span className="mt-2 inline-block text-xs font-bold text-[#165032]">طباعة / حفظ PDF</span></button>)}
+            {(documentsQuery.data || []).map(document => <div key={`d${document.id}`} className="rounded-xl border border-[#165032]/10 p-4"><p className="font-bold">{document.name}</p><p className="mt-1 text-sm text-[#165032]/60">{document.contentType} · {(document.size / 1024).toFixed(1)} KB</p><button type="button" disabled={openingDocument === document.id} onClick={() => openDocument(document)} className="mt-2 text-xs font-bold text-[#165032] disabled:opacity-50">{openingDocument === document.id ? 'جارٍ تجهيز المستند…' : 'فتح / تنزيل المستند'}</button></div>)}
+          </div>
+        </ParentQueryState>
+      </section>
     </>
   );
 

@@ -59,16 +59,19 @@ import {
   childrenTable,
   classroomsTable,
   childActivitiesTable,
+  childContactsTable,
   db,
   guardiansTable,
   invoicePaymentsTable,
   invoicesTable,
+  invoiceRefundsTable,
   parentMessagesTable,
   progressReportsTable,
   staffTable,
 } from "@workspace/db";
 import { checkClassroomCapacity } from "../lib/classroomCapacity";
 import { createInvoiceCheckoutSession, isAllowedReturnUrl } from "../lib/financePayments";
+import { InvoiceNotPayableError, requireCheckoutPayable } from "../lib/invoiceLedger";
 import { ExchangeRateUnavailableError, getCurrentKwdToUsdRate } from "../lib/exchangeRates";
 import { sendDueReminder } from "../lib/notifications";
 import {
@@ -324,7 +327,7 @@ router.use(async (req, res, next) => {
 
 router.get("/dashboard/summary", async (req, res): Promise<void> => {
   const ownerId = nurseryContext(req).ownerId;
-  const [children, attendance, staff, invoiceRows] = await Promise.all([
+  const [children, attendance, staff, invoiceRows, payments, refunds] = await Promise.all([
     db.select().from(childrenTable).where(eq(childrenTable.ownerId, ownerId)),
     db.select({ attendance: attendanceTable })
       .from(attendanceTable)
@@ -346,16 +349,22 @@ router.get("/dashboard/summary", async (req, res): Promise<void> => {
         eq(guardiansTable.ownerId, ownerId),
       ))
       .where(eq(invoicesTable.ownerId, ownerId)),
+    db.select().from(invoicePaymentsTable).where(and(eq(invoicePaymentsTable.ownerId, ownerId), inArray(invoicePaymentsTable.status, ["completed", "succeeded"]))),
+    db.select().from(invoiceRefundsTable).where(eq(invoiceRefundsTable.ownerId, ownerId)),
   ]);
   const invoices = invoiceRows.map(({ invoice }) => invoice);
   const presentToday = attendance.filter(({ attendance: entry }) => entry.status === "present" || entry.status === "late").length;
   const absentToday = attendance.filter(({ attendance: entry }) => entry.status === "absent").length;
-  const monthlyRevenue = invoices
-    .filter((invoice) => invoice.status === "paid")
-    .reduce((sum, invoice) => sum + invoice.amount, 0);
+  const now = new Date();
+  const monthlyRevenue = payments.filter((payment) => payment.createdAt.getUTCFullYear() === now.getUTCFullYear()
+    && payment.createdAt.getUTCMonth() === now.getUTCMonth()).reduce((sum, payment) => sum + payment.amount, 0)
+    - refunds.filter((refund) => refund.createdAt.getUTCFullYear() === now.getUTCFullYear()
+      && refund.createdAt.getUTCMonth() === now.getUTCMonth()).reduce((sum, refund) => sum + refund.amount, 0);
   const pendingPayments = invoices
-    .filter((invoice) => invoice.status !== "paid")
-    .reduce((sum, invoice) => sum + invoice.amount, 0);
+    .filter((invoice) => !["draft", "cancelled"].includes(invoice.status))
+    .reduce((sum, invoice) => sum + Math.max(0, invoice.amount
+      - payments.filter((payment) => payment.invoiceId === invoice.id).reduce((n, payment) => n + payment.amount, 0)
+      + refunds.filter((refund) => refund.invoiceId === invoice.id).reduce((n, refund) => n + refund.amount, 0)), 0);
   const data = GetDashboardSummaryResponse.parse({
     totalChildren: children.filter((child) => child.status === "active").length,
     presentToday,
@@ -601,6 +610,7 @@ router.get("/attendance/today", async (req, res): Promise<void> => {
     const child = childMap.get(record.childId);
     return {
       ...record,
+      correctedAt: record.correctedAt?.toISOString() ?? null,
       childName: child ? `${child.firstName} ${child.lastName}` : "طفل غير معروف",
     };
   })));
@@ -620,6 +630,28 @@ router.post("/attendance", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Child not found" });
     return;
   }
+  if (parsed.data.checkOut != null) {
+    const override = parsed.data.pickupOverride === true;
+    if (override && (!parsed.data.pickupOverrideReason?.trim() || !await permitted(req, "read:child-confidential"))) {
+      res.status(403).json({ error: "Pickup override requires privileged access and a reason" });
+      return;
+    }
+    if (!override) {
+      if (!parsed.data.pickupIdentity?.trim()) {
+        res.status(400).json({ error: "Pickup identity is required for checkout" });
+        return;
+      }
+      const [authorized] = await db.select({ id: childContactsTable.id }).from(childContactsTable).where(and(
+        eq(childContactsTable.ownerId, child.ownerId), eq(childContactsTable.childId, child.id),
+        inArray(childContactsTable.type, ["authorized_pickup", "guardian"]),
+        eq(childContactsTable.status, "active"), eq(childContactsTable.identityNumber, parsed.data.pickupIdentity.trim()),
+      )).limit(1);
+      if (!authorized) {
+        res.status(403).json({ error: "Pickup identity is not authorized for this child" });
+        return;
+      }
+    }
+  }
   const [existing] = await db.select().from(attendanceTable).where(and(
     eq(attendanceTable.childId, parsed.data.childId),
     eq(attendanceTable.date, parsed.data.date),
@@ -632,6 +664,10 @@ router.post("/attendance", async (req, res): Promise<void> => {
     source: parsed.data.source ?? "manual",
     recordedBy: nurseryContext(req).actorId,
     note: parsed.data.note ?? null,
+    pickupName: parsed.data.pickupName ?? null,
+    pickupIdentity: parsed.data.pickupIdentity ?? null,
+    correctionReason: existing ? parsed.data.correctionReason ?? null : null,
+    correctedAt: existing ? new Date() : null,
   };
   const [record] = existing
     ? await db.update(attendanceTable).set(payload).where(eq(attendanceTable.id, existing.id)).returning()
@@ -639,10 +675,14 @@ router.post("/attendance", async (req, res): Promise<void> => {
   await auditNurseryOperation(
     req, existing ? "update" : "create", "child-attendance", String(record.id),
     existing as unknown as Record<string, unknown> | null,
-    record as unknown as Record<string, unknown>,
+    {
+      ...(record as unknown as Record<string, unknown>),
+      ...(parsed.data.pickupOverride ? { pickupOverrideReason: parsed.data.pickupOverrideReason } : {}),
+    },
   );
   res.status(201).json(RecordAttendanceResponse.parse({
     ...record,
+    correctedAt: record.correctedAt?.toISOString() ?? null,
     childName: `${child.firstName} ${child.lastName}`,
   }));
 });
@@ -688,22 +728,29 @@ router.get("/finance/summary", async (req, res): Promise<void> => {
     ))
     .where(eq(invoicesTable.ownerId, ownerId));
   const invoices = invoiceRows.map(({ invoice }) => invoice);
+  const [payments, refunds] = await Promise.all([
+    db.select().from(invoicePaymentsTable).where(and(eq(invoicePaymentsTable.ownerId, ownerId), inArray(invoicePaymentsTable.status, ["completed", "succeeded"]))),
+    db.select().from(invoiceRefundsTable).where(eq(invoiceRefundsTable.ownerId, ownerId)),
+  ]);
   const now = new Date();
   const isSameMonth = (date: Date, ref: Date) =>
     date.getUTCFullYear() === ref.getUTCFullYear() && date.getUTCMonth() === ref.getUTCMonth();
 
-  const collectedThisMonth = invoices
-    .filter((invoice) => invoice.status === "paid" && isSameMonth(new Date(invoice.paidAt ?? invoice.dueDate), now))
-    .reduce((sum, invoice) => sum + invoice.amount, 0);
-  const outstanding = invoices.filter((invoice) => invoice.status !== "paid").reduce((sum, invoice) => sum + invoice.amount, 0);
+  const collectedThisMonth = payments.filter((payment) => isSameMonth(payment.createdAt, now))
+    .reduce((sum, payment) => sum + payment.amount, 0)
+    - refunds.filter((refund) => isSameMonth(refund.createdAt, now)).reduce((sum, refund) => sum + refund.amount, 0);
+  const outstanding = invoices.filter((invoice) => !["draft", "cancelled"].includes(invoice.status))
+    .reduce((sum, invoice) => sum + Math.max(0, invoice.amount
+      - payments.filter((payment) => payment.invoiceId === invoice.id).reduce((n, payment) => n + payment.amount, 0)
+      + refunds.filter((refund) => refund.invoiceId === invoice.id).reduce((n, refund) => n + refund.amount, 0)), 0);
 
   const monthlyTrend = Array.from({ length: 3 }, (_, index) => {
     const monthDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (2 - index), 1));
-    const collected = invoices
-      .filter((invoice) => invoice.status === "paid" && isSameMonth(new Date(invoice.paidAt ?? invoice.dueDate), monthDate))
-      .reduce((sum, invoice) => sum + invoice.amount, 0);
+    const collected = payments.filter((payment) => isSameMonth(payment.createdAt, monthDate))
+      .reduce((sum, payment) => sum + payment.amount, 0)
+      - refunds.filter((refund) => isSameMonth(refund.createdAt, monthDate)).reduce((sum, refund) => sum + refund.amount, 0);
     const expected = invoices
-      .filter((invoice) => isSameMonth(new Date(invoice.dueDate), monthDate))
+      .filter((invoice) => !["draft", "cancelled"].includes(invoice.status) && isSameMonth(new Date(invoice.dueDate), monthDate))
       .reduce((sum, invoice) => sum + invoice.amount, 0);
     return { month: arMonthLabel.format(monthDate), collected, expected };
   });
@@ -802,8 +849,10 @@ router.post("/invoices/:id/checkout-session", async (req, res): Promise<void> =>
     res.status(404).json({ error: "Invoice not found" });
     return;
   }
-  if (invoice.status === "paid") {
-    res.status(400).json({ error: "Invoice already paid" });
+  try {
+    requireCheckoutPayable(invoice.status, invoice.amount);
+  } catch {
+    res.status(409).json({ error: "Invoice is not payable" });
     return;
   }
   const [guardian] = await db.select().from(guardiansTable).where(eq(guardiansTable.id, invoice.guardianId));
@@ -825,6 +874,10 @@ router.post("/invoices/:id/checkout-session", async (req, res): Promise<void> =>
     res.json(CreateInvoiceCheckoutSessionResponse.parse({ url: session.url }));
   } catch (err) {
     req.log.error({ err, invoiceId: invoice.id }, "Failed to create Stripe checkout session");
+    if (err instanceof InvoiceNotPayableError) {
+      res.status(409).json({ error: err.message });
+      return;
+    }
     if (err instanceof ExchangeRateUnavailableError) {
       res.status(503).json({ error: err.message, code: "EXCHANGE_RATE_UNAVAILABLE" });
       return;
@@ -851,8 +904,10 @@ router.post("/invoices/:id/cash-payment", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Invoice not found" });
     return;
   }
-  if (invoice.status === "paid") {
-    res.status(400).json({ error: "Invoice already paid" });
+  try {
+    requireCheckoutPayable(invoice.status, invoice.amount);
+  } catch {
+    res.status(409).json({ error: "Invoice is not payable" });
     return;
   }
   if (Math.abs(body.data.amount - invoice.amount) > 0.0005) {
@@ -890,7 +945,7 @@ router.post("/invoices/:id/cash-payment", async (req, res): Promise<void> => {
       method: "cash",
       amount: invoice.amount,
       currency: "KWD",
-      status: "succeeded",
+      status: "completed",
       reference,
       note: body.data.note ?? null,
       recordedBy: context.actorId,
@@ -1068,6 +1123,7 @@ router.get("/parent/attendance", async (req, res): Promise<void> => {
   const records = recordRows.map(({ attendance: record }) => record);
   res.json(ListParentAttendanceResponse.parse(records.map((record) => ({
     ...record,
+    correctedAt: record.correctedAt?.toISOString() ?? null,
     childName: childMap.get(record.childId)!,
   }))));
 });
@@ -1233,6 +1289,10 @@ router.post("/parent/invoices/:id/checkout-session", async (req, res): Promise<v
     res.json(CreateParentInvoiceCheckoutSessionResponse.parse({ url: session.url }));
   } catch (err) {
     req.log.error({ err, invoiceId: invoice.id }, "Failed to create parent Stripe checkout session");
+    if (err instanceof InvoiceNotPayableError) {
+      res.status(409).json({ error: err.message });
+      return;
+    }
     if (err instanceof ExchangeRateUnavailableError) {
       res.status(503).json({ error: err.message, code: "EXCHANGE_RATE_UNAVAILABLE" });
       return;

@@ -4,6 +4,7 @@ import nurseryRouter from "./nursery";
 import applicationsRouter from "./applications";
 import storageRouter from "./storage";
 import nurseryOperationsRouter from "./nurseryOperations";
+import task16OperationsRouter from "./task16Operations";
 
 const router: IRouter = Router();
 
@@ -11,6 +12,7 @@ router.use(healthRouter);
 router.use(applicationsRouter);
 router.use(storageRouter);
 router.use(nurseryOperationsRouter);
+router.use(task16OperationsRouter);
 router.use(nurseryRouter);
 
 export default router;

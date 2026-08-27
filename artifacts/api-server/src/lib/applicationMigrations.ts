@@ -20,10 +20,23 @@ export async function runApplicationMigrations(): Promise<void> {
     ALTER TABLE attendance
       ADD COLUMN IF NOT EXISTS departure_type text,
       ADD COLUMN IF NOT EXISTS source text NOT NULL DEFAULT 'manual',
-      ADD COLUMN IF NOT EXISTS recorded_by text;
+      ADD COLUMN IF NOT EXISTS recorded_by text,
+      ADD COLUMN IF NOT EXISTS pickup_name text,
+      ADD COLUMN IF NOT EXISTS pickup_identity text,
+      ADD COLUMN IF NOT EXISTS corrected_at timestamptz,
+      ADD COLUMN IF NOT EXISTS correction_reason text;
     ALTER TABLE invoices
       ADD COLUMN IF NOT EXISTS owner_id text NOT NULL DEFAULT '__legacy__',
-      ADD COLUMN IF NOT EXISTS stripe_checkout_attempt integer NOT NULL DEFAULT 0;
+      ADD COLUMN IF NOT EXISTS stripe_checkout_attempt integer NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS issued_at timestamptz,
+      ADD COLUMN IF NOT EXISTS cancelled_at timestamptz,
+      ADD COLUMN IF NOT EXISTS cancellation_reason text,
+      ADD COLUMN IF NOT EXISTS payment_method text,
+      ADD COLUMN IF NOT EXISTS payment_reference text,
+      ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now();
+    ALTER TABLE application_documents
+      ADD COLUMN IF NOT EXISTS child_id integer,
+      ADD COLUMN IF NOT EXISTS parent_visible boolean NOT NULL DEFAULT true;
     ALTER TABLE IF EXISTS progress_reports ADD COLUMN IF NOT EXISTS owner_id text NOT NULL DEFAULT '__legacy__';
     ALTER TABLE IF EXISTS child_activities ADD COLUMN IF NOT EXISTS owner_id text NOT NULL DEFAULT '__legacy__';
     ALTER TABLE IF EXISTS parent_messages ADD COLUMN IF NOT EXISTS owner_id text NOT NULL DEFAULT '__legacy__';
@@ -146,6 +159,64 @@ export async function runApplicationMigrations(): Promise<void> {
       source_updated_at timestamptz NOT NULL,
       fetched_at timestamptz NOT NULL DEFAULT now()
     );
+    CREATE TABLE IF NOT EXISTS child_contacts (
+      id serial PRIMARY KEY, owner_id text NOT NULL, child_id integer NOT NULL,
+      type text NOT NULL, name text NOT NULL, relationship text, phone text, email text,
+      identity_number text, status text NOT NULL DEFAULT 'active',
+      "primary" boolean NOT NULL DEFAULT false, data jsonb NOT NULL DEFAULT '{}'::jsonb,
+      created_by text NOT NULL, created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS invoice_lines (
+      id serial PRIMARY KEY, owner_id text NOT NULL, invoice_id integer NOT NULL,
+      type text NOT NULL DEFAULT 'fee', description text NOT NULL,
+      quantity numeric(10,3) NOT NULL DEFAULT 1, unit_amount numeric(12,3) NOT NULL,
+      amount numeric(12,3) NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS invoice_payments (
+      id serial PRIMARY KEY, owner_id text NOT NULL, invoice_id integer NOT NULL,
+      method text NOT NULL, amount numeric(12,3) NOT NULL, currency text NOT NULL DEFAULT 'KWD',
+      status text NOT NULL, reference text, note text, recorded_by text,
+      created_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS invoice_refunds (
+      id serial PRIMARY KEY, owner_id text NOT NULL, invoice_id integer NOT NULL,
+      payment_id integer, amount numeric(12,3) NOT NULL, reason text NOT NULL,
+      recorded_by text NOT NULL, created_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS invoice_receipts (
+      id serial PRIMARY KEY, owner_id text NOT NULL, invoice_id integer NOT NULL,
+      payment_id integer NOT NULL, receipt_number text NOT NULL,
+      amount numeric(12,3) NOT NULL, issued_by text NOT NULL,
+      issued_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS nursery_settings (
+      id serial PRIMARY KEY, owner_id text NOT NULL, nursery_name text NOT NULL,
+      timezone text NOT NULL DEFAULT 'Asia/Kuwait', currency text NOT NULL DEFAULT 'KWD',
+      working_hours jsonb NOT NULL DEFAULT '{}'::jsonb,
+      calendar jsonb NOT NULL DEFAULT '{}'::jsonb, updated_by text NOT NULL,
+      updated_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS progress_reports (
+      id serial PRIMARY KEY, owner_id text NOT NULL DEFAULT '__legacy__', child_id integer NOT NULL,
+      title text NOT NULL, summary text NOT NULL, period text NOT NULL, educator_name text NOT NULL,
+      published_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS child_activities (
+      id serial PRIMARY KEY, owner_id text NOT NULL DEFAULT '__legacy__', child_id integer NOT NULL,
+      category text NOT NULL, title text NOT NULL, description text NOT NULL, photo_url text,
+      educator_name text NOT NULL, occurred_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS parent_messages (
+      id serial PRIMARY KEY, owner_id text NOT NULL DEFAULT '__legacy__', guardian_id integer NOT NULL,
+      sender_type text NOT NULL, sender_name text NOT NULL, subject text NOT NULL, content text NOT NULL,
+      read boolean NOT NULL DEFAULT false, created_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS announcements (
+      id serial PRIMARY KEY, owner_id text NOT NULL DEFAULT '__legacy__', title text NOT NULL,
+      content text NOT NULL, audience text NOT NULL DEFAULT 'all',
+      published_at timestamptz NOT NULL DEFAULT now()
+    );
 
     CREATE INDEX IF NOT EXISTS classrooms_branch_idx ON classrooms (branch_id);
     CREATE INDEX IF NOT EXISTS classrooms_stage_idx ON classrooms (stage_id);
@@ -166,6 +237,67 @@ export async function runApplicationMigrations(): Promise<void> {
       ON audit_logs (owner_id, operation, entity_type, created_at DESC);
     CREATE UNIQUE INDEX IF NOT EXISTS nursery_branches_owner_code_unique
       ON nursery_branches (owner_id, code);
+    CREATE TABLE IF NOT EXISTS attendance_duplicate_archive (
+      original_attendance_id integer PRIMARY KEY,
+      snapshot jsonb NOT NULL,
+      archived_at timestamptz NOT NULL DEFAULT now(),
+      archive_reason text NOT NULL
+    );
+    INSERT INTO attendance_duplicate_archive (original_attendance_id, snapshot, archive_reason)
+      SELECT older.id, to_jsonb(older), 'duplicate child/date archived before daily uniqueness enforcement'
+      FROM attendance older
+      WHERE EXISTS (
+        SELECT 1 FROM attendance newer
+        WHERE newer.child_id = older.child_id AND newer.date = older.date AND newer.id > older.id
+      )
+      ON CONFLICT (original_attendance_id) DO NOTHING;
+    -- The newest correction stays active; every older row remains recoverable in the archive.
+    DELETE FROM attendance older
+      USING attendance newer
+      WHERE older.child_id = newer.child_id AND older.date = newer.date AND older.id < newer.id;
+    UPDATE invoice_payments SET status = 'completed' WHERE status = 'succeeded';
+    INSERT INTO invoice_payments (
+      owner_id, invoice_id, method, amount, currency, status,
+      reference, note, recorded_by, created_at
+    )
+    SELECT
+      invoice.owner_id,
+      invoice.id,
+      CASE
+        WHEN nullif(invoice.payment_method, '') IS NOT NULL THEN invoice.payment_method
+        WHEN nullif(invoice.stripe_payment_intent_id, '') IS NOT NULL THEN 'payment_link'
+        ELSE 'legacy'
+      END,
+      invoice.amount,
+      'KWD',
+      'completed',
+      coalesce(
+        nullif(invoice.payment_reference, ''),
+        nullif(invoice.stripe_payment_intent_id, ''),
+        'legacy-invoice-' || invoice.id::text
+      ),
+      'Backfilled from the settled legacy invoice record',
+      'migration',
+      coalesce(invoice.paid_at, invoice.created_at, now())
+    FROM invoices invoice
+    WHERE invoice.status = 'paid'
+      AND invoice.owner_id <> '__legacy__'
+      AND NOT EXISTS (
+        SELECT 1
+        FROM invoice_payments payment
+        WHERE payment.owner_id = invoice.owner_id
+          AND payment.invoice_id = invoice.id
+          AND payment.status IN ('completed', 'succeeded')
+      );
+    CREATE UNIQUE INDEX IF NOT EXISTS attendance_child_day_unique ON attendance (child_id, date);
+    CREATE INDEX IF NOT EXISTS child_contacts_owner_child_idx ON child_contacts (owner_id, child_id, type);
+    CREATE INDEX IF NOT EXISTS invoice_lines_owner_invoice_idx ON invoice_lines (owner_id, invoice_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS invoices_owner_number_unique ON invoices (owner_id, invoice_number);
+    CREATE INDEX IF NOT EXISTS invoice_payments_owner_invoice_idx ON invoice_payments (owner_id, invoice_id);
+    CREATE INDEX IF NOT EXISTS invoice_refunds_owner_invoice_idx ON invoice_refunds (owner_id, invoice_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS invoice_receipts_owner_payment_unique ON invoice_receipts (owner_id, payment_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS invoice_receipts_owner_number_unique ON invoice_receipts (owner_id, receipt_number);
+    CREATE UNIQUE INDEX IF NOT EXISTS nursery_settings_owner_unique ON nursery_settings (owner_id);
 
     COMMIT;
   `);
@@ -208,11 +340,54 @@ export async function runApplicationMigrations(): Promise<void> {
   `);
   await pool.query(`
     ALTER TABLE guardians
-      ADD COLUMN IF NOT EXISTS clerk_user_id text
+      ADD COLUMN IF NOT EXISTS clerk_user_id text,
+      ADD COLUMN IF NOT EXISTS identity_key text;
+    UPDATE guardians
+      SET identity_key = CASE
+        WHEN nullif(lower(trim(email)), '') IS NOT NULL THEN 'email:' || lower(trim(email))
+        WHEN nullif(regexp_replace(phone, '[^0-9+]', '', 'g'), '') IS NOT NULL THEN 'phone:' || regexp_replace(phone, '[^0-9+]', '', 'g')
+        ELSE NULL
+      END
+      WHERE identity_key IS NULL;
+    -- A deterministic canonical guardian retains account linkage; child rows are
+    -- reassigned before duplicate guardians are removed.
+    WITH ranked AS (
+      SELECT id, owner_id, identity_key,
+        first_value(id) OVER (PARTITION BY owner_id, identity_key ORDER BY (clerk_user_id IS NOT NULL) DESC, id) AS canonical_id,
+        row_number() OVER (PARTITION BY owner_id, identity_key ORDER BY (clerk_user_id IS NOT NULL) DESC, id) AS rank
+      FROM guardians WHERE identity_key IS NOT NULL
+    )
+    UPDATE children child SET guardian_id = ranked.canonical_id
+      FROM ranked WHERE child.guardian_id = ranked.id AND ranked.rank > 1;
+    WITH ranked AS (
+      SELECT id, owner_id, identity_key,
+        first_value(id) OVER (PARTITION BY owner_id, identity_key ORDER BY (clerk_user_id IS NOT NULL) DESC, id) AS canonical_id,
+        row_number() OVER (PARTITION BY owner_id, identity_key ORDER BY (clerk_user_id IS NOT NULL) DESC, id) AS rank
+      FROM guardians WHERE identity_key IS NOT NULL
+    )
+    UPDATE invoices invoice SET guardian_id = ranked.canonical_id
+      FROM ranked WHERE invoice.guardian_id = ranked.id AND ranked.rank > 1;
+    WITH ranked AS (
+      SELECT id, owner_id, identity_key,
+        first_value(id) OVER (PARTITION BY owner_id, identity_key ORDER BY (clerk_user_id IS NOT NULL) DESC, id) AS canonical_id,
+        row_number() OVER (PARTITION BY owner_id, identity_key ORDER BY (clerk_user_id IS NOT NULL) DESC, id) AS rank
+      FROM guardians WHERE identity_key IS NOT NULL
+    )
+    UPDATE parent_messages message SET guardian_id = ranked.canonical_id
+      FROM ranked WHERE message.guardian_id = ranked.id AND ranked.rank > 1;
+    WITH ranked AS (
+      SELECT id, row_number() OVER (PARTITION BY owner_id, identity_key ORDER BY (clerk_user_id IS NOT NULL) DESC, id) AS rank
+      FROM guardians WHERE identity_key IS NOT NULL
+    )
+    DELETE FROM guardians guardian USING ranked
+      WHERE guardian.id = ranked.id AND ranked.rank > 1;
   `);
   await pool.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS guardians_clerk_user_id_unique
       ON guardians (clerk_user_id)
+    ;
+    CREATE UNIQUE INDEX IF NOT EXISTS guardians_owner_identity_key_unique
+      ON guardians (owner_id, identity_key) WHERE identity_key IS NOT NULL
   `);
   logger.info("Application database migrations completed");
 }

@@ -464,6 +464,16 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/StaffMember"
+    post:
+      operationId: createStaff
+      tags: [staff]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/StaffInput" } } }
+      responses:
+        "201":
+          description: Created staff member
+          content: { application/json: { schema: { $ref: "#/components/schemas/StaffMember" } } }
   /attendance/today:
     get:
       operationId: getTodayAttendance
@@ -519,7 +529,7 @@ paths:
           required: false
           schema:
             type: string
-            enum: [paid, pending, overdue]
+            enum: [draft, issued, pending, partial, paid, overdue, cancelled]
       responses:
         "200":
           description: Invoice records
@@ -529,6 +539,86 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Invoice"
+    post:
+      operationId: createInvoice
+      tags: [finance]
+      summary: Create a detailed internal invoice
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/InvoiceInput" } } }
+      responses:
+        "201":
+          description: Created invoice
+          content: { application/json: { schema: { $ref: "#/components/schemas/InvoiceDetail" } } }
+  /invoices/{id}:
+    get:
+      operationId: getInvoice
+      tags: [finance]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: Detailed invoice
+          content: { application/json: { schema: { $ref: "#/components/schemas/InvoiceDetail" } } }
+  /invoices/{id}/payments:
+    post:
+      operationId: recordInvoicePayment
+      tags: [finance]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/InternalPaymentInput" } } }
+      responses:
+        "201":
+          description: Payment and receipt
+          content: { application/json: { schema: { $ref: "#/components/schemas/Receipt" } } }
+  /invoices/{id}/refunds:
+    post:
+      operationId: refundInvoicePayment
+      tags: [finance]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/RefundInput" } } }
+      responses:
+        "201":
+          description: Recorded refund
+          content: { application/json: { schema: { $ref: "#/components/schemas/InvoiceRefund" } } }
+  /invoices/{id}/cancel:
+    post:
+      operationId: cancelInvoice
+      tags: [finance]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/CancelInvoiceInput" } } }
+      responses:
+        "200": { description: Cancelled invoice, content: { application/json: { schema: { $ref: "#/components/schemas/InvoiceDetail" } } } }
+  /parent/documents:
+    get:
+      operationId: listParentDocuments
+      tags: [parent]
+      responses:
+        "200":
+          description: Parent-visible child documents
+          content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/ParentDocument" } } } }
+  /parent/documents/{id}/content:
+    get:
+      operationId: getParentDocumentContent
+      tags: [parent]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: Private parent document content
+          content: { application/octet-stream: { schema: { type: string, format: binary } } }
+        "404": { description: Document not found }
+  /parent/receipts:
+    get:
+      operationId: listParentReceipts
+      tags: [parent, finance]
+      responses:
+        "200":
+          description: Guardian receipts
+          content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/Receipt" } } } }
   /exchange-rates/kwd-usd:
     get:
       operationId: getKwdUsdExchangeRate
@@ -835,6 +925,88 @@ paths:
               schema: { $ref: "#/components/schemas/ChildRecord" }
         "403": { description: Operation not permitted }
         "404": { description: Child not found }
+  /children/{id}/contacts:
+    get:
+      operationId: listChildContacts
+      tags: [children]
+      summary: List owner-scoped guardians, emergency contacts, pickups, consents and invitations
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Child contacts
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/ChildContact" } }
+    post:
+      operationId: createChildContact
+      tags: [children]
+      summary: Add a typed child family record
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ChildContactInput" }
+      responses:
+        "201":
+          description: Created contact
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChildContact" }
+        "404": { description: Child not found }
+  /attendance/history:
+    get:
+      operationId: listAttendanceHistory
+      tags: [attendance]
+      summary: List child attendance over a date range
+      parameters:
+        - { name: childId, in: query, schema: { type: number } }
+        - { name: dateFrom, in: query, schema: { type: string } }
+        - { name: dateTo, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Attendance history
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/AttendanceRecord" } }
+  /staff/{id}:
+    patch:
+      operationId: updateStaff
+      tags: [staff]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/StaffInput" } } }
+      responses:
+        "200":
+          description: Updated staff member
+          content: { application/json: { schema: { $ref: "#/components/schemas/StaffMember" } } }
+    delete:
+      operationId: deleteStaff
+      tags: [staff]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "204": { description: Deleted }
+  /nursery/settings:
+    get:
+      operationId: getNurserySettings
+      tags: [operations]
+      responses:
+        "200":
+          description: Typed nursery settings
+          content: { application/json: { schema: { $ref: "#/components/schemas/NurserySettings" } } }
+    put:
+      operationId: setNurserySettings
+      tags: [operations]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/NurserySettingsInput" } } }
+      responses:
+        "200":
+          description: Updated settings
+          content: { application/json: { schema: { $ref: "#/components/schemas/NurserySettings" } } }
   /staff-attendance:
     get:
       operationId: listStaffAttendance
@@ -1187,6 +1359,17 @@ components:
         objectPath:
           type: string
           pattern: "^/objects/uploads/[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$"
+    ParentDocument:
+      type: object
+      required: [id, applicationId, childId, name, contentType, size, createdAt]
+      properties:
+        id: { type: number }
+        applicationId: { type: number }
+        childId: { type: number }
+        name: { type: string }
+        contentType: { type: string }
+        size: { type: number }
+        createdAt: { type: string }
     UploadUrlRequest:
       type: object
       required: [applicationId, name, size, contentType]
@@ -1259,6 +1442,17 @@ components:
           enum: [present, absent, leave]
         attendanceRate: { type: number }
         avatarUrl: { type: ["string", "null"] }
+    StaffInput:
+      type: object
+      required: [name, role, phone, status]
+      properties:
+        name: { type: string, minLength: 1 }
+        role: { type: string, minLength: 1 }
+        phone: { type: string, minLength: 5 }
+        status: { type: string, enum: [present, absent, leave] }
+        email: { type: ["string", "null"] }
+        jobTitle: { type: ["string", "null"] }
+        hireDate: { type: ["string", "null"] }
     AttendanceRecord:
       type: object
       required: [id, childId, childName, date, status, checkIn, checkOut, source]
@@ -1276,6 +1470,12 @@ components:
         source: { type: string, enum: [manual, device, import] }
         recordedBy: { type: ["string", "null"] }
         note: { type: ["string", "null"] }
+        pickupName: { type: ["string", "null"] }
+        pickupIdentity: { type: ["string", "null"] }
+        correctedAt: { type: ["string", "null"] }
+        correctionReason: { type: ["string", "null"] }
+        pickupOverride: { type: boolean, default: false }
+        pickupOverrideReason: { type: ["string", "null"] }
     AttendanceInput:
       type: object
       required: [childId, date, status]
@@ -1290,6 +1490,11 @@ components:
         departureType: { type: ["string", "null"], enum: [normal, early, null] }
         source: { type: string, enum: [manual, device, import], default: manual }
         note: { type: ["string", "null"] }
+        pickupName: { type: ["string", "null"] }
+        pickupIdentity: { type: ["string", "null"] }
+        correctionReason: { type: ["string", "null"] }
+        pickupOverride: { type: boolean, default: false }
+        pickupOverrideReason: { type: ["string", "null"] }
     FinanceSummary:
       type: object
       required: [collectedThisMonth, outstanding, overdueCount, paidCount, monthlyTrend]
@@ -1321,7 +1526,7 @@ components:
         dueDate: { type: string }
         status:
           type: string
-          enum: [paid, pending, overdue]
+          enum: [draft, issued, pending, partial, paid, overdue, cancelled]
         paidAt: { type: ["string", "null"] }
         lastPaymentStatus: { type: ["string", "null"] }
         lastPaymentError: { type: ["string", "null"] }
@@ -1329,8 +1534,86 @@ components:
         chargedAmount: { type: ["number", "null"] }
         paymentMethod:
           type: ["string", "null"]
-          enum: [payment_link, knet, cash, null]
+          enum: [payment_link, knet, cash, bank_transfer, cheque, card_terminal, null]
         paymentReference: { type: ["string", "null"] }
+    InvoiceLine:
+      type: object
+      required: [id, type, description, quantity, unitAmount, amount]
+      properties:
+        id: { type: number }
+        type: { type: string, enum: [fee, discount, addon] }
+        description: { type: string }
+        quantity: { type: number }
+        unitAmount: { type: number }
+        amount: { type: number }
+    InvoiceLineInput:
+      type: object
+      required: [type, description, quantity, unitAmount]
+      properties:
+        type: { type: string, enum: [fee, discount, addon] }
+        description: { type: string, minLength: 1 }
+        quantity: { type: number, exclusiveMinimum: 0 }
+        unitAmount: { type: number, minimum: 0 }
+    InvoiceInput:
+      type: object
+      required: [childId, dueDate, lines]
+      properties:
+        childId: { type: number }
+        dueDate: { type: string }
+        status: { type: string, enum: [draft, issued], default: draft }
+        lines: { type: array, minItems: 1, items: { $ref: "#/components/schemas/InvoiceLineInput" } }
+    InvoiceDetail:
+      allOf:
+        - $ref: "#/components/schemas/Invoice"
+        - type: object
+          required: [lines, paidAmount, refundedAmount, balance]
+          properties:
+            lines: { type: array, items: { $ref: "#/components/schemas/InvoiceLine" } }
+            paidAmount: { type: number }
+            refundedAmount: { type: number }
+            balance: { type: number }
+    InternalPaymentInput:
+      type: object
+      required: [method, amount]
+      properties:
+        method: { type: string, enum: [cash, bank_transfer, cheque, card_terminal] }
+        amount: { type: number, exclusiveMinimum: 0 }
+        reference: { type: ["string", "null"] }
+        note: { type: ["string", "null"] }
+    RefundInput:
+      type: object
+      required: [amount, reason]
+      properties:
+        paymentId: { type: ["number", "null"] }
+        amount: { type: number, exclusiveMinimum: 0 }
+        reason: { type: string, minLength: 1 }
+    InvoiceRefund:
+      type: object
+      required: [id, invoiceId, amount, reason, recordedBy, createdAt]
+      properties:
+        id: { type: number }
+        invoiceId: { type: number }
+        paymentId: { type: ["number", "null"] }
+        amount: { type: number }
+        reason: { type: string }
+        recordedBy: { type: string }
+        createdAt: { type: string }
+    CancelInvoiceInput:
+      type: object
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 1 }
+    Receipt:
+      type: object
+      required: [id, invoiceId, paymentId, receiptNumber, amount, issuedBy, issuedAt]
+      properties:
+        id: { type: number }
+        invoiceId: { type: number }
+        paymentId: { type: number }
+        receiptNumber: { type: string }
+        amount: { type: number }
+        issuedBy: { type: string }
+        issuedAt: { type: string }
     CashPaymentInput:
       type: object
       required: [amount]
@@ -1510,6 +1793,58 @@ components:
         occurredOn: { type: ["string", "null"] }
         confidential: { type: boolean, default: false }
         data: { type: object, additionalProperties: true }
+    ChildContact:
+      type: object
+      required: [id, childId, type, name, status, primary, data, createdBy, createdAt, updatedAt]
+      properties:
+        id: { type: number }
+        childId: { type: number }
+        type: { type: string, enum: [guardian, emergency, authorized_pickup, consent, invitation] }
+        name: { type: string }
+        relationship: { type: ["string", "null"] }
+        phone: { type: ["string", "null"] }
+        email: { type: ["string", "null"] }
+        identityNumber: { type: ["string", "null"] }
+        status: { type: string }
+        primary: { type: boolean }
+        data: { type: object, additionalProperties: true }
+        createdBy: { type: string }
+        createdAt: { type: string }
+        updatedAt: { type: string }
+    ChildContactInput:
+      type: object
+      required: [type, name]
+      properties:
+        type: { type: string, enum: [guardian, emergency, authorized_pickup, consent, invitation] }
+        name: { type: string, minLength: 1 }
+        relationship: { type: ["string", "null"] }
+        phone: { type: ["string", "null"] }
+        email: { type: ["string", "null"] }
+        identityNumber: { type: ["string", "null"] }
+        status: { type: string, default: active }
+        primary: { type: boolean, default: false }
+        data: { type: object, additionalProperties: true }
+    NurserySettings:
+      type: object
+      required: [id, nurseryName, timezone, currency, workingHours, calendar, updatedBy, updatedAt]
+      properties:
+        id: { type: number }
+        nurseryName: { type: string }
+        timezone: { type: string }
+        currency: { type: string, enum: [KWD] }
+        workingHours: { type: object, additionalProperties: true }
+        calendar: { type: object, additionalProperties: true }
+        updatedBy: { type: string }
+        updatedAt: { type: string }
+    NurserySettingsInput:
+      type: object
+      required: [nurseryName, timezone, currency, workingHours, calendar]
+      properties:
+        nurseryName: { type: string, minLength: 1 }
+        timezone: { type: string, minLength: 1 }
+        currency: { type: string, enum: [KWD] }
+        workingHours: { type: object, additionalProperties: true }
+        calendar: { type: object, additionalProperties: true }
     StaffAttendance:
       type: object
       required: [id, staffId, date, status, source, recordedBy]

@@ -3,11 +3,13 @@ import {
   childrenTable,
   db,
   guardiansTable,
+  invoicePaymentsTable,
+  invoiceRefundsTable,
   invoicesTable,
   type Guardian,
   type Invoice,
 } from "@workspace/db";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { getUncachableStripeClient } from "./stripeClient";
 import { logger } from "./logger";
 import {
@@ -15,6 +17,11 @@ import {
   getCurrentKwdToUsdRate,
   getStoredFreshKwdToUsdRate,
 } from "./exchangeRates";
+import {
+  invoiceOutstandingBalance,
+  requireCheckoutPayable,
+  settledPaymentStatuses,
+} from "./invoiceLedger";
 
 const INVOICE_PRODUCT_NAME = "رسوم الحضانة";
 
@@ -133,9 +140,20 @@ export async function createInvoiceCheckoutSession(params: {
       ))
       .limit(1);
     const currentInvoice = currentInvoiceRow?.invoice;
-    if (!currentInvoice || currentInvoice.status === "paid") {
-      throw new Error("Invoice is no longer payable");
-    }
+    if (!currentInvoice) throw new Error("Invoice no longer exists");
+    const [payments, refunds] = await Promise.all([
+      tx.select({ amount: invoicePaymentsTable.amount }).from(invoicePaymentsTable).where(and(
+        eq(invoicePaymentsTable.ownerId, currentInvoice.ownerId),
+        eq(invoicePaymentsTable.invoiceId, currentInvoice.id),
+        inArray(invoicePaymentsTable.status, [...settledPaymentStatuses]),
+      )),
+      tx.select({ amount: invoiceRefundsTable.amount }).from(invoiceRefundsTable).where(and(
+        eq(invoiceRefundsTable.ownerId, currentInvoice.ownerId),
+        eq(invoiceRefundsTable.invoiceId, currentInvoice.id),
+      )),
+    ]);
+    const outstandingBalance = invoiceOutstandingBalance(currentInvoice.amount, payments, refunds);
+    requireCheckoutPayable(currentInvoice.status, outstandingBalance);
 
     const {
       rate: exchangeRate,
@@ -151,7 +169,8 @@ export async function createInvoiceCheckoutSession(params: {
         if (
           existing.status === "open" &&
           existing.url &&
-          existing.metadata?.exchangeRateVersion === rateVersion
+          existing.metadata?.exchangeRateVersion === rateVersion &&
+          Number(existing.metadata?.settlementAmountKwd) === outstandingBalance
         ) {
           return { url: existing.url, sessionId: existing.id };
         }
@@ -192,7 +211,7 @@ export async function createInvoiceCheckoutSession(params: {
             quantity: 1,
             price_data: {
               currency: CHARGE_CURRENCY,
-              unit_amount: toStripeAmount(currentInvoice.amount, exchangeRate),
+              unit_amount: toStripeAmount(outstandingBalance, exchangeRate),
               product: productId,
             },
           },
@@ -202,6 +221,7 @@ export async function createInvoiceCheckoutSession(params: {
           invoiceId: String(currentInvoice.id),
           invoiceNumber: currentInvoice.invoiceNumber,
           originalAmountKwd: String(currentInvoice.amount),
+          settlementAmountKwd: String(outstandingBalance),
           exchangeRateKwdToUsd: String(exchangeRate),
           exchangeRateFetchedAt: exchangeRateFetchedAt.toISOString(),
           exchangeRateVersion: rateVersion,
@@ -210,6 +230,7 @@ export async function createInvoiceCheckoutSession(params: {
           metadata: {
             invoiceId: String(currentInvoice.id),
             originalAmountKwd: String(currentInvoice.amount),
+            settlementAmountKwd: String(outstandingBalance),
             exchangeRateKwdToUsd: String(exchangeRate),
             exchangeRateFetchedAt: exchangeRateFetchedAt.toISOString(),
             exchangeRateVersion: rateVersion,

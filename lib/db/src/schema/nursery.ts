@@ -19,6 +19,8 @@ export const guardiansTable = pgTable("guardians", {
   phone: text("phone").notNull(),
   email: text("email"),
   clerkUserId: text("clerk_user_id").unique(),
+  /** Lower-cased trimmed email, or phone when email is unavailable; unique per owner. */
+  identityKey: text("identity_key"),
   balance: numeric("balance", { precision: 10, scale: 2, mode: "number" }).notNull().default(0),
 });
 
@@ -78,6 +80,10 @@ export const attendanceTable = pgTable("attendance", {
   source: text("source").notNull().default("manual"),
   recordedBy: text("recorded_by"),
   note: text("note"),
+  pickupName: text("pickup_name"),
+  pickupIdentity: text("pickup_identity"),
+  correctedAt: timestamp("corrected_at", { withTimezone: true }),
+  correctionReason: text("correction_reason"),
 });
 
 export const invoicesTable = pgTable("invoices", {
@@ -104,6 +110,10 @@ export const invoicesTable = pgTable("invoices", {
   exchangeRate: numeric("exchange_rate", { precision: 10, scale: 4, mode: "number" }),
   paymentMethod: text("payment_method"),
   paymentReference: text("payment_reference"),
+  issuedAt: timestamp("issued_at", { withTimezone: true }),
+  cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+  cancellationReason: text("cancellation_reason"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const invoicePaymentsTable = pgTable("invoice_payments", {
@@ -197,6 +207,8 @@ export const applicationDocumentsTable = pgTable("application_documents", {
   contentType: text("content_type").notNull(),
   size: integer("size").notNull(),
   objectPath: text("object_path").notNull(),
+  childId: integer("child_id"),
+  parentVisible: boolean("parent_visible").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -413,3 +425,73 @@ export const operationalRecordsTable = pgTable("operational_records", {
 });
 
 export const insertOperationalRecordSchema = createInsertSchema(operationalRecordsTable).omit({ id: true, ownerId: true, createdBy: true, createdAt: true, updatedAt: true });
+
+/** Owner-scoped family, emergency, pickup, consent and account invitation dossier rows. */
+export const childContactsTable = pgTable("child_contacts", {
+  id: serial("id").primaryKey(),
+  ownerId: text("owner_id").notNull(),
+  childId: integer("child_id").notNull(),
+  type: text("type").notNull(),
+  name: text("name").notNull(),
+  relationship: text("relationship"),
+  phone: text("phone"),
+  email: text("email"),
+  identityNumber: text("identity_number"),
+  status: text("status").notNull().default("active"),
+  primary: boolean("primary").notNull().default(false),
+  data: jsonb("data").$type<Record<string, unknown>>().notNull().default({}),
+  createdBy: text("created_by").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+});
+
+export const invoiceLinesTable = pgTable("invoice_lines", {
+  id: serial("id").primaryKey(),
+  ownerId: text("owner_id").notNull(),
+  invoiceId: integer("invoice_id").notNull(),
+  type: text("type").notNull().default("fee"),
+  description: text("description").notNull(),
+  quantity: numeric("quantity", { precision: 10, scale: 3, mode: "number" }).notNull().default(1),
+  unitAmount: numeric("unit_amount", { precision: 12, scale: 3, mode: "number" }).notNull(),
+  amount: numeric("amount", { precision: 12, scale: 3, mode: "number" }).notNull(),
+});
+
+export const invoiceRefundsTable = pgTable("invoice_refunds", {
+  id: serial("id").primaryKey(),
+  ownerId: text("owner_id").notNull(),
+  invoiceId: integer("invoice_id").notNull(),
+  paymentId: integer("payment_id"),
+  amount: numeric("amount", { precision: 12, scale: 3, mode: "number" }).notNull(),
+  reason: text("reason").notNull(),
+  recordedBy: text("recorded_by").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const invoiceReceiptsTable = pgTable("invoice_receipts", {
+  id: serial("id").primaryKey(),
+  ownerId: text("owner_id").notNull(),
+  invoiceId: integer("invoice_id").notNull(),
+  paymentId: integer("payment_id").notNull(),
+  receiptNumber: text("receipt_number").notNull(),
+  amount: numeric("amount", { precision: 12, scale: 3, mode: "number" }).notNull(),
+  issuedBy: text("issued_by").notNull(),
+  issuedAt: timestamp("issued_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const nurserySettingsTable = pgTable("nursery_settings", {
+  id: serial("id").primaryKey(),
+  ownerId: text("owner_id").notNull(),
+  nurseryName: text("nursery_name").notNull(),
+  timezone: text("timezone").notNull().default("Asia/Kuwait"),
+  currency: text("currency").notNull().default("KWD"),
+  workingHours: jsonb("working_hours").$type<Record<string, unknown>>().notNull().default({}),
+  calendar: jsonb("calendar").$type<Record<string, unknown>>().notNull().default({}),
+  updatedBy: text("updated_by").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+});
+
+export type ChildContact = typeof childContactsTable.$inferSelect;
+export type InvoiceLine = typeof invoiceLinesTable.$inferSelect;
+export type InvoiceRefund = typeof invoiceRefundsTable.$inferSelect;
+export type InvoiceReceipt = typeof invoiceReceiptsTable.$inferSelect;
+export type NurserySettings = typeof nurserySettingsTable.$inferSelect;

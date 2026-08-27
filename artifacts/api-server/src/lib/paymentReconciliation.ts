@@ -1,8 +1,13 @@
 import type Stripe from "stripe";
-import { db, guardiansTable, invoicesTable, invoicePaymentsTable, activitiesTable } from "@workspace/db";
-import { and, eq, ne } from "drizzle-orm";
+import { db, guardiansTable, invoicesTable, invoicePaymentsTable, invoiceRefundsTable, activitiesTable } from "@workspace/db";
+import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { sendPaymentConfirmation } from "./notifications";
 import { logger } from "./logger";
+import {
+  invoiceOutstandingBalance,
+  requireCheckoutPayable,
+  settledPaymentStatuses,
+} from "./invoiceLedger";
 
 function extractInvoiceId(obj: { metadata?: Record<string, string> | null }): number | null {
   const raw = obj.metadata?.invoiceId;
@@ -21,60 +26,82 @@ async function markInvoicePaid(
   invoiceId: number,
   paymentIntentId: string | null,
   charged: { amount: number; currency: string; exchangeRate: number | null } | null,
+  settlementAmountKwd: number | null,
 ) {
-  const [updated] = await db
-    .update(invoicesTable)
-    .set({
-      status: "paid",
-      paidAt: new Date(),
+  const result = await db.transaction(async (tx) => {
+    await tx.execute(sql`select id from invoices where id = ${invoiceId} for update`);
+    const [invoice] = await tx.select().from(invoicesTable).where(eq(invoicesTable.id, invoiceId));
+    if (!invoice) return null;
+    if (paymentIntentId) {
+      const [existing] = await tx.select({ id: invoicePaymentsTable.id }).from(invoicePaymentsTable).where(and(
+        eq(invoicePaymentsTable.invoiceId, invoiceId),
+        eq(invoicePaymentsTable.ownerId, invoice.ownerId),
+        eq(invoicePaymentsTable.reference, paymentIntentId),
+        inArray(invoicePaymentsTable.status, [...settledPaymentStatuses]),
+      )).limit(1);
+      if (existing) return null;
+    }
+    const [payments, refunds] = await Promise.all([
+      tx.select({ amount: invoicePaymentsTable.amount }).from(invoicePaymentsTable).where(and(
+        eq(invoicePaymentsTable.invoiceId, invoiceId),
+        eq(invoicePaymentsTable.ownerId, invoice.ownerId),
+        inArray(invoicePaymentsTable.status, [...settledPaymentStatuses]),
+      )),
+      tx.select({ amount: invoiceRefundsTable.amount }).from(invoiceRefundsTable).where(and(
+        eq(invoiceRefundsTable.invoiceId, invoiceId),
+        eq(invoiceRefundsTable.ownerId, invoice.ownerId),
+      )),
+    ]);
+    const outstanding = invoiceOutstandingBalance(invoice.amount, payments, refunds);
+    requireCheckoutPayable(invoice.status, outstanding);
+    const settledAmount = settlementAmountKwd ?? outstanding;
+    if (settledAmount <= 0 || settledAmount - outstanding > 0.0005) {
+      throw new Error("Stripe settlement does not match the invoice outstanding balance");
+    }
+    const paidAt = new Date();
+    const chargedNote = charged
+      ? ` (تم تحصيل ${charged.amount} ${charged.currency.toUpperCase()} عبر Stripe)`
+      : "";
+    await tx.insert(invoicePaymentsTable).values({
+      ownerId: invoice.ownerId,
+      invoiceId: invoice.id,
+      method: "payment_link",
+      amount: settledAmount,
+      currency: "KWD",
+      status: "completed",
+      reference: paymentIntentId,
+      note: chargedNote || null,
+      recordedBy: "Stripe",
+    });
+    const remaining = Math.max(0, outstanding - settledAmount);
+    const [updated] = await tx.update(invoicesTable).set({
+      status: remaining <= 0.0005 ? "paid" : "partial",
+      paidAt: remaining <= 0.0005 ? paidAt : null,
       stripePaymentIntentId: paymentIntentId,
       lastPaymentStatus: "succeeded",
       lastPaymentError: null,
       paymentMethod: "payment_link",
       paymentReference: paymentIntentId,
-      ...(charged
-        ? {
-            chargedCurrency: charged.currency,
-            chargedAmount: charged.amount,
-            exchangeRate: charged.exchangeRate,
-          }
-        : {}),
-    })
-    .where(and(eq(invoicesTable.id, invoiceId), ne(invoicesTable.status, "paid")))
-    .returning();
-
-  if (!updated) {
-    // Already marked paid by a previous event (e.g. both checkout.session.completed
-    // and payment_intent.succeeded fired) -- idempotent no-op.
-    return;
-  }
-
-  const chargedNote =
-    updated.chargedAmount != null && updated.chargedCurrency
-      ? ` (تم تحصيل ${updated.chargedAmount} ${updated.chargedCurrency.toUpperCase()} عبر Stripe)`
-      : "";
-  await db.insert(invoicePaymentsTable).values({
-    ownerId: updated.ownerId,
-    invoiceId: updated.id,
-    method: "payment_link",
-    amount: updated.amount,
-    currency: "KWD",
-    status: "succeeded",
-    reference: paymentIntentId,
-    note: chargedNote || null,
-    recordedBy: "Stripe",
+      ...(charged ? {
+        chargedCurrency: charged.currency,
+        chargedAmount: charged.amount,
+        exchangeRate: charged.exchangeRate,
+      } : {}),
+    }).where(eq(invoicesTable.id, invoice.id)).returning();
+    await tx.insert(activitiesTable).values({
+      ownerId: invoice.ownerId,
+      type: "payment",
+      title: `تم سداد فاتورة ${invoice.invoiceNumber}`,
+      description: `تم استلام دفعة بمبلغ ${settledAmount} د.ك عبر Stripe${chargedNote}`,
+      actor: "Stripe",
+    });
+    return updated;
   });
-  await db.insert(activitiesTable).values({
-    ownerId: updated.ownerId,
-    type: "payment",
-    title: `تم سداد فاتورة ${updated.invoiceNumber}`,
-    description: `تم استلام دفعة بمبلغ ${updated.amount} د.ك عبر Stripe${chargedNote}`,
-    actor: "Stripe",
-  });
+  if (!result) return;
 
-  const [guardian] = await db.select().from(guardiansTable).where(eq(guardiansTable.id, updated.guardianId)).limit(1);
+  const [guardian] = await db.select().from(guardiansTable).where(eq(guardiansTable.id, result.guardianId)).limit(1);
   if (guardian) {
-    await sendPaymentConfirmation(updated, guardian);
+    await sendPaymentConfirmation(result, guardian);
   }
 
   logger.info({ invoiceId }, "Invoice marked as paid via Stripe webhook");
@@ -117,7 +144,7 @@ export async function reconcileInvoicePayment(payload: Buffer): Promise<void> {
               exchangeRate: parseRate(session.metadata?.exchangeRateKwdToUsd),
             }
           : null;
-      await markInvoicePaid(invoiceId, paymentIntentId, charged);
+      await markInvoicePaid(invoiceId, paymentIntentId, charged, parseRate(session.metadata?.settlementAmountKwd));
       return;
     }
     case "payment_intent.succeeded": {
@@ -129,7 +156,7 @@ export async function reconcileInvoicePayment(payload: Buffer): Promise<void> {
         currency: paymentIntent.currency,
         exchangeRate: parseRate(paymentIntent.metadata?.exchangeRateKwdToUsd),
       };
-      await markInvoicePaid(invoiceId, paymentIntent.id, charged);
+      await markInvoicePaid(invoiceId, paymentIntent.id, charged, parseRate(paymentIntent.metadata?.settlementAmountKwd));
       return;
     }
     case "payment_intent.payment_failed": {

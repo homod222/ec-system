@@ -26,4 +26,15 @@ export interface AttendanceRecord {
   recordedBy?: string | null;
   /** @nullable */
   note?: string | null;
+  /** @nullable */
+  pickupName?: string | null;
+  /** @nullable */
+  pickupIdentity?: string | null;
+  /** @nullable */
+  correctedAt?: string | null;
+  /** @nullable */
+  correctionReason?: string | null;
+  pickupOverride?: boolean;
+  /** @nullable */
+  pickupOverrideReason?: string | null;
 }

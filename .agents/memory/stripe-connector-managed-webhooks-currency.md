@@ -14,3 +14,10 @@ A live checkout-session creation call against the connected Stripe sandbox accou
 **Why:** worth knowing before assuming any ISO currency code will work with `price_data.currency` — verify empirically for the target account/currency early, since the failure only surfaces as a runtime API error with no earlier warning.
 
 **How to apply:** when a project's native currency isn't Stripe-supported, charge in a supported currency (e.g. USD) via an explicit, documented conversion, and store the actually-charged amount/currency/rate on the record (invoice, order, etc.) from the webhook payload itself for audit — don't just trust your own pre-computed conversion.
+
+## Normalize provider settlements into the internal ledger contract
+External webhook event names and success labels are transport concepts, not accounting states. A Stripe success must enter the same canonical settled state used by internal cash and transfer payments; legacy provider labels may be accepted only as a migration bridge.
+
+**Why:** when the webhook wrote a provider-specific success label while balances, refunds, and reports recognized only the internal label, paid invoices appeared unpaid and allowed duplicate collection.
+
+**How to apply:** normalize at the webhook boundary, backfill existing ledger rows, and cover invoice detail, reporting, refund eligibility, and duplicate-payment prevention in one provider-settlement regression.

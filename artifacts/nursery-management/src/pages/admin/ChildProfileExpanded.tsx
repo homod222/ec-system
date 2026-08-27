@@ -8,11 +8,16 @@ import {
   getListApplicationsQueryKey,
   useListChildRecords,
   useCreateChildRecord,
-  getListChildRecordsQueryKey
+  getListChildRecordsQueryKey,
+  useListChildContacts,
+  useCreateChildContact,
+  getListChildContactsQueryKey
 } from '@workspace/api-client-react';
 import { Shell, Button, Pill, Avatar, Skeleton, QueryState, PageHeader } from '../../App';
-import { ArrowRightIcon, BookOpen, Edit3, Trash2, FileText, Plus, HeartPulse, Activity, AlertCircle, Pill as PillIcon, FileIcon, Image as ImageIcon, FileText as NoteIcon, History } from 'lucide-react';
+import { ArrowRightIcon, BookOpen, Edit3, Trash2, FileText, Plus, HeartPulse, Activity, AlertCircle, Pill as PillIcon, FileIcon, Image as ImageIcon, FileText as NoteIcon, History, X } from 'lucide-react';
 import { Link } from 'wouter';
+import { useToast } from '@/hooks/use-toast';
+import type { ChildContactInput } from '@workspace/api-client-react';
 
 const CATEGORY_ICONS: Record<string, any> = {
   health: HeartPulse,
@@ -33,12 +38,15 @@ export function ChildProfileExpanded() {
   
   const recordsQuery = useListChildRecords(id, { query: { enabled: !!id, queryKey: getListChildRecordsQueryKey(id) } });
   const records = recordsQuery.data || [];
+  const contactsQuery = useListChildContacts(id, { query: { enabled: !!id, queryKey: getListChildContactsQueryKey(id) } });
+  const contacts = contactsQuery.data || [];
   
   const renewal = useStartChildRenewal();
   const [, setLocation] = useLocation();
   const qc = useQueryClient();
   
   const [showAddRecord, setShowAddRecord] = useState(false);
+  const [showAddContact, setShowAddContact] = useState(false);
   
   if (query.isLoading) return <Shell><Skeleton className="h-12 w-64 mb-6" /><Skeleton className="h-64 w-full rounded-[2rem]" /></Shell>;
   if (query.isError || !child) return <Shell><QueryState error onRetry={() => query.refetch()}>{null}</QueryState></Shell>;
@@ -70,7 +78,40 @@ export function ChildProfileExpanded() {
         </div>
       </div>
 
-      <div className="mt-8 flex items-center justify-between">
+      <section className="mt-8">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h2 className="text-2xl font-bold text-foreground">جهات الاتصال والتصاريح</h2>
+            <p className="mt-1 text-sm text-muted-foreground">أولياء الأمور، جهات الطوارئ، المصرح لهم بالاستلام والموافقات.</p>
+          </div>
+          <Button data-testid="button-add-child-contact" onClick={() => setShowAddContact(true)}><Plus size={18} />إضافة جهة اتصال</Button>
+        </div>
+        <QueryState loading={contactsQuery.isLoading} error={contactsQuery.isError} empty={!contacts.length} onRetry={() => contactsQuery.refetch()}>
+          <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {contacts.map((contact) => (
+              <div key={contact.id} className="rounded-[1.5rem] border border-border bg-card p-5 shadow-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-bold text-foreground">{contact.name}</p>
+                    <p className="mt-1 text-xs font-bold text-primary">{contactTypeLabel(contact.type)}</p>
+                  </div>
+                  <Pill tone={contact.status === 'active' || contact.status === 'approved' ? 'green' : 'yellow'}>{contact.status === 'active' ? 'نشط' : contact.status === 'approved' ? 'معتمد' : contact.status}</Pill>
+                </div>
+                <div className="mt-4 space-y-1 text-sm text-muted-foreground">
+                  {contact.relationship && <p>{contact.relationship}</p>}
+                  {contact.phone && <p dir="ltr" className="text-right">{contact.phone}</p>}
+                  {contact.email && <p dir="ltr" className="truncate text-right">{contact.email}</p>}
+                  {contact.identityNumber && <p>الرقم المدني: {contact.identityNumber}</p>}
+                  {contact.primary && <p className="font-bold text-primary">جهة الاتصال الأساسية</p>}
+                  {typeof contact.data.note === 'string' && <p className="pt-2 text-xs">{contact.data.note}</p>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </QueryState>
+      </section>
+
+      <div className="mt-10 flex items-center justify-between">
         <h2 className="text-2xl font-bold text-foreground">السجل الشامل</h2>
         <Button data-testid="button-add-child-record" onClick={() => setShowAddRecord(true)}><Plus size={18} />إضافة سجل</Button>
       </div>
@@ -100,7 +141,59 @@ export function ChildProfileExpanded() {
       </QueryState>
 
       {showAddRecord && <AddRecordModal childId={id} onClose={() => setShowAddRecord(false)} />}
+      {showAddContact && <AddContactModal childId={id} onClose={() => setShowAddContact(false)} />}
     </Shell>
+  );
+}
+
+function contactTypeLabel(type: string) {
+  return ({ guardian: 'ولي أمر', emergency: 'للطوارئ', authorized_pickup: 'مصرح بالاستلام', consent: 'موافقة', invitation: 'دعوة' } as Record<string, string>)[type] || type;
+}
+
+function AddContactModal({ childId, onClose }: { childId: number; onClose: () => void }) {
+  const [form, setForm] = useState({ type: 'guardian', name: '', relationship: '', phone: '', email: '', identityNumber: '', status: 'active', primary: false, note: '' });
+  const create = useCreateChildContact();
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const isPerson = form.type !== 'consent';
+
+  const submit = (event: React.FormEvent) => {
+    event.preventDefault();
+    const data: ChildContactInput = {
+      type: form.type as ChildContactInput['type'],
+      name: form.name,
+      relationship: form.relationship || null,
+      phone: form.phone || null,
+      email: form.email || null,
+      identityNumber: form.identityNumber || null,
+      status: form.status,
+      primary: form.primary,
+      data: form.note ? { note: form.note } : {},
+    };
+    create.mutate({ id: childId, data }, {
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: getListChildContactsQueryKey(childId) });
+        onClose();
+      },
+      onError: () => toast({ title: 'تعذر حفظ جهة الاتصال', description: 'تحقق من الحقول وحاول مرة أخرى.', variant: 'destructive' }),
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-primary/40 p-4 backdrop-blur-md animate-in fade-in">
+      <form onSubmit={submit} className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-[2rem] border border-border bg-card p-8 shadow-2xl animate-rise">
+        <div className="mb-6 flex items-center justify-between"><h2 className="text-xl font-bold">إضافة جهة اتصال أو تصريح</h2><Button type="button" variant="ghost" onClick={onClose} className="!p-2"><X size={20} /></Button></div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="text-sm font-bold">النوع<select required value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} className="mt-2 w-full rounded-xl border border-input bg-background px-4 py-3 outline-none"><option value="guardian">ولي أمر</option><option value="emergency">للطوارئ</option><option value="authorized_pickup">مصرح بالاستلام</option><option value="consent">موافقة</option><option value="invitation">دعوة</option></select></label>
+          <label className="text-sm font-bold">{form.type === 'consent' ? 'اسم الموافقة' : 'الاسم'}<input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="mt-2 w-full rounded-xl border border-input bg-background px-4 py-3 outline-none" /></label>
+          {isPerson && <><label className="text-sm font-bold">صلة القرابة<input value={form.relationship} onChange={(e) => setForm({ ...form, relationship: e.target.value })} className="mt-2 w-full rounded-xl border border-input bg-background px-4 py-3 outline-none" /></label><label className="text-sm font-bold">رقم الجوال<input type="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="mt-2 w-full rounded-xl border border-input bg-background px-4 py-3 outline-none" /></label><label className="text-sm font-bold">البريد الإلكتروني<input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="mt-2 w-full rounded-xl border border-input bg-background px-4 py-3 outline-none" /></label><label className="text-sm font-bold">الرقم المدني<input value={form.identityNumber} onChange={(e) => setForm({ ...form, identityNumber: e.target.value })} className="mt-2 w-full rounded-xl border border-input bg-background px-4 py-3 outline-none" /></label></>}
+          <label className="text-sm font-bold">الحالة<select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })} className="mt-2 w-full rounded-xl border border-input bg-background px-4 py-3 outline-none"><option value="active">نشط</option><option value="approved">معتمد</option><option value="pending">قيد المراجعة</option><option value="inactive">غير نشط</option></select></label>
+        </div>
+        <label className="mt-4 block text-sm font-bold">ملاحظات / تفاصيل الموافقة<textarea rows={3} value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} className="mt-2 w-full resize-none rounded-xl border border-input bg-background px-4 py-3 outline-none" /></label>
+        {isPerson && <label className="mt-4 flex items-center gap-2 text-sm font-bold"><input type="checkbox" checked={form.primary} onChange={(e) => setForm({ ...form, primary: e.target.checked })} />جهة الاتصال الأساسية</label>}
+        <div className="mt-8 flex justify-end gap-3"><Button type="button" variant="ghost" onClick={onClose}>إلغاء</Button><Button type="submit" disabled={create.isPending}>{create.isPending ? 'جارٍ الحفظ...' : 'حفظ'}</Button></div>
+      </form>
+    </div>
   );
 }
 

@@ -33,6 +33,9 @@ import {
   childRecordsTable,
   childrenTable,
   db,
+  invoicePaymentsTable,
+  invoiceRefundsTable,
+  invoicesTable,
   operationalRecordsTable,
   rolePermissionsTable,
   staffAttendanceTable,
@@ -91,7 +94,7 @@ const configurableOperations = [
   "read:report-operational", "read:report-academic", "read:report-financial",
   "read:permissions", "read:audit",
   "read:dashboard", "read:children", "write:children", "delete:children",
-  "read:invoice", "write:payment",
+  "read:invoice", "write:invoice", "write:payment",
   "read:application", "write:application", "accept:application", "write:application-document",
 ];
 
@@ -115,6 +118,7 @@ export function defaultAllowed(role: string, operation: string) {
   if (role === "accountant") {
     return operation === "read:report-financial"
       || operation === "read:invoice"
+      || operation === "write:invoice"
       || operation === "read:dashboard"
       || operation === "write:payment"
       || operation === "write:notification"
@@ -424,6 +428,47 @@ router.get("/reports", async (req, res): Promise<void> => {
       ? [...financialResources]
       : undefined;
   const { ownerId } = nurseryContext(req);
+  if (query.data.domain === "financial") {
+    const [invoices, payments, refunds] = await Promise.all([
+      db.select().from(invoicesTable).where(and(
+        eq(invoicesTable.ownerId, ownerId),
+        query.data.status ? eq(invoicesTable.status, query.data.status) : undefined,
+        query.data.dateFrom ? gte(invoicesTable.dueDate, query.data.dateFrom) : undefined,
+        query.data.dateTo ? lte(invoicesTable.dueDate, query.data.dateTo) : undefined,
+      )),
+      db.select().from(invoicePaymentsTable).where(and(
+        eq(invoicePaymentsTable.ownerId, ownerId),
+        inArray(invoicePaymentsTable.status, ["completed", "succeeded"]),
+        query.data.dateFrom ? gte(invoicePaymentsTable.createdAt, new Date(`${query.data.dateFrom}T00:00:00.000Z`)) : undefined,
+        query.data.dateTo ? lte(invoicePaymentsTable.createdAt, new Date(`${query.data.dateTo}T23:59:59.999Z`)) : undefined,
+      )),
+      db.select().from(invoiceRefundsTable).where(and(
+        eq(invoiceRefundsTable.ownerId, ownerId),
+        query.data.dateFrom ? gte(invoiceRefundsTable.createdAt, new Date(`${query.data.dateFrom}T00:00:00.000Z`)) : undefined,
+        query.data.dateTo ? lte(invoiceRefundsTable.createdAt, new Date(`${query.data.dateTo}T23:59:59.999Z`)) : undefined,
+      )),
+    ]);
+    const byStatus: Record<string, number> = {};
+    invoices.forEach((invoice) => { byStatus[invoice.status] = (byStatus[invoice.status] ?? 0) + 1; });
+    const records = invoices.map((invoice) => ({
+      id: invoice.id, resource: "revenue" as const, subjectId: invoice.childId, branchId: null,
+      title: invoice.invoiceNumber, status: invoice.status, occurredOn: invoice.dueDate,
+      amount: invoice.amount, data: {
+        guardianId: invoice.guardianId,
+        paidAmount: payments.filter((payment) => payment.invoiceId === invoice.id)
+          .reduce((sum, payment) => sum + payment.amount, 0),
+      },
+      createdBy: "system", createdAt: invoice.createdAt.toISOString(),
+      updatedAt: (invoice.paidAt ?? invoice.createdAt).toISOString(),
+    }));
+    res.json(GetNurseryReportResponse.parse({
+      domain: "financial", count: invoices.length,
+      totalAmount: payments.reduce((sum, payment) => sum + payment.amount, 0)
+        - refunds.reduce((sum, refund) => sum + refund.amount, 0),
+      byStatus, records,
+    }));
+    return;
+  }
   const rows = await db.select().from(operationalRecordsTable).where(and(
     eq(operationalRecordsTable.ownerId, ownerId),
     resources ? inArray(operationalRecordsTable.resource, resources) : undefined,

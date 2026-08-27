@@ -5,7 +5,12 @@ import {
   useGetFinanceSummary,
   useListInvoices,
   useCreateInvoiceCheckoutSession,
+  useCreateInvoice,
+  useListChildren,
+  useRecordInvoicePayment,
   useRecordCashInvoicePayment,
+  useRefundInvoicePayment,
+  useCancelInvoice,
   useSendInvoiceReminder,
   getGetFinanceSummaryQueryKey,
   getListInvoicesQueryKey,
@@ -25,6 +30,9 @@ function InvoiceRow({ invoice }: { invoice: Invoice }) {
   const checkout = useCreateInvoiceCheckoutSession();
   const cashPayment = useRecordCashInvoicePayment();
   const reminder = useSendInvoiceReminder();
+  const internalPayment = useRecordInvoicePayment();
+  const refund = useRefundInvoicePayment();
+  const cancel = useCancelInvoice();
   const unpaid = invoice.status !== 'paid';
   const [paymentDialog, setPaymentDialog] = useState(false);
   const [cashNote, setCashNote] = useState('');
@@ -56,6 +64,10 @@ function InvoiceRow({ invoice }: { invoice: Invoice }) {
       onError: () => toast({ title: 'تعذّر إرسال التذكير', description: 'حدث خطأ غير متوقع أثناء إرسال الإشعار.', variant: 'destructive' }),
     });
   };
+  const refresh = () => { qc.invalidateQueries({ queryKey: getListInvoicesQueryKey() }); qc.invalidateQueries({ queryKey: getGetFinanceSummaryQueryKey() }); };
+  const internal = () => { const amount = Number(window.prompt('المبلغ المستلم بالدينار')); if (!amount) return; const method = window.prompt('طريقة الدفع: cash أو bank_transfer أو cheque أو card_terminal', 'cash'); if (!['cash','bank_transfer','cheque','card_terminal'].includes(method || '')) return; const reference = window.prompt('مرجع العملية (اختياري)'); internalPayment.mutate({ id: invoice.id, data: { amount, method: method as any, reference: reference || null } }, { onSuccess: (receipt) => { refresh(); window.alert(`تم تسجيل الدفع. رقم الإيصال: ${receipt.receiptNumber}`); }, onError: () => toast({ title: 'تعذر تسجيل الدفع', variant: 'destructive' }) }); };
+  const refundPayment = () => { const amount=Number(window.prompt('مبلغ الاسترداد')); const reason=window.prompt('سبب الاسترداد'); if (!amount || !reason) return; refund.mutate({id:invoice.id,data:{amount,reason}}, {onSuccess:refresh,onError:()=>toast({title:'تعذر تسجيل الاسترداد',variant:'destructive'})}); };
+  const cancelInvoice = () => { const reason=window.prompt('سبب إلغاء الفاتورة'); if (!reason) return; cancel.mutate({id:invoice.id,data:{reason}},{onSuccess:refresh,onError:()=>toast({title:'تعذر إلغاء الفاتورة',variant:'destructive'})}); };
 
   return (
     <div data-testid={`row-invoice-${invoice.id}`} className="flex flex-col gap-3 rounded-xl border border-border bg-background p-4 hover:border-primary/20 transition-colors sm:flex-row sm:items-center">
@@ -92,6 +104,12 @@ function InvoiceRow({ invoice }: { invoice: Invoice }) {
             </Button>
           </div>
         )}
+        <div className="flex gap-1">
+          {unpaid && <Button variant="soft" className="!px-2 !py-2 !text-xs" disabled={internalPayment.isPending} onClick={internal}>تحصيل داخلي</Button>}
+          {(invoice.status === 'paid' || invoice.status === 'partial') && <Button variant="ghost" className="!px-2 !py-2 !text-xs" disabled={refund.isPending} onClick={refundPayment}>استرداد</Button>}
+          {unpaid && invoice.status !== 'cancelled' && <Button variant="ghost" className="!px-2 !py-2 !text-xs text-destructive" disabled={cancel.isPending} onClick={cancelInvoice}>إلغاء</Button>}
+          {invoice.status === 'paid' && <Button variant="ghost" className="!px-2 !py-2 !text-xs" onClick={() => window.print()}>طباعة إيصال</Button>}
+        </div>
       </div>
       {paymentDialog && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-primary/40 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="اختيار طريقة الدفع">
@@ -151,6 +169,7 @@ export function FinanceExpanded() {
   const { toast } = useToast();
   const search = useSearch(); 
   const [, setLocation] = useLocation();
+  const [showCreate, setShowCreate] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(search);
@@ -176,7 +195,7 @@ export function FinanceExpanded() {
 
   return (
     <Shell>
-      <PageHeader eyebrow="حضانة EC / الإدارة المالية" title="المالية والتحصيل" description="صورة دقيقة للمدفوعات المتأخرة والتدفقات النقدية والمصروفات التشغيلية." action={<Button data-testid="button-finance-export" variant="soft"><FileText size={18} />إصدار تقرير المحاسبة</Button>} />
+      <PageHeader eyebrow="حضانة EC / الإدارة المالية" title="المالية والتحصيل" description="صورة دقيقة للمدفوعات المتأخرة والتدفقات النقدية والمصروفات التشغيلية." action={<Button onClick={() => setShowCreate(true)}><FileText size={18} />إنشاء فاتورة</Button>} />
       
       <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4 mb-8">
         <StatCard icon={Banknote} label="المحصّل هذا الشهر" value={money(data?.collectedThisMonth ?? 0)} detail="أداء ممتاز" tone="teal" />
@@ -265,6 +284,16 @@ export function FinanceExpanded() {
       <OperationalManager resource="refund" title="طلبات الاسترداد" icon={RefreshCw} extraFields={[{name: 'reason', label: 'السبب', type: 'text'}]} />
       <OperationalManager resource="expense" title="المصروفات التشغيلية" icon={Wallet} extraFields={[{name: 'category', label: 'التصنيف', type: 'text'}]} />
       <OperationalManager resource="revenue" title="الإيرادات الإضافية" icon={Banknote} extraFields={[{name: 'source', label: 'المصدر', type: 'text'}]} />
+       {showCreate && <InvoiceCreateModal onClose={() => setShowCreate(false)} />}
     </Shell>
   );
+}
+
+function InvoiceCreateModal({ onClose }: { onClose: () => void }) {
+ const childrenQuery=useListChildren(); const create=useCreateInvoice(); const qc=useQueryClient();
+ const [childId,setChildId]=useState(''); const [dueDate,setDueDate]=useState(new Date().toISOString().slice(0,10)); const [status,setStatus]=useState<'draft'|'issued'>('issued');
+ const [lines,setLines]=useState([{type:'fee',description:'رسوم دراسية',quantity:1,unitAmount:0}]);
+ const total=lines.reduce((sum,l)=>sum+(l.type==='discount'?-1:1)*l.quantity*l.unitAmount,0);
+ const submit=(e:React.FormEvent)=>{e.preventDefault(); create.mutate({data:{childId:Number(childId),dueDate,status,lines:lines.map(l=>({...l,type:l.type as any}))}},{onSuccess:()=>{qc.invalidateQueries({queryKey:getListInvoicesQueryKey()});qc.invalidateQueries({queryKey:getGetFinanceSummaryQueryKey()});onClose()}})};
+ return <div className="fixed inset-0 z-50 grid place-items-center bg-primary/40 p-4 backdrop-blur-md"><form onSubmit={submit} className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-[2rem] bg-card p-8 shadow-2xl"><h2 className="mb-5 text-xl font-bold">إنشاء فاتورة تفصيلية</h2><div className="grid gap-4 sm:grid-cols-2"><label className="font-bold text-sm">الطفل<select required value={childId} onChange={e=>setChildId(e.target.value)} className="mt-2 w-full rounded-xl border border-input bg-background p-3"><option value="">اختر الطفل</option>{(childrenQuery.data||[]).map(c=><option value={c.id} key={c.id}>{c.fullName}</option>)}</select></label><label className="font-bold text-sm">تاريخ الاستحقاق<input required type="date" value={dueDate} onChange={e=>setDueDate(e.target.value)} className="mt-2 w-full rounded-xl border border-input bg-background p-3"/></label></div><div className="mt-5 space-y-3">{lines.map((line,i)=><div className="grid grid-cols-[.8fr_2fr_.7fr_.9fr_auto] gap-2" key={i}><select value={line.type} onChange={e=>setLines(lines.map((x,j)=>j===i?{...x,type:e.target.value}:x))} className="rounded-xl border p-2"><option value="fee">رسوم</option><option value="addon">إضافة</option><option value="discount">خصم</option></select><input required placeholder="الوصف" value={line.description} onChange={e=>setLines(lines.map((x,j)=>j===i?{...x,description:e.target.value}:x))} className="rounded-xl border p-2"/><input required min="1" type="number" value={line.quantity} onChange={e=>setLines(lines.map((x,j)=>j===i?{...x,quantity:Number(e.target.value)}:x))} className="rounded-xl border p-2"/><input required min="0" step=".001" type="number" value={line.unitAmount} onChange={e=>setLines(lines.map((x,j)=>j===i?{...x,unitAmount:Number(e.target.value)}:x))} className="rounded-xl border p-2"/><Button type="button" variant="ghost" className="!p-2" disabled={lines.length===1} onClick={()=>setLines(lines.filter((_,j)=>j!==i))}>×</Button></div>)}</div><Button type="button" variant="soft" className="mt-3" onClick={()=>setLines([...lines,{type:'fee',description:'',quantity:1,unitAmount:0}])}>إضافة بند</Button><p className="mt-4 font-bold">الإجمالي: {money(total)}</p><label className="mt-3 block font-bold text-sm">الحالة<select value={status} onChange={e=>setStatus(e.target.value as any)} className="mr-3 rounded-xl border p-2"><option value="issued">إصدار الآن</option><option value="draft">مسودة</option></select></label>{create.isError&&<p className="mt-3 text-sm text-destructive">تعذر إنشاء الفاتورة.</p>}<div className="mt-7 flex justify-end gap-3"><Button type="button" variant="ghost" onClick={onClose}>إلغاء</Button><Button disabled={create.isPending}>{create.isPending?'جارٍ الإنشاء...':'إنشاء الفاتورة'}</Button></div></form></div>
 }
