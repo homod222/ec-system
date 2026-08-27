@@ -567,6 +567,32 @@ paths:
           description: Invoice already paid
         "404":
           description: Invoice not found
+  /invoices/{id}/cash-payment:
+    post:
+      operationId: recordCashInvoicePayment
+      tags: [finance]
+      summary: Record a full cash payment for an invoice
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CashPaymentInput"
+      responses:
+        "200":
+          description: Cash payment recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvoicePaymentResult"
+        "400":
+          description: Invalid amount or invoice already paid
+        "404":
+          description: Invoice not found
+        "409":
+          description: Invoice was paid concurrently
   /invoices/{id}/reminder:
     post:
       operationId: sendInvoiceReminder
@@ -1301,6 +1327,40 @@ components:
         lastPaymentError: { type: ["string", "null"] }
         chargedCurrency: { type: ["string", "null"] }
         chargedAmount: { type: ["number", "null"] }
+        paymentMethod:
+          type: ["string", "null"]
+          enum: [payment_link, knet, cash, null]
+        paymentReference: { type: ["string", "null"] }
+    CashPaymentInput:
+      type: object
+      required: [amount]
+      properties:
+        amount:
+          type: number
+          exclusiveMinimum: 0
+          multipleOf: 0.001
+        note:
+          type: ["string", "null"]
+          maxLength: 500
+    InvoicePaymentResult:
+      type: object
+      required: [invoiceId, status, method, amount, currency, paidAt]
+      properties:
+        invoiceId: { type: number }
+        status:
+          type: string
+          enum: [paid]
+        method:
+          type: string
+          enum: [cash]
+        amount: { type: number }
+        currency:
+          type: string
+          enum: [KWD]
+        reference: { type: ["string", "null"] }
+        paidAt:
+          type: string
+          format: date-time
     InvoiceCheckoutSessionInput:
       type: object
       required: [returnUrl]

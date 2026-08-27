@@ -86,7 +86,7 @@ export const invoicesTable = pgTable("invoices", {
   invoiceNumber: text("invoice_number").notNull(),
   guardianId: integer("guardian_id").notNull(),
   childId: integer("child_id").notNull(),
-  amount: numeric("amount", { precision: 10, scale: 2, mode: "number" }).notNull(),
+  amount: numeric("amount", { precision: 12, scale: 3, mode: "number" }).notNull(),
   dueDate: date("due_date", { mode: "string" }).notNull(),
   status: text("status").notNull(),
   stripeCheckoutSessionId: text("stripe_checkout_session_id"),
@@ -100,8 +100,24 @@ export const invoicesTable = pgTable("invoices", {
   // in a supported currency (currently USD). These record what Stripe actually
   // charged, straight from the webhook payload, for audit/reconciliation.
   chargedCurrency: text("charged_currency"),
-  chargedAmount: numeric("charged_amount", { precision: 10, scale: 2, mode: "number" }),
+  chargedAmount: numeric("charged_amount", { precision: 12, scale: 3, mode: "number" }),
   exchangeRate: numeric("exchange_rate", { precision: 10, scale: 4, mode: "number" }),
+  paymentMethod: text("payment_method"),
+  paymentReference: text("payment_reference"),
+});
+
+export const invoicePaymentsTable = pgTable("invoice_payments", {
+  id: serial("id").primaryKey(),
+  ownerId: text("owner_id").notNull(),
+  invoiceId: integer("invoice_id").notNull(),
+  method: text("method").notNull(),
+  amount: numeric("amount", { precision: 12, scale: 3, mode: "number" }).notNull(),
+  currency: text("currency").notNull().default("KWD"),
+  status: text("status").notNull(),
+  reference: text("reference"),
+  note: text("note"),
+  recordedBy: text("recorded_by"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const exchangeRatesTable = pgTable("exchange_rates", {
@@ -204,6 +220,7 @@ export const insertChildSchema = createInsertSchema(childrenTable).omit({ id: tr
 export const insertStaffSchema = createInsertSchema(staffTable).omit({ id: true });
 export const insertAttendanceSchema = createInsertSchema(attendanceTable).omit({ id: true });
 export const insertInvoiceSchema = createInsertSchema(invoicesTable).omit({ id: true });
+export const insertInvoicePaymentSchema = createInsertSchema(invoicePaymentsTable).omit({ id: true, createdAt: true });
 export const insertActivitySchema = createInsertSchema(activitiesTable).omit({ id: true, ownerId: true, createdAt: true });
 
 export const insertProgressReportSchema = createInsertSchema(progressReportsTable).omit({ id: true, publishedAt: true });
@@ -219,6 +236,7 @@ export type Child = typeof childrenTable.$inferSelect;
 export type StaffMember = typeof staffTable.$inferSelect;
 export type Attendance = typeof attendanceTable.$inferSelect;
 export type Invoice = typeof invoicesTable.$inferSelect;
+export type InvoicePayment = typeof invoicePaymentsTable.$inferSelect;
 export type Activity = typeof activitiesTable.$inferSelect;
 
 export type ProgressReport = typeof progressReportsTable.$inferSelect;

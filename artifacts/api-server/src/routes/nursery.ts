@@ -1,5 +1,5 @@
 import { Router, type IRouter, type RequestHandler } from "express";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { clerkClient, getAuth } from "@clerk/express";
 import {
   CreateChildBody,
@@ -41,6 +41,9 @@ import {
   ListStaffResponse,
   RecordAttendanceBody,
   RecordAttendanceResponse,
+  RecordCashInvoicePaymentBody,
+  RecordCashInvoicePaymentParams,
+  RecordCashInvoicePaymentResponse,
   SendInvoiceReminderParams,
   SendInvoiceReminderResponse,
   SendParentMessageBody,
@@ -58,6 +61,7 @@ import {
   childActivitiesTable,
   db,
   guardiansTable,
+  invoicePaymentsTable,
   invoicesTable,
   parentMessagesTable,
   progressReportsTable,
@@ -303,6 +307,7 @@ router.use(async (req, res, next) => {
       if (req.path === "/finance/summary") return "read:report-financial";
       if (req.path === "/invoices") return "read:invoice";
       if (/^\/invoices\/\d+\/checkout-session$/.test(req.path)) return "write:payment";
+      if (/^\/invoices\/\d+\/cash-payment$/.test(req.path)) return "write:payment";
       if (/^\/invoices\/\d+\/reminder$/.test(req.path)) return "write:notification";
       return null;
     })();
@@ -751,6 +756,8 @@ router.get("/invoices", async (req, res): Promise<void> => {
       lastPaymentError: invoice.lastPaymentError,
       chargedCurrency: invoice.chargedCurrency,
       chargedAmount: invoice.chargedAmount,
+      paymentMethod: invoice.paymentMethod,
+      paymentReference: invoice.paymentReference,
     }));
   res.json(ListInvoicesResponse.parse(rows));
 });
@@ -824,6 +831,95 @@ router.post("/invoices/:id/checkout-session", async (req, res): Promise<void> =>
     }
     res.status(502).json({ error: "Failed to create payment session" });
   }
+});
+
+router.post("/invoices/:id/cash-payment", async (req, res): Promise<void> => {
+  const params = RecordCashInvoicePaymentParams.safeParse(req.params);
+  const body = RecordCashInvoicePaymentBody.safeParse(req.body);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  if (!body.success) {
+    res.status(400).json({ error: body.error.message });
+    return;
+  }
+
+  const context = nurseryContext(req);
+  const invoice = await loadOwnedInvoice(context.ownerId, params.data.id);
+  if (!invoice) {
+    res.status(404).json({ error: "Invoice not found" });
+    return;
+  }
+  if (invoice.status === "paid") {
+    res.status(400).json({ error: "Invoice already paid" });
+    return;
+  }
+  if (Math.abs(body.data.amount - invoice.amount) > 0.0005) {
+    res.status(400).json({ error: "Cash payment must equal the full invoice amount" });
+    return;
+  }
+
+  const paidAt = new Date();
+  const reference = `CASH-${invoice.invoiceNumber}-${paidAt.getTime()}`;
+  const updated = await db.transaction(async (tx) => {
+    const [paidInvoice] = await tx
+      .update(invoicesTable)
+      .set({
+        status: "paid",
+        paidAt,
+        lastPaymentStatus: "succeeded",
+        lastPaymentError: null,
+        chargedCurrency: "KWD",
+        chargedAmount: invoice.amount,
+        exchangeRate: null,
+        paymentMethod: "cash",
+        paymentReference: reference,
+      })
+      .where(and(
+        eq(invoicesTable.id, invoice.id),
+        eq(invoicesTable.ownerId, context.ownerId),
+        ne(invoicesTable.status, "paid"),
+      ))
+      .returning();
+    if (!paidInvoice) return null;
+
+    await tx.insert(invoicePaymentsTable).values({
+      ownerId: context.ownerId,
+      invoiceId: invoice.id,
+      method: "cash",
+      amount: invoice.amount,
+      currency: "KWD",
+      status: "succeeded",
+      reference,
+      note: body.data.note ?? null,
+      recordedBy: context.actorId,
+    });
+    await tx.insert(activitiesTable).values({
+      ownerId: context.ownerId,
+      type: "payment",
+      title: `تم سداد فاتورة ${invoice.invoiceNumber}`,
+      description: `تم تسجيل دفعة نقدية بمبلغ ${invoice.amount} د.ك`,
+      actor: context.actorId,
+    });
+    return paidInvoice;
+  });
+
+  if (!updated) {
+    res.status(409).json({ error: "Invoice was paid by another operation" });
+    return;
+  }
+
+  await auditNurseryOperation(req, "record-cash-payment", "invoice", String(invoice.id), invoice as unknown as Record<string, unknown>, updated as unknown as Record<string, unknown>);
+  res.json(RecordCashInvoicePaymentResponse.parse({
+    invoiceId: invoice.id,
+    status: "paid",
+    method: "cash",
+    amount: invoice.amount,
+    currency: "KWD",
+    reference,
+    paidAt: paidAt.toISOString(),
+  }));
 });
 
 router.post("/invoices/:id/reminder", async (req, res): Promise<void> => {

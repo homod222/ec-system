@@ -27,6 +27,7 @@ import type {
   AttendanceInput,
   AttendanceRecord,
   AuditLog,
+  CashPaymentInput,
   Child,
   ChildInput,
   ChildRecord,
@@ -43,6 +44,7 @@ import type {
   Invoice,
   InvoiceCheckoutSession,
   InvoiceCheckoutSessionInput,
+  InvoicePaymentResult,
   InvoiceReminderResult,
   ListApplicationsParams,
   ListAuditLogsParams,
@@ -2461,6 +2463,93 @@ export const useCreateInvoiceCheckoutSession = <
   TContext
 > => {
   return useMutation(getCreateInvoiceCheckoutSessionMutationOptions(options));
+};
+
+export const getRecordCashInvoicePaymentUrl = (id: number) => {
+  return `/api/invoices/${id}/cash-payment`;
+};
+
+/**
+ * @summary Record a full cash payment for an invoice
+ */
+export const recordCashInvoicePayment = async (
+  id: number,
+  cashPaymentInput: CashPaymentInput,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<InvoicePaymentResult> => {
+  return customFetch<InvoicePaymentResult>(getRecordCashInvoicePaymentUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(cashPaymentInput),
+  });
+};
+
+export const getRecordCashInvoicePaymentMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof recordCashInvoicePayment>>,
+    TError,
+    { id: number; data: BodyType<CashPaymentInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof recordCashInvoicePayment>>,
+  TError,
+  { id: number; data: BodyType<CashPaymentInput> },
+  TContext
+> => {
+  const mutationKey = ["recordCashInvoicePayment"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof recordCashInvoicePayment>>,
+    { id: number; data: BodyType<CashPaymentInput> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return recordCashInvoicePayment(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RecordCashInvoicePaymentMutationResult = NonNullable<
+  Awaited<ReturnType<typeof recordCashInvoicePayment>>
+>;
+export type RecordCashInvoicePaymentMutationBody = BodyType<CashPaymentInput>;
+export type RecordCashInvoicePaymentMutationError = ErrorType<void>;
+
+/**
+ * @summary Record a full cash payment for an invoice
+ */
+export const useRecordCashInvoicePayment = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof recordCashInvoicePayment>>,
+    TError,
+    { id: number; data: BodyType<CashPaymentInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof recordCashInvoicePayment>>,
+  TError,
+  { id: number; data: BodyType<CashPaymentInput> },
+  TContext
+> => {
+  return useMutation(getRecordCashInvoicePaymentMutationOptions(options));
 };
 
 export const getSendInvoiceReminderUrl = (id: number) => {

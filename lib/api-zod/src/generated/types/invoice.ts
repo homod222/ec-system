@@ -5,6 +5,7 @@
  * API for the nursery management platform
  * OpenAPI spec version: 0.1.0
  */
+import type { InvoicePaymentMethod } from './invoicePaymentMethod';
 import type { InvoiceStatus } from './invoiceStatus';
 
 export interface Invoice {
@@ -25,4 +26,8 @@ export interface Invoice {
   chargedCurrency?: string | null;
   /** @nullable */
   chargedAmount?: number | null;
+  /** @nullable */
+  paymentMethod?: InvoicePaymentMethod;
+  /** @nullable */
+  paymentReference?: string | null;
 }

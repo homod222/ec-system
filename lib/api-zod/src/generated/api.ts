@@ -713,6 +713,15 @@ export const ListInvoicesResponseItem = zod.object({
   lastPaymentError: zod.string().nullish(),
   chargedCurrency: zod.string().nullish(),
   chargedAmount: zod.number().nullish(),
+  paymentMethod: zod
+    .union([
+      zod.literal("payment_link"),
+      zod.literal("knet"),
+      zod.literal("cash"),
+      zod.literal(null),
+    ])
+    .nullish(),
+  paymentReference: zod.string().nullish(),
 });
 export const ListInvoicesResponse = zod.array(ListInvoicesResponseItem);
 /**
@@ -740,6 +749,31 @@ export const CreateInvoiceCheckoutSessionBody = zod.object({
 });
 export const CreateInvoiceCheckoutSessionResponse = zod.object({
   url: zod.string(),
+});
+/**
+ * @summary Record a full cash payment for an invoice
+ */
+export const RecordCashInvoicePaymentParams = zod.object({
+  id: zod.coerce.number(),
+});
+export const recordCashInvoicePaymentBodyAmountExclusiveMin = 0;
+export const recordCashInvoicePaymentBodyAmountMultipleOf = 0.001;
+export const recordCashInvoicePaymentBodyNoteMax = 500;
+export const RecordCashInvoicePaymentBody = zod.object({
+  amount: zod
+    .number()
+    .gt(recordCashInvoicePaymentBodyAmountExclusiveMin)
+    .multipleOf(recordCashInvoicePaymentBodyAmountMultipleOf),
+  note: zod.string().max(recordCashInvoicePaymentBodyNoteMax).nullish(),
+});
+export const RecordCashInvoicePaymentResponse = zod.object({
+  invoiceId: zod.number(),
+  status: zod.enum(["paid"]),
+  method: zod.enum(["cash"]),
+  amount: zod.number(),
+  currency: zod.enum(["KWD"]),
+  reference: zod.string().nullish(),
+  paidAt: zod.coerce.date(),
 });
 /**
  * @summary Send a due-date payment reminder to the guardian
@@ -876,6 +910,15 @@ export const ListParentInvoicesResponseItem = zod.object({
   lastPaymentError: zod.string().nullish(),
   chargedCurrency: zod.string().nullish(),
   chargedAmount: zod.number().nullish(),
+  paymentMethod: zod
+    .union([
+      zod.literal("payment_link"),
+      zod.literal("knet"),
+      zod.literal("cash"),
+      zod.literal(null),
+    ])
+    .nullish(),
+  paymentReference: zod.string().nullish(),
 });
 export const ListParentInvoicesResponse = zod.array(
   ListParentInvoicesResponseItem,

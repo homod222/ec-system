@@ -5,13 +5,14 @@ import {
   useGetFinanceSummary,
   useListInvoices,
   useCreateInvoiceCheckoutSession,
+  useRecordCashInvoicePayment,
   useSendInvoiceReminder,
   getGetFinanceSummaryQueryKey,
   getListInvoicesQueryKey,
   useListOperationalRecords
 } from '@workspace/api-client-react';
 import { Shell, Button, Pill, StatCard, QueryState, PageHeader, money } from '../../App';
-import { Banknote, Wallet, CircleAlert, Check, TrendingUp, CreditCard, FileText, DollarSign, Percent, RefreshCw } from 'lucide-react';
+import { Banknote, Wallet, CircleAlert, Check, TrendingUp, CreditCard, FileText, DollarSign, Percent, RefreshCw, Link2, Landmark, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import type { Invoice } from '@workspace/api-client-react';
 import { OperationalManager } from '../../components/OperationalManager';
@@ -20,15 +21,32 @@ const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
 
 function InvoiceRow({ invoice }: { invoice: Invoice }) { 
   const { toast } = useToast();
+  const qc = useQueryClient();
   const checkout = useCreateInvoiceCheckoutSession();
+  const cashPayment = useRecordCashInvoicePayment();
   const reminder = useSendInvoiceReminder();
   const unpaid = invoice.status !== 'paid';
+  const [paymentDialog, setPaymentDialog] = useState(false);
+  const [cashNote, setCashNote] = useState('');
 
   const handlePay = () => {
     const returnUrl = `${window.location.origin}${basePath}/finance`;
     checkout.mutate({ id: invoice.id, data: { returnUrl } }, {
       onSuccess: (result) => { window.location.href = result.url; },
       onError: () => toast({ title: 'تعذّر بدء عملية الدفع', description: 'حاول مرة أخرى أو تواصل مع الدعم الفني.', variant: 'destructive' }),
+    });
+  };
+
+  const handleCashPayment = () => {
+    cashPayment.mutate({ id: invoice.id, data: { amount: invoice.amount, note: cashNote || null } }, {
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: getGetFinanceSummaryQueryKey() });
+        qc.invalidateQueries({ queryKey: getListInvoicesQueryKey() });
+        setPaymentDialog(false);
+        setCashNote('');
+        toast({ title: 'تم تسجيل الدفعة النقدية', description: `تم سداد الفاتورة ${invoice.invoiceNumber} بمبلغ ${money(invoice.amount)}.` });
+      },
+      onError: () => toast({ title: 'تعذّر تسجيل الدفعة', description: 'تحقق من حالة الفاتورة ثم حاول مرة أخرى.', variant: 'destructive' }),
     });
   };
 
@@ -51,7 +69,10 @@ function InvoiceRow({ invoice }: { invoice: Invoice }) {
           <p className="mt-1 text-xs font-bold text-destructive">فشلت آخر محاولة دفع{invoice.lastPaymentError ? `: ${invoice.lastPaymentError}` : ''}</p>
         )}
         {invoice.status === 'paid' && invoice.chargedAmount != null && invoice.chargedCurrency && (
-          <p className="mt-1 text-xs font-medium text-muted-foreground">تم التحصيل عبر Stripe: {invoice.chargedAmount} {invoice.chargedCurrency.toUpperCase()}</p>
+          <p className="mt-1 text-xs font-medium text-muted-foreground">
+            طريقة الدفع: {invoice.paymentMethod === 'cash' ? 'نقدًا' : invoice.paymentMethod === 'knet' ? 'KNET' : 'رابط دفع'}
+            {invoice.paymentReference ? ` · المرجع ${invoice.paymentReference}` : ''}
+          </p>
         )}
       </div>
       <div className="flex items-center gap-3 sm:text-left">
@@ -63,8 +84,8 @@ function InvoiceRow({ invoice }: { invoice: Invoice }) {
         </div>
         {unpaid && (
           <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
-            <Button data-testid={`button-pay-${invoice.id}`} variant="primary" className="!px-3 !py-2 !text-xs" onClick={handlePay} disabled={checkout.isPending}>
-              {checkout.isPending ? 'جارٍ التحويل…' : 'دفع الآن'}
+            <Button data-testid={`button-pay-${invoice.id}`} variant="primary" className="!px-3 !py-2 !text-xs" onClick={() => setPaymentDialog(true)}>
+              خيارات الدفع
             </Button>
             <Button data-testid={`button-remind-${invoice.id}`} variant="soft" className="!px-3 !py-2 !text-xs" onClick={handleReminder} disabled={reminder.isPending}>
               {reminder.isPending ? 'جارٍ الإرسال…' : 'إرسال تذكير'}
@@ -72,6 +93,46 @@ function InvoiceRow({ invoice }: { invoice: Invoice }) {
           </div>
         )}
       </div>
+      {paymentDialog && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-primary/40 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="اختيار طريقة الدفع">
+          <div className="w-full max-w-xl rounded-[2rem] border border-border bg-card p-6 shadow-2xl sm:p-8">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-bold text-primary/60">الفاتورة {invoice.invoiceNumber}</p>
+                <h2 className="mt-1 text-2xl font-bold">اختاري طريقة الدفع</h2>
+                <p className="mt-2 text-sm text-muted-foreground">المبلغ المطلوب: <span className="font-bold text-foreground">{money(invoice.amount)}</span></p>
+              </div>
+              <button type="button" data-testid={`button-close-payment-options-${invoice.id}`} onClick={() => setPaymentDialog(false)} className="rounded-xl bg-muted p-2.5 text-muted-foreground hover:text-foreground">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="mt-6 grid gap-3 sm:grid-cols-3">
+              <button type="button" data-testid={`button-payment-link-${invoice.id}`} onClick={handlePay} disabled={checkout.isPending} className="rounded-2xl border border-border bg-background p-5 text-right transition hover:border-primary hover:bg-secondary/30 disabled:opacity-60">
+                <span className="grid h-11 w-11 place-items-center rounded-xl bg-secondary text-primary"><Link2 size={20} /></span>
+                <span className="mt-4 block font-bold">رابط دفع</span>
+                <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">{checkout.isPending ? 'جارٍ إنشاء الرابط…' : 'الانتقال إلى رابط الدفع الإلكتروني'}</span>
+              </button>
+              <button type="button" data-testid={`button-payment-knet-${invoice.id}`} disabled className="rounded-2xl border border-border bg-muted/40 p-5 text-right opacity-65">
+                <span className="grid h-11 w-11 place-items-center rounded-xl bg-muted text-muted-foreground"><Landmark size={20} /></span>
+                <span className="mt-4 block font-bold">KNET</span>
+                <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">يتفعّل بعد ربط مزوّد KNET</span>
+              </button>
+              <button type="button" data-testid={`button-payment-cash-${invoice.id}`} onClick={handleCashPayment} disabled={cashPayment.isPending} className="rounded-2xl border border-border bg-background p-5 text-right transition hover:border-primary hover:bg-secondary/30 disabled:opacity-60">
+                <span className="grid h-11 w-11 place-items-center rounded-xl bg-[#e5efe9] text-[#165032]"><Banknote size={20} /></span>
+                <span className="mt-4 block font-bold">نقدًا</span>
+                <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">{cashPayment.isPending ? 'جارٍ التسجيل…' : 'تسجيل استلام المبلغ كاملًا'}</span>
+              </button>
+            </div>
+
+            <label className="mt-5 block text-sm font-bold">
+              ملاحظة التحصيل النقدي (اختياري)
+              <input data-testid={`input-cash-note-${invoice.id}`} value={cashNote} onChange={(event) => setCashNote(event.target.value)} maxLength={500} placeholder="مثال: استلمها موظف الاستقبال" className="mt-2 w-full rounded-xl border border-input bg-background px-4 py-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
+            </label>
+            <p className="mt-4 text-xs leading-relaxed text-muted-foreground">تسجيل الدفع النقدي يغيّر حالة الفاتورة إلى «تم السداد» فورًا ويُحفظ في سجل التدقيق.</p>
+          </div>
+        </div>
+      )}
     </div>
   ); 
 }

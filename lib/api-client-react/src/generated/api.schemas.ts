@@ -493,6 +493,18 @@ export const InvoiceStatus = {
   overdue: "overdue",
 } as const;
 
+/**
+ * @nullable
+ */
+export type InvoicePaymentMethod =
+  (typeof InvoicePaymentMethod)[keyof typeof InvoicePaymentMethod] | null;
+
+export const InvoicePaymentMethod = {
+  payment_link: "payment_link",
+  knet: "knet",
+  cash: "cash",
+} as const;
+
 export interface Invoice {
   id: number;
   invoiceNumber: string;
@@ -511,6 +523,52 @@ export interface Invoice {
   chargedCurrency?: string | null;
   /** @nullable */
   chargedAmount?: number | null;
+  /** @nullable */
+  paymentMethod?: InvoicePaymentMethod;
+  /** @nullable */
+  paymentReference?: string | null;
+}
+
+export interface CashPaymentInput {
+  /** @exclusiveMinimum 0 */
+  amount: number;
+  /**
+   * @maxLength 500
+   * @nullable
+   */
+  note?: string | null;
+}
+
+export type InvoicePaymentResultStatus =
+  (typeof InvoicePaymentResultStatus)[keyof typeof InvoicePaymentResultStatus];
+
+export const InvoicePaymentResultStatus = {
+  paid: "paid",
+} as const;
+
+export type InvoicePaymentResultMethod =
+  (typeof InvoicePaymentResultMethod)[keyof typeof InvoicePaymentResultMethod];
+
+export const InvoicePaymentResultMethod = {
+  cash: "cash",
+} as const;
+
+export type InvoicePaymentResultCurrency =
+  (typeof InvoicePaymentResultCurrency)[keyof typeof InvoicePaymentResultCurrency];
+
+export const InvoicePaymentResultCurrency = {
+  KWD: "KWD",
+} as const;
+
+export interface InvoicePaymentResult {
+  invoiceId: number;
+  status: InvoicePaymentResultStatus;
+  method: InvoicePaymentResultMethod;
+  amount: number;
+  currency: InvoicePaymentResultCurrency;
+  /** @nullable */
+  reference?: string | null;
+  paidAt: string;
 }
 
 export interface InvoiceCheckoutSessionInput {

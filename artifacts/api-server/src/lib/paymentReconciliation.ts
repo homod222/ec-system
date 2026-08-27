@@ -1,5 +1,5 @@
 import type Stripe from "stripe";
-import { db, guardiansTable, invoicesTable, activitiesTable } from "@workspace/db";
+import { db, guardiansTable, invoicesTable, invoicePaymentsTable, activitiesTable } from "@workspace/db";
 import { and, eq, ne } from "drizzle-orm";
 import { sendPaymentConfirmation } from "./notifications";
 import { logger } from "./logger";
@@ -30,6 +30,8 @@ async function markInvoicePaid(
       stripePaymentIntentId: paymentIntentId,
       lastPaymentStatus: "succeeded",
       lastPaymentError: null,
+      paymentMethod: "payment_link",
+      paymentReference: paymentIntentId,
       ...(charged
         ? {
             chargedCurrency: charged.currency,
@@ -51,7 +53,19 @@ async function markInvoicePaid(
     updated.chargedAmount != null && updated.chargedCurrency
       ? ` (تم تحصيل ${updated.chargedAmount} ${updated.chargedCurrency.toUpperCase()} عبر Stripe)`
       : "";
+  await db.insert(invoicePaymentsTable).values({
+    ownerId: updated.ownerId,
+    invoiceId: updated.id,
+    method: "payment_link",
+    amount: updated.amount,
+    currency: "KWD",
+    status: "succeeded",
+    reference: paymentIntentId,
+    note: chargedNote || null,
+    recordedBy: "Stripe",
+  });
   await db.insert(activitiesTable).values({
+    ownerId: updated.ownerId,
     type: "payment",
     title: `تم سداد فاتورة ${updated.invoiceNumber}`,
     description: `تم استلام دفعة بمبلغ ${updated.amount} د.ك عبر Stripe${chargedNote}`,
