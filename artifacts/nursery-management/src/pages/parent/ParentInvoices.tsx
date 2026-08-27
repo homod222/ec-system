@@ -10,6 +10,17 @@ const money = (n: number) => new Intl.NumberFormat('ar-KW', {
   minimumFractionDigits: 0,
 }).format(n || 0);
 
+function isExchangeRateUnavailable(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const data = 'data' in error ? error.data : null;
+  return Boolean(
+    data &&
+    typeof data === 'object' &&
+    'code' in data &&
+    data.code === 'EXCHANGE_RATE_UNAVAILABLE',
+  );
+}
+
 export function ParentInvoices({ withShell = true }: { withShell?: boolean } = {}) {
   const query = useListParentInvoices();
   const exchangeRateQuery = useGetKwdUsdExchangeRate();
@@ -26,10 +37,12 @@ export function ParentInvoices({ withShell = true }: { withShell?: boolean } = {
         window.location.href = result.url;
       },
       onError: (error) => {
-        const description = error instanceof Error && error.message.includes('تعذّر تحديث سعر صرف')
-          ? error.message.replace(/^HTTP \d+ [^:]*:\s*/, '')
+        const rateUnavailable = isExchangeRateUnavailable(error);
+        const description = rateUnavailable
+          ? 'انتهت صلاحية سعر التحويل المعروض. حدّث السعر ثم أعد محاولة الدفع.'
           : 'حاول مرة أخرى أو تواصل مع إدارة الحضانة.';
         toast({ title: 'تعذّر بدء عملية الدفع', description, variant: 'destructive' });
+        if (rateUnavailable) void exchangeRateQuery.refetch();
       },
     });
   };

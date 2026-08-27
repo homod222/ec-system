@@ -99,11 +99,13 @@ export async function createInvoiceCheckoutSession(params: {
   successUrl: string;
   cancelUrl: string;
 }): Promise<{ url: string; sessionId: string }> {
-  const stripe = await getUncachableStripeClient();
-  const productId = await getOrCreateInvoiceProduct(stripe);
   // Refresh on demand before entering the shared publication lock. Attempting
   // an exclusive refresh while holding the shared lock would self-deadlock.
+  // Do this before any Stripe work so an expired rate cannot even begin
+  // preparing a payment session.
   await getCurrentKwdToUsdRate();
+  const stripe = await getUncachableStripeClient();
+  const productId = await getOrCreateInvoiceProduct(stripe);
 
   return db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock_shared(${EXCHANGE_RATE_LOCK_ID})`);

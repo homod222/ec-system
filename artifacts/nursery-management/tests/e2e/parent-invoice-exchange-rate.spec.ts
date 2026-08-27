@@ -83,3 +83,45 @@ test('يعطّل الدفع عندما لا يعود السعر صالحًا', a
   );
   await expect(page.getByTestId(`button-pay-invoice-${invoice.id}`)).toBeDisabled();
 });
+
+test('يرفض بدء الدفع إذا انتهت صلاحية السعر بعد فتح صفحة الفاتورة', async ({ page }) => {
+  const rate = 3.2517;
+  let checkoutRequests = 0;
+  await mockUnpaidInvoice(page);
+  await page.route('**/api/exchange-rates/kwd-usd', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        baseCurrency: 'KWD',
+        quoteCurrency: 'USD',
+        rate,
+        updatedAt: '2026-08-26T07:15:00.000Z',
+      }),
+    }),
+  );
+  await page.route(`**/api/parent/invoices/${invoice.id}/checkout-session`, (route) => {
+    checkoutRequests += 1;
+    return route.fulfill({
+      status: 503,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 'EXCHANGE_RATE_UNAVAILABLE',
+        error: 'انتهت صلاحية سعر الصرف المخزن',
+      }),
+    });
+  });
+
+  await page.goto('/e2e/parent-invoices.html');
+  await expect(page.getByTestId(`text-parent-usd-estimate-${invoice.id}`)).toContainText(
+    (invoice.amount * rate).toLocaleString('ar-KW', { style: 'currency', currency: 'USD' }),
+  );
+
+  const pageUrl = page.url();
+  await page.getByTestId(`button-pay-invoice-${invoice.id}`).click();
+
+  await expect(page.getByText('تعذّر بدء عملية الدفع')).toBeVisible();
+  await expect(page.getByText('انتهت صلاحية سعر التحويل المعروض. حدّث السعر ثم أعد محاولة الدفع.')).toBeVisible();
+  await expect(page).toHaveURL(pageUrl);
+  expect(checkoutRequests).toBe(1);
+});
