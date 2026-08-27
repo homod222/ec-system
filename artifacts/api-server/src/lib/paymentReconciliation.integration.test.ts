@@ -104,6 +104,7 @@ describe("MyFatoorah durable payment reconciliation", () => {
       phone: "96550000000",
       email: "knet@example.test",
       clerkUserId: null,
+      identityKey: null,
       balance: 0,
     } satisfies Guardian;
     const previousKey = process.env.MYFATOORAH_API_KEY;
