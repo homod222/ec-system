@@ -5,988 +5,1451 @@
  * API for the nursery management platform
  * OpenAPI spec version: 0.1.0
  */
-import * as zod from 'zod';
-
-
+import * as zod from "zod";
 /**
  * Returns server health status
  * @summary Health check
  */
 export const HealthCheckResponse = zod.object({
-  "status": zod.string()
-})
-
-
+  status: zod.string(),
+});
 /**
  * @summary Get dashboard summary
  */
 export const GetDashboardSummaryResponse = zod.object({
-  "totalChildren": zod.number(),
-  "presentToday": zod.number(),
-  "absentToday": zod.number(),
-  "staffCount": zod.number(),
-  "monthlyRevenue": zod.number(),
-  "pendingPayments": zod.number(),
-  "attendanceRate": zod.number()
-})
-
-
+  totalChildren: zod.number(),
+  presentToday: zod.number(),
+  absentToday: zod.number(),
+  staffCount: zod.number(),
+  monthlyRevenue: zod.number(),
+  pendingPayments: zod.number(),
+  attendanceRate: zod.number(),
+});
 /**
  * @summary Get recent activity
  */
 export const GetDashboardActivityResponseItem = zod.object({
-  "id": zod.number(),
-  "type": zod.enum(['attendance', 'payment', 'enrollment', 'message', 'note']),
-  "title": zod.string(),
-  "description": zod.string(),
-  "createdAt": zod.string(),
-  "actor": zod.string().nullish()
-})
-export const GetDashboardActivityResponse = zod.array(GetDashboardActivityResponseItem)
-
-
+  id: zod.number(),
+  type: zod.enum(["attendance", "payment", "enrollment", "message", "note"]),
+  title: zod.string(),
+  description: zod.string(),
+  createdAt: zod.string(),
+  actor: zod.string().nullish(),
+});
+export const GetDashboardActivityResponse = zod.array(
+  GetDashboardActivityResponseItem,
+);
 /**
  * @summary List children
  */
 export const ListChildrenQueryParams = zod.object({
-  "search": zod.coerce.string().optional(),
-  "classroomId": zod.coerce.number().optional()
-})
-
+  search: zod.coerce.string().optional(),
+  classroomId: zod.coerce.number().optional(),
+});
 export const ListChildrenResponseItem = zod.object({
-  "id": zod.number(),
-  "firstName": zod.string(),
-  "lastName": zod.string(),
-  "fullName": zod.string(),
-  "gender": zod.enum(['male', 'female']),
-  "birthDate": zod.string(),
-  "status": zod.enum(['active', 'pending', 'inactive']),
-  "classroomId": zod.number().nullable(),
-  "classroomName": zod.string().nullable(),
-  "guardianName": zod.string(),
-  "guardianPhone": zod.string(),
-  "level": zod.string(),
-  "attendanceRate": zod.number(),
-  "avatarUrl": zod.string().nullish(),
-  "notes": zod.string().nullish()
-})
-export const ListChildrenResponse = zod.array(ListChildrenResponseItem)
-
-
+  id: zod.number(),
+  firstName: zod.string(),
+  lastName: zod.string(),
+  fullName: zod.string(),
+  gender: zod.enum(["male", "female"]),
+  birthDate: zod.string(),
+  status: zod.enum(["active", "pending", "inactive"]),
+  classroomId: zod.number().nullable(),
+  classroomName: zod.string().nullable(),
+  guardianName: zod.string(),
+  guardianPhone: zod.string(),
+  level: zod.string(),
+  attendanceRate: zod.number(),
+  avatarUrl: zod.string().nullish(),
+  notes: zod.string().nullish(),
+});
+export const ListChildrenResponse = zod.array(ListChildrenResponseItem);
 /**
  * @summary Add a child
  */
-
-
-
 export const createChildBodyGuardianPhoneMin = 5;
-
-
-
-
 export const CreateChildBody = zod.object({
-  "firstName": zod.string().min(1),
-  "lastName": zod.string().min(1),
-  "gender": zod.enum(['male', 'female']),
-  "birthDate": zod.string(),
-  "classroomId": zod.number().nullish(),
-  "guardianName": zod.string().min(1),
-  "guardianPhone": zod.string().min(createChildBodyGuardianPhoneMin),
-  "level": zod.string().min(1),
-  "notes": zod.string().nullish()
-})
-
+  firstName: zod.string().min(1),
+  lastName: zod.string().min(1),
+  gender: zod.enum(["male", "female"]),
+  birthDate: zod.string(),
+  classroomId: zod.number().nullish(),
+  guardianName: zod.string().min(1),
+  guardianPhone: zod.string().min(createChildBodyGuardianPhoneMin),
+  level: zod.string().min(1),
+  notes: zod.string().nullish(),
+});
 export const CreateChildResponse = zod.object({
-  "id": zod.number(),
-  "firstName": zod.string(),
-  "lastName": zod.string(),
-  "fullName": zod.string(),
-  "gender": zod.enum(['male', 'female']),
-  "birthDate": zod.string(),
-  "status": zod.enum(['active', 'pending', 'inactive']),
-  "classroomId": zod.number().nullable(),
-  "classroomName": zod.string().nullable(),
-  "guardianName": zod.string(),
-  "guardianPhone": zod.string(),
-  "level": zod.string(),
-  "attendanceRate": zod.number(),
-  "avatarUrl": zod.string().nullish(),
-  "notes": zod.string().nullish()
-})
-
-
+  id: zod.number(),
+  firstName: zod.string(),
+  lastName: zod.string(),
+  fullName: zod.string(),
+  gender: zod.enum(["male", "female"]),
+  birthDate: zod.string(),
+  status: zod.enum(["active", "pending", "inactive"]),
+  classroomId: zod.number().nullable(),
+  classroomName: zod.string().nullable(),
+  guardianName: zod.string(),
+  guardianPhone: zod.string(),
+  level: zod.string(),
+  attendanceRate: zod.number(),
+  avatarUrl: zod.string().nullish(),
+  notes: zod.string().nullish(),
+});
 /**
  * @summary Get a child
  */
 export const GetChildParams = zod.object({
-  "id": zod.coerce.number()
-})
-
+  id: zod.coerce.number(),
+});
 export const GetChildResponse = zod.object({
-  "id": zod.number(),
-  "firstName": zod.string(),
-  "lastName": zod.string(),
-  "fullName": zod.string(),
-  "gender": zod.enum(['male', 'female']),
-  "birthDate": zod.string(),
-  "status": zod.enum(['active', 'pending', 'inactive']),
-  "classroomId": zod.number().nullable(),
-  "classroomName": zod.string().nullable(),
-  "guardianName": zod.string(),
-  "guardianPhone": zod.string(),
-  "level": zod.string(),
-  "attendanceRate": zod.number(),
-  "avatarUrl": zod.string().nullish(),
-  "notes": zod.string().nullish()
-})
-
-
+  id: zod.number(),
+  firstName: zod.string(),
+  lastName: zod.string(),
+  fullName: zod.string(),
+  gender: zod.enum(["male", "female"]),
+  birthDate: zod.string(),
+  status: zod.enum(["active", "pending", "inactive"]),
+  classroomId: zod.number().nullable(),
+  classroomName: zod.string().nullable(),
+  guardianName: zod.string(),
+  guardianPhone: zod.string(),
+  level: zod.string(),
+  attendanceRate: zod.number(),
+  avatarUrl: zod.string().nullish(),
+  notes: zod.string().nullish(),
+});
 /**
  * @summary Update a child
  */
 export const UpdateChildParams = zod.object({
-  "id": zod.coerce.number()
-})
-
-
-
-
+  id: zod.coerce.number(),
+});
 export const updateChildBodyGuardianPhoneMin = 5;
-
-
-
-
 export const UpdateChildBody = zod.object({
-  "firstName": zod.string().min(1).optional(),
-  "lastName": zod.string().min(1).optional(),
-  "gender": zod.enum(['male', 'female']).optional(),
-  "birthDate": zod.string().optional(),
-  "classroomId": zod.number().nullish(),
-  "guardianName": zod.string().min(1).optional(),
-  "guardianPhone": zod.string().min(updateChildBodyGuardianPhoneMin).optional(),
-  "level": zod.string().min(1).optional(),
-  "status": zod.enum(['active', 'pending', 'inactive']).optional(),
-  "notes": zod.string().nullish()
-})
-
+  firstName: zod.string().min(1).optional(),
+  lastName: zod.string().min(1).optional(),
+  gender: zod.enum(["male", "female"]).optional(),
+  birthDate: zod.string().optional(),
+  classroomId: zod.number().nullish(),
+  guardianName: zod.string().min(1).optional(),
+  guardianPhone: zod.string().min(updateChildBodyGuardianPhoneMin).optional(),
+  level: zod.string().min(1).optional(),
+  status: zod.enum(["active", "pending", "inactive"]).optional(),
+  notes: zod.string().nullish(),
+});
 export const UpdateChildResponse = zod.object({
-  "id": zod.number(),
-  "firstName": zod.string(),
-  "lastName": zod.string(),
-  "fullName": zod.string(),
-  "gender": zod.enum(['male', 'female']),
-  "birthDate": zod.string(),
-  "status": zod.enum(['active', 'pending', 'inactive']),
-  "classroomId": zod.number().nullable(),
-  "classroomName": zod.string().nullable(),
-  "guardianName": zod.string(),
-  "guardianPhone": zod.string(),
-  "level": zod.string(),
-  "attendanceRate": zod.number(),
-  "avatarUrl": zod.string().nullish(),
-  "notes": zod.string().nullish()
-})
-
-
+  id: zod.number(),
+  firstName: zod.string(),
+  lastName: zod.string(),
+  fullName: zod.string(),
+  gender: zod.enum(["male", "female"]),
+  birthDate: zod.string(),
+  status: zod.enum(["active", "pending", "inactive"]),
+  classroomId: zod.number().nullable(),
+  classroomName: zod.string().nullable(),
+  guardianName: zod.string(),
+  guardianPhone: zod.string(),
+  level: zod.string(),
+  attendanceRate: zod.number(),
+  avatarUrl: zod.string().nullish(),
+  notes: zod.string().nullish(),
+});
 /**
  * @summary Delete a child
  */
 export const DeleteChildParams = zod.object({
-  "id": zod.coerce.number()
-})
-
-export const DeleteChildResponse = zod.void()
-
-
+  id: zod.coerce.number(),
+});
+export const DeleteChildResponse = zod.void();
 /**
  * @summary Start a renewal application for a child
  */
 export const StartChildRenewalParams = zod.object({
-  "id": zod.coerce.number()
-})
-
-export const startChildRenewalResponseDocumentsItemObjectPathRegExp = new RegExp('^/objects/uploads/[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$');
-
-
+  id: zod.coerce.number(),
+});
+export const startChildRenewalResponseDocumentsItemObjectPathRegExp =
+  new RegExp(
+    "^/objects/uploads/[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$",
+  );
 export const StartChildRenewalResponse = zod.object({
-  "id": zod.number(),
-  "type": zod.enum(['new', 'renewal']),
-  "status": zod.enum(['new', 'reviewing', 'accepted', 'rejected']),
-  "childId": zod.number().nullable(),
-  "sourceChildId": zod.number().nullable(),
-  "firstName": zod.string(),
-  "lastName": zod.string(),
-  "gender": zod.enum(['male', 'female']),
-  "birthDate": zod.string(),
-  "level": zod.string(),
-  "classroomId": zod.number().nullable(),
-  "notes": zod.string().nullable(),
-  "guardianName": zod.string(),
-  "guardianPhone": zod.string(),
-  "guardianEmail": zod.string().nullable(),
-  "documents": zod.array(zod.object({
-  "id": zod.number(),
-  "applicationId": zod.number(),
-  "name": zod.string(),
-  "contentType": zod.string(),
-  "size": zod.number(),
-  "objectPath": zod.string().regex(startChildRenewalResponseDocumentsItemObjectPathRegExp),
-  "createdAt": zod.string()
-})),
-  "createdAt": zod.string(),
-  "updatedAt": zod.string()
-})
-
-
+  id: zod.number(),
+  type: zod.enum(["new", "renewal"]),
+  status: zod.enum(["new", "reviewing", "accepted", "rejected"]),
+  childId: zod.number().nullable(),
+  sourceChildId: zod.number().nullable(),
+  firstName: zod.string(),
+  lastName: zod.string(),
+  gender: zod.enum(["male", "female"]),
+  birthDate: zod.string(),
+  level: zod.string(),
+  classroomId: zod.number().nullable(),
+  notes: zod.string().nullable(),
+  guardianName: zod.string(),
+  guardianPhone: zod.string(),
+  guardianEmail: zod.string().nullable(),
+  documents: zod.array(
+    zod.object({
+      id: zod.number(),
+      applicationId: zod.number(),
+      name: zod.string(),
+      contentType: zod.string(),
+      size: zod.number(),
+      objectPath: zod
+        .string()
+        .regex(startChildRenewalResponseDocumentsItemObjectPathRegExp),
+      createdAt: zod.string(),
+    }),
+  ),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
 /**
  * @summary List registration and renewal applications
  */
 export const ListApplicationsQueryParams = zod.object({
-  "status": zod.enum(['new', 'reviewing', 'accepted', 'rejected']).optional(),
-  "type": zod.enum(['new', 'renewal']).optional()
-})
-
-export const listApplicationsResponseDocumentsItemObjectPathRegExp = new RegExp('^/objects/uploads/[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$');
-
-
+  status: zod.enum(["new", "reviewing", "accepted", "rejected"]).optional(),
+  type: zod.enum(["new", "renewal"]).optional(),
+});
+export const listApplicationsResponseDocumentsItemObjectPathRegExp = new RegExp(
+  "^/objects/uploads/[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$",
+);
 export const ListApplicationsResponseItem = zod.object({
-  "id": zod.number(),
-  "type": zod.enum(['new', 'renewal']),
-  "status": zod.enum(['new', 'reviewing', 'accepted', 'rejected']),
-  "childId": zod.number().nullable(),
-  "sourceChildId": zod.number().nullable(),
-  "firstName": zod.string(),
-  "lastName": zod.string(),
-  "gender": zod.enum(['male', 'female']),
-  "birthDate": zod.string(),
-  "level": zod.string(),
-  "classroomId": zod.number().nullable(),
-  "notes": zod.string().nullable(),
-  "guardianName": zod.string(),
-  "guardianPhone": zod.string(),
-  "guardianEmail": zod.string().nullable(),
-  "documents": zod.array(zod.object({
-  "id": zod.number(),
-  "applicationId": zod.number(),
-  "name": zod.string(),
-  "contentType": zod.string(),
-  "size": zod.number(),
-  "objectPath": zod.string().regex(listApplicationsResponseDocumentsItemObjectPathRegExp),
-  "createdAt": zod.string()
-})),
-  "createdAt": zod.string(),
-  "updatedAt": zod.string()
-})
-export const ListApplicationsResponse = zod.array(ListApplicationsResponseItem)
-
-
+  id: zod.number(),
+  type: zod.enum(["new", "renewal"]),
+  status: zod.enum(["new", "reviewing", "accepted", "rejected"]),
+  childId: zod.number().nullable(),
+  sourceChildId: zod.number().nullable(),
+  firstName: zod.string(),
+  lastName: zod.string(),
+  gender: zod.enum(["male", "female"]),
+  birthDate: zod.string(),
+  level: zod.string(),
+  classroomId: zod.number().nullable(),
+  notes: zod.string().nullable(),
+  guardianName: zod.string(),
+  guardianPhone: zod.string(),
+  guardianEmail: zod.string().nullable(),
+  documents: zod.array(
+    zod.object({
+      id: zod.number(),
+      applicationId: zod.number(),
+      name: zod.string(),
+      contentType: zod.string(),
+      size: zod.number(),
+      objectPath: zod
+        .string()
+        .regex(listApplicationsResponseDocumentsItemObjectPathRegExp),
+      createdAt: zod.string(),
+    }),
+  ),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+export const ListApplicationsResponse = zod.array(ListApplicationsResponseItem);
 /**
  * @summary Create a registration application
  */
-
-
-
-
 export const createApplicationBodyGuardianPhoneMin = 5;
-
-
-
 export const CreateApplicationBody = zod.object({
-  "firstName": zod.string().min(1),
-  "lastName": zod.string().min(1),
-  "gender": zod.enum(['male', 'female']),
-  "birthDate": zod.string(),
-  "level": zod.string().min(1),
-  "classroomId": zod.number().nullish(),
-  "notes": zod.string().nullish(),
-  "guardianName": zod.string().min(1),
-  "guardianPhone": zod.string().min(createApplicationBodyGuardianPhoneMin),
-  "guardianEmail": zod.string().nullish()
-})
-
-export const createApplicationResponseDocumentsItemObjectPathRegExp = new RegExp('^/objects/uploads/[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$');
-
-
+  firstName: zod.string().min(1),
+  lastName: zod.string().min(1),
+  gender: zod.enum(["male", "female"]),
+  birthDate: zod.string(),
+  level: zod.string().min(1),
+  classroomId: zod.number().nullish(),
+  notes: zod.string().nullish(),
+  guardianName: zod.string().min(1),
+  guardianPhone: zod.string().min(createApplicationBodyGuardianPhoneMin),
+  guardianEmail: zod.string().nullish(),
+});
+export const createApplicationResponseDocumentsItemObjectPathRegExp =
+  new RegExp(
+    "^/objects/uploads/[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$",
+  );
 export const CreateApplicationResponse = zod.object({
-  "id": zod.number(),
-  "type": zod.enum(['new', 'renewal']),
-  "status": zod.enum(['new', 'reviewing', 'accepted', 'rejected']),
-  "childId": zod.number().nullable(),
-  "sourceChildId": zod.number().nullable(),
-  "firstName": zod.string(),
-  "lastName": zod.string(),
-  "gender": zod.enum(['male', 'female']),
-  "birthDate": zod.string(),
-  "level": zod.string(),
-  "classroomId": zod.number().nullable(),
-  "notes": zod.string().nullable(),
-  "guardianName": zod.string(),
-  "guardianPhone": zod.string(),
-  "guardianEmail": zod.string().nullable(),
-  "documents": zod.array(zod.object({
-  "id": zod.number(),
-  "applicationId": zod.number(),
-  "name": zod.string(),
-  "contentType": zod.string(),
-  "size": zod.number(),
-  "objectPath": zod.string().regex(createApplicationResponseDocumentsItemObjectPathRegExp),
-  "createdAt": zod.string()
-})),
-  "createdAt": zod.string(),
-  "updatedAt": zod.string()
-})
-
-
+  id: zod.number(),
+  type: zod.enum(["new", "renewal"]),
+  status: zod.enum(["new", "reviewing", "accepted", "rejected"]),
+  childId: zod.number().nullable(),
+  sourceChildId: zod.number().nullable(),
+  firstName: zod.string(),
+  lastName: zod.string(),
+  gender: zod.enum(["male", "female"]),
+  birthDate: zod.string(),
+  level: zod.string(),
+  classroomId: zod.number().nullable(),
+  notes: zod.string().nullable(),
+  guardianName: zod.string(),
+  guardianPhone: zod.string(),
+  guardianEmail: zod.string().nullable(),
+  documents: zod.array(
+    zod.object({
+      id: zod.number(),
+      applicationId: zod.number(),
+      name: zod.string(),
+      contentType: zod.string(),
+      size: zod.number(),
+      objectPath: zod
+        .string()
+        .regex(createApplicationResponseDocumentsItemObjectPathRegExp),
+      createdAt: zod.string(),
+    }),
+  ),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
 /**
  * @summary Get an application
  */
 export const GetApplicationParams = zod.object({
-  "id": zod.coerce.number()
-})
-
-export const getApplicationResponseDocumentsItemObjectPathRegExp = new RegExp('^/objects/uploads/[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$');
-
-
+  id: zod.coerce.number(),
+});
+export const getApplicationResponseDocumentsItemObjectPathRegExp = new RegExp(
+  "^/objects/uploads/[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$",
+);
 export const GetApplicationResponse = zod.object({
-  "id": zod.number(),
-  "type": zod.enum(['new', 'renewal']),
-  "status": zod.enum(['new', 'reviewing', 'accepted', 'rejected']),
-  "childId": zod.number().nullable(),
-  "sourceChildId": zod.number().nullable(),
-  "firstName": zod.string(),
-  "lastName": zod.string(),
-  "gender": zod.enum(['male', 'female']),
-  "birthDate": zod.string(),
-  "level": zod.string(),
-  "classroomId": zod.number().nullable(),
-  "notes": zod.string().nullable(),
-  "guardianName": zod.string(),
-  "guardianPhone": zod.string(),
-  "guardianEmail": zod.string().nullable(),
-  "documents": zod.array(zod.object({
-  "id": zod.number(),
-  "applicationId": zod.number(),
-  "name": zod.string(),
-  "contentType": zod.string(),
-  "size": zod.number(),
-  "objectPath": zod.string().regex(getApplicationResponseDocumentsItemObjectPathRegExp),
-  "createdAt": zod.string()
-})),
-  "createdAt": zod.string(),
-  "updatedAt": zod.string()
-})
-
-
+  id: zod.number(),
+  type: zod.enum(["new", "renewal"]),
+  status: zod.enum(["new", "reviewing", "accepted", "rejected"]),
+  childId: zod.number().nullable(),
+  sourceChildId: zod.number().nullable(),
+  firstName: zod.string(),
+  lastName: zod.string(),
+  gender: zod.enum(["male", "female"]),
+  birthDate: zod.string(),
+  level: zod.string(),
+  classroomId: zod.number().nullable(),
+  notes: zod.string().nullable(),
+  guardianName: zod.string(),
+  guardianPhone: zod.string(),
+  guardianEmail: zod.string().nullable(),
+  documents: zod.array(
+    zod.object({
+      id: zod.number(),
+      applicationId: zod.number(),
+      name: zod.string(),
+      contentType: zod.string(),
+      size: zod.number(),
+      objectPath: zod
+        .string()
+        .regex(getApplicationResponseDocumentsItemObjectPathRegExp),
+      createdAt: zod.string(),
+    }),
+  ),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
 /**
  * @summary Update application child and guardian data
  */
 export const UpdateApplicationParams = zod.object({
-  "id": zod.coerce.number()
-})
-
-
-
-
-
+  id: zod.coerce.number(),
+});
 export const updateApplicationBodyGuardianPhoneMin = 5;
-
-
-
 export const UpdateApplicationBody = zod.object({
-  "firstName": zod.string().min(1).optional(),
-  "lastName": zod.string().min(1).optional(),
-  "gender": zod.enum(['male', 'female']).optional(),
-  "birthDate": zod.string().optional(),
-  "level": zod.string().min(1).optional(),
-  "classroomId": zod.number().nullish(),
-  "notes": zod.string().nullish(),
-  "guardianName": zod.string().min(1).optional(),
-  "guardianPhone": zod.string().min(updateApplicationBodyGuardianPhoneMin).optional(),
-  "guardianEmail": zod.string().nullish()
-})
-
-export const updateApplicationResponseDocumentsItemObjectPathRegExp = new RegExp('^/objects/uploads/[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$');
-
-
+  firstName: zod.string().min(1).optional(),
+  lastName: zod.string().min(1).optional(),
+  gender: zod.enum(["male", "female"]).optional(),
+  birthDate: zod.string().optional(),
+  level: zod.string().min(1).optional(),
+  classroomId: zod.number().nullish(),
+  notes: zod.string().nullish(),
+  guardianName: zod.string().min(1).optional(),
+  guardianPhone: zod
+    .string()
+    .min(updateApplicationBodyGuardianPhoneMin)
+    .optional(),
+  guardianEmail: zod.string().nullish(),
+});
+export const updateApplicationResponseDocumentsItemObjectPathRegExp =
+  new RegExp(
+    "^/objects/uploads/[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$",
+  );
 export const UpdateApplicationResponse = zod.object({
-  "id": zod.number(),
-  "type": zod.enum(['new', 'renewal']),
-  "status": zod.enum(['new', 'reviewing', 'accepted', 'rejected']),
-  "childId": zod.number().nullable(),
-  "sourceChildId": zod.number().nullable(),
-  "firstName": zod.string(),
-  "lastName": zod.string(),
-  "gender": zod.enum(['male', 'female']),
-  "birthDate": zod.string(),
-  "level": zod.string(),
-  "classroomId": zod.number().nullable(),
-  "notes": zod.string().nullable(),
-  "guardianName": zod.string(),
-  "guardianPhone": zod.string(),
-  "guardianEmail": zod.string().nullable(),
-  "documents": zod.array(zod.object({
-  "id": zod.number(),
-  "applicationId": zod.number(),
-  "name": zod.string(),
-  "contentType": zod.string(),
-  "size": zod.number(),
-  "objectPath": zod.string().regex(updateApplicationResponseDocumentsItemObjectPathRegExp),
-  "createdAt": zod.string()
-})),
-  "createdAt": zod.string(),
-  "updatedAt": zod.string()
-})
-
-
+  id: zod.number(),
+  type: zod.enum(["new", "renewal"]),
+  status: zod.enum(["new", "reviewing", "accepted", "rejected"]),
+  childId: zod.number().nullable(),
+  sourceChildId: zod.number().nullable(),
+  firstName: zod.string(),
+  lastName: zod.string(),
+  gender: zod.enum(["male", "female"]),
+  birthDate: zod.string(),
+  level: zod.string(),
+  classroomId: zod.number().nullable(),
+  notes: zod.string().nullable(),
+  guardianName: zod.string(),
+  guardianPhone: zod.string(),
+  guardianEmail: zod.string().nullable(),
+  documents: zod.array(
+    zod.object({
+      id: zod.number(),
+      applicationId: zod.number(),
+      name: zod.string(),
+      contentType: zod.string(),
+      size: zod.number(),
+      objectPath: zod
+        .string()
+        .regex(updateApplicationResponseDocumentsItemObjectPathRegExp),
+      createdAt: zod.string(),
+    }),
+  ),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
 /**
  * @summary Attach uploaded document metadata to an application
  */
 export const AttachApplicationDocumentParams = zod.object({
-  "id": zod.coerce.number()
-})
-
-
-
+  id: zod.coerce.number(),
+});
 export const attachApplicationDocumentBodySizeMax = 10485760;
 export const attachApplicationDocumentBodySizeMultipleOf = 1;
-
-export const attachApplicationDocumentBodyObjectPathRegExp = new RegExp('^/objects/uploads/[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$');
-
-
+export const attachApplicationDocumentBodyObjectPathRegExp = new RegExp(
+  "^/objects/uploads/[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$",
+);
 export const AttachApplicationDocumentBody = zod.object({
-  "name": zod.string().min(1),
-  "contentType": zod.string().min(1),
-  "size": zod.number().min(1).max(attachApplicationDocumentBodySizeMax).multipleOf(attachApplicationDocumentBodySizeMultipleOf),
-  "objectPath": zod.string().regex(attachApplicationDocumentBodyObjectPathRegExp)
-})
-
-export const attachApplicationDocumentResponseObjectPathRegExp = new RegExp('^/objects/uploads/[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$');
-
-
+  name: zod.string().min(1),
+  contentType: zod.string().min(1),
+  size: zod
+    .number()
+    .min(1)
+    .max(attachApplicationDocumentBodySizeMax)
+    .multipleOf(attachApplicationDocumentBodySizeMultipleOf),
+  objectPath: zod.string().regex(attachApplicationDocumentBodyObjectPathRegExp),
+});
+export const attachApplicationDocumentResponseObjectPathRegExp = new RegExp(
+  "^/objects/uploads/[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$",
+);
 export const AttachApplicationDocumentResponse = zod.object({
-  "id": zod.number(),
-  "applicationId": zod.number(),
-  "name": zod.string(),
-  "contentType": zod.string(),
-  "size": zod.number(),
-  "objectPath": zod.string().regex(attachApplicationDocumentResponseObjectPathRegExp),
-  "createdAt": zod.string()
-})
-
-
+  id: zod.number(),
+  applicationId: zod.number(),
+  name: zod.string(),
+  contentType: zod.string(),
+  size: zod.number(),
+  objectPath: zod
+    .string()
+    .regex(attachApplicationDocumentResponseObjectPathRegExp),
+  createdAt: zod.string(),
+});
 /**
  * @summary Download an application document
  */
 export const GetApplicationDocumentContentParams = zod.object({
-  "applicationId": zod.coerce.number(),
-  "documentId": zod.coerce.number()
-})
-
-export const GetApplicationDocumentContentResponse = zod.unknown()
-
-
+  applicationId: zod.coerce.number(),
+  documentId: zod.coerce.number(),
+});
+export const GetApplicationDocumentContentResponse = zod.unknown();
 /**
  * @summary Request a private object upload URL
  */
 export const requestUploadUrlBodyApplicationIdMultipleOf = 1;
-
-
 export const requestUploadUrlBodySizeMax = 10485760;
 export const requestUploadUrlBodySizeMultipleOf = 1;
-
-
-
-
 export const RequestUploadUrlBody = zod.object({
-  "applicationId": zod.number().min(1).multipleOf(requestUploadUrlBodyApplicationIdMultipleOf),
-  "name": zod.string().min(1),
-  "size": zod.number().min(1).max(requestUploadUrlBodySizeMax).multipleOf(requestUploadUrlBodySizeMultipleOf),
-  "contentType": zod.string().min(1)
-})
-
-export const requestUploadUrlResponseObjectPathRegExp = new RegExp('^/objects/uploads/[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$');
-
-
+  applicationId: zod
+    .number()
+    .min(1)
+    .multipleOf(requestUploadUrlBodyApplicationIdMultipleOf),
+  name: zod.string().min(1),
+  size: zod
+    .number()
+    .min(1)
+    .max(requestUploadUrlBodySizeMax)
+    .multipleOf(requestUploadUrlBodySizeMultipleOf),
+  contentType: zod.string().min(1),
+});
+export const requestUploadUrlResponseObjectPathRegExp = new RegExp(
+  "^/objects/uploads/[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$",
+);
 export const RequestUploadUrlResponse = zod.object({
-  "uploadUrl": zod.string(),
-  "objectPath": zod.string().regex(requestUploadUrlResponseObjectPathRegExp)
-})
-
-
+  uploadUrl: zod.string(),
+  objectPath: zod.string().regex(requestUploadUrlResponseObjectPathRegExp),
+});
 /**
  * @summary Move an application through review or reject it
  */
 export const UpdateApplicationStatusParams = zod.object({
-  "id": zod.coerce.number()
-})
-
+  id: zod.coerce.number(),
+});
 export const UpdateApplicationStatusBody = zod.object({
-  "status": zod.enum(['new', 'reviewing', 'rejected'])
-})
-
-export const updateApplicationStatusResponseDocumentsItemObjectPathRegExp = new RegExp('^/objects/uploads/[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$');
-
-
+  status: zod.enum(["new", "reviewing", "rejected"]),
+});
+export const updateApplicationStatusResponseDocumentsItemObjectPathRegExp =
+  new RegExp(
+    "^/objects/uploads/[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$",
+  );
 export const UpdateApplicationStatusResponse = zod.object({
-  "id": zod.number(),
-  "type": zod.enum(['new', 'renewal']),
-  "status": zod.enum(['new', 'reviewing', 'accepted', 'rejected']),
-  "childId": zod.number().nullable(),
-  "sourceChildId": zod.number().nullable(),
-  "firstName": zod.string(),
-  "lastName": zod.string(),
-  "gender": zod.enum(['male', 'female']),
-  "birthDate": zod.string(),
-  "level": zod.string(),
-  "classroomId": zod.number().nullable(),
-  "notes": zod.string().nullable(),
-  "guardianName": zod.string(),
-  "guardianPhone": zod.string(),
-  "guardianEmail": zod.string().nullable(),
-  "documents": zod.array(zod.object({
-  "id": zod.number(),
-  "applicationId": zod.number(),
-  "name": zod.string(),
-  "contentType": zod.string(),
-  "size": zod.number(),
-  "objectPath": zod.string().regex(updateApplicationStatusResponseDocumentsItemObjectPathRegExp),
-  "createdAt": zod.string()
-})),
-  "createdAt": zod.string(),
-  "updatedAt": zod.string()
-})
-
-
+  id: zod.number(),
+  type: zod.enum(["new", "renewal"]),
+  status: zod.enum(["new", "reviewing", "accepted", "rejected"]),
+  childId: zod.number().nullable(),
+  sourceChildId: zod.number().nullable(),
+  firstName: zod.string(),
+  lastName: zod.string(),
+  gender: zod.enum(["male", "female"]),
+  birthDate: zod.string(),
+  level: zod.string(),
+  classroomId: zod.number().nullable(),
+  notes: zod.string().nullable(),
+  guardianName: zod.string(),
+  guardianPhone: zod.string(),
+  guardianEmail: zod.string().nullable(),
+  documents: zod.array(
+    zod.object({
+      id: zod.number(),
+      applicationId: zod.number(),
+      name: zod.string(),
+      contentType: zod.string(),
+      size: zod.number(),
+      objectPath: zod
+        .string()
+        .regex(updateApplicationStatusResponseDocumentsItemObjectPathRegExp),
+      createdAt: zod.string(),
+    }),
+  ),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
 /**
  * @summary Accept an application and activate its child record
  */
 export const AcceptApplicationParams = zod.object({
-  "id": zod.coerce.number()
-})
-
-export const acceptApplicationResponseDocumentsItemObjectPathRegExp = new RegExp('^/objects/uploads/[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$');
-
-
+  id: zod.coerce.number(),
+});
+export const acceptApplicationResponseDocumentsItemObjectPathRegExp =
+  new RegExp(
+    "^/objects/uploads/[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$",
+  );
 export const AcceptApplicationResponse = zod.object({
-  "id": zod.number(),
-  "type": zod.enum(['new', 'renewal']),
-  "status": zod.enum(['new', 'reviewing', 'accepted', 'rejected']),
-  "childId": zod.number().nullable(),
-  "sourceChildId": zod.number().nullable(),
-  "firstName": zod.string(),
-  "lastName": zod.string(),
-  "gender": zod.enum(['male', 'female']),
-  "birthDate": zod.string(),
-  "level": zod.string(),
-  "classroomId": zod.number().nullable(),
-  "notes": zod.string().nullable(),
-  "guardianName": zod.string(),
-  "guardianPhone": zod.string(),
-  "guardianEmail": zod.string().nullable(),
-  "documents": zod.array(zod.object({
-  "id": zod.number(),
-  "applicationId": zod.number(),
-  "name": zod.string(),
-  "contentType": zod.string(),
-  "size": zod.number(),
-  "objectPath": zod.string().regex(acceptApplicationResponseDocumentsItemObjectPathRegExp),
-  "createdAt": zod.string()
-})),
-  "createdAt": zod.string(),
-  "updatedAt": zod.string()
-})
-
-
+  id: zod.number(),
+  type: zod.enum(["new", "renewal"]),
+  status: zod.enum(["new", "reviewing", "accepted", "rejected"]),
+  childId: zod.number().nullable(),
+  sourceChildId: zod.number().nullable(),
+  firstName: zod.string(),
+  lastName: zod.string(),
+  gender: zod.enum(["male", "female"]),
+  birthDate: zod.string(),
+  level: zod.string(),
+  classroomId: zod.number().nullable(),
+  notes: zod.string().nullable(),
+  guardianName: zod.string(),
+  guardianPhone: zod.string(),
+  guardianEmail: zod.string().nullable(),
+  documents: zod.array(
+    zod.object({
+      id: zod.number(),
+      applicationId: zod.number(),
+      name: zod.string(),
+      contentType: zod.string(),
+      size: zod.number(),
+      objectPath: zod
+        .string()
+        .regex(acceptApplicationResponseDocumentsItemObjectPathRegExp),
+      createdAt: zod.string(),
+    }),
+  ),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
 /**
  * @summary List guardians
  */
 export const ListGuardiansResponseItem = zod.object({
-  "id": zod.number(),
-  "name": zod.string(),
-  "phone": zod.string(),
-  "email": zod.string().nullable(),
-  "childrenCount": zod.number(),
-  "balance": zod.number()
-})
-export const ListGuardiansResponse = zod.array(ListGuardiansResponseItem)
-
-
+  id: zod.number(),
+  name: zod.string(),
+  phone: zod.string(),
+  email: zod.string().nullable(),
+  childrenCount: zod.number(),
+  balance: zod.number(),
+});
+export const ListGuardiansResponse = zod.array(ListGuardiansResponseItem);
 /**
  * @summary List classrooms
  */
 export const ListClassroomsResponseItem = zod.object({
-  "id": zod.number(),
-  "name": zod.string(),
-  "level": zod.string(),
-  "teacherName": zod.string(),
-  "capacity": zod.number(),
-  "childrenCount": zod.number(),
-  "color": zod.string()
-})
-export const ListClassroomsResponse = zod.array(ListClassroomsResponseItem)
-
-
+  id: zod.number(),
+  name: zod.string(),
+  level: zod.string(),
+  teacherName: zod.string(),
+  capacity: zod.number(),
+  childrenCount: zod.number(),
+  color: zod.string(),
+  branchId: zod.number().nullish(),
+  stageId: zod.number().nullish(),
+  schedule: zod.record(zod.string(), zod.unknown()).optional(),
+});
+export const ListClassroomsResponse = zod.array(ListClassroomsResponseItem);
 /**
  * @summary Create a classroom
  */
-
-
-
 export const createClassroomBodyCapacityMultipleOf = 1;
-
-
-
-
 export const CreateClassroomBody = zod.object({
-  "name": zod.string().min(1),
-  "level": zod.string().min(1),
-  "teacherName": zod.string().min(1),
-  "capacity": zod.number().min(1).multipleOf(createClassroomBodyCapacityMultipleOf),
-  "color": zod.string().min(1).optional()
-})
-
+  name: zod.string().min(1),
+  level: zod.string().min(1),
+  teacherName: zod.string().min(1),
+  capacity: zod
+    .number()
+    .min(1)
+    .multipleOf(createClassroomBodyCapacityMultipleOf),
+  color: zod.string().min(1).optional(),
+  branchId: zod.number().nullish(),
+  stageId: zod.number().nullish(),
+  schedule: zod.record(zod.string(), zod.unknown()).optional(),
+});
 export const CreateClassroomResponse = zod.object({
-  "id": zod.number(),
-  "name": zod.string(),
-  "level": zod.string(),
-  "teacherName": zod.string(),
-  "capacity": zod.number(),
-  "childrenCount": zod.number(),
-  "color": zod.string()
-})
-
-
+  id: zod.number(),
+  name: zod.string(),
+  level: zod.string(),
+  teacherName: zod.string(),
+  capacity: zod.number(),
+  childrenCount: zod.number(),
+  color: zod.string(),
+  branchId: zod.number().nullish(),
+  stageId: zod.number().nullish(),
+  schedule: zod.record(zod.string(), zod.unknown()).optional(),
+});
 /**
  * @summary List staff
  */
 export const ListStaffResponseItem = zod.object({
-  "id": zod.number(),
-  "name": zod.string(),
-  "role": zod.string(),
-  "phone": zod.string(),
-  "status": zod.enum(['present', 'absent', 'leave']),
-  "attendanceRate": zod.number(),
-  "avatarUrl": zod.string().nullish()
-})
-export const ListStaffResponse = zod.array(ListStaffResponseItem)
-
-
+  id: zod.number(),
+  name: zod.string(),
+  role: zod.string(),
+  phone: zod.string(),
+  status: zod.enum(["present", "absent", "leave"]),
+  attendanceRate: zod.number(),
+  avatarUrl: zod.string().nullish(),
+});
+export const ListStaffResponse = zod.array(ListStaffResponseItem);
 /**
  * @summary Get today's child attendance
  */
 export const GetTodayAttendanceResponseItem = zod.object({
-  "id": zod.number(),
-  "childId": zod.number(),
-  "childName": zod.string(),
-  "date": zod.string(),
-  "status": zod.enum(['present', 'absent', 'late', 'excused']),
-  "checkIn": zod.string().nullable(),
-  "checkOut": zod.string().nullable(),
-  "note": zod.string().nullish()
-})
-export const GetTodayAttendanceResponse = zod.array(GetTodayAttendanceResponseItem)
-
-
+  id: zod.number(),
+  childId: zod.number(),
+  childName: zod.string(),
+  date: zod.string(),
+  status: zod.enum(["present", "absent", "late", "excused"]),
+  checkIn: zod.string().nullable(),
+  checkOut: zod.string().nullable(),
+  departureType: zod
+    .union([zod.literal("normal"), zod.literal("early"), zod.literal(null)])
+    .nullish(),
+  source: zod.enum(["manual", "device", "import"]),
+  recordedBy: zod.string().nullish(),
+  note: zod.string().nullish(),
+});
+export const GetTodayAttendanceResponse = zod.array(
+  GetTodayAttendanceResponseItem,
+);
 /**
  * @summary Record child attendance
  */
+export const recordAttendanceBodySourceDefault = `manual`;
 export const RecordAttendanceBody = zod.object({
-  "childId": zod.number(),
-  "date": zod.string(),
-  "status": zod.enum(['present', 'absent', 'late', 'excused']),
-  "checkIn": zod.string().nullish(),
-  "checkOut": zod.string().nullish(),
-  "note": zod.string().nullish()
-})
-
+  childId: zod.number(),
+  date: zod.string(),
+  status: zod.enum(["present", "absent", "late", "excused"]),
+  checkIn: zod.string().nullish(),
+  checkOut: zod.string().nullish(),
+  departureType: zod
+    .union([zod.literal("normal"), zod.literal("early"), zod.literal(null)])
+    .nullish(),
+  source: zod
+    .enum(["manual", "device", "import"])
+    .default(recordAttendanceBodySourceDefault),
+  note: zod.string().nullish(),
+});
 export const RecordAttendanceResponse = zod.object({
-  "id": zod.number(),
-  "childId": zod.number(),
-  "childName": zod.string(),
-  "date": zod.string(),
-  "status": zod.enum(['present', 'absent', 'late', 'excused']),
-  "checkIn": zod.string().nullable(),
-  "checkOut": zod.string().nullable(),
-  "note": zod.string().nullish()
-})
-
-
+  id: zod.number(),
+  childId: zod.number(),
+  childName: zod.string(),
+  date: zod.string(),
+  status: zod.enum(["present", "absent", "late", "excused"]),
+  checkIn: zod.string().nullable(),
+  checkOut: zod.string().nullable(),
+  departureType: zod
+    .union([zod.literal("normal"), zod.literal("early"), zod.literal(null)])
+    .nullish(),
+  source: zod.enum(["manual", "device", "import"]),
+  recordedBy: zod.string().nullish(),
+  note: zod.string().nullish(),
+});
 /**
  * @summary Get finance summary
  */
 export const GetFinanceSummaryResponse = zod.object({
-  "collectedThisMonth": zod.number(),
-  "outstanding": zod.number(),
-  "overdueCount": zod.number(),
-  "paidCount": zod.number(),
-  "monthlyTrend": zod.array(zod.object({
-  "month": zod.string(),
-  "collected": zod.number(),
-  "expected": zod.number()
-}))
-})
-
-
+  collectedThisMonth: zod.number(),
+  outstanding: zod.number(),
+  overdueCount: zod.number(),
+  paidCount: zod.number(),
+  monthlyTrend: zod.array(
+    zod.object({
+      month: zod.string(),
+      collected: zod.number(),
+      expected: zod.number(),
+    }),
+  ),
+});
 /**
  * @summary List recent invoices
  */
 export const ListInvoicesQueryParams = zod.object({
-  "status": zod.enum(['paid', 'pending', 'overdue']).optional()
-})
-
+  status: zod.enum(["paid", "pending", "overdue"]).optional(),
+});
 export const ListInvoicesResponseItem = zod.object({
-  "id": zod.number(),
-  "invoiceNumber": zod.string(),
-  "guardianName": zod.string(),
-  "childName": zod.string(),
-  "amount": zod.number(),
-  "dueDate": zod.string(),
-  "status": zod.enum(['paid', 'pending', 'overdue']),
-  "paidAt": zod.string().nullable(),
-  "lastPaymentStatus": zod.string().nullable(),
-  "lastPaymentError": zod.string().nullish(),
-  "chargedCurrency": zod.string().nullish(),
-  "chargedAmount": zod.number().nullish()
-})
-export const ListInvoicesResponse = zod.array(ListInvoicesResponseItem)
-
-
+  id: zod.number(),
+  invoiceNumber: zod.string(),
+  guardianName: zod.string(),
+  childName: zod.string(),
+  amount: zod.number(),
+  dueDate: zod.string(),
+  status: zod.enum(["paid", "pending", "overdue"]),
+  paidAt: zod.string().nullable(),
+  lastPaymentStatus: zod.string().nullable(),
+  lastPaymentError: zod.string().nullish(),
+  chargedCurrency: zod.string().nullish(),
+  chargedAmount: zod.number().nullish(),
+});
+export const ListInvoicesResponse = zod.array(ListInvoicesResponseItem);
 /**
  * @summary Get the current fresh KWD to USD exchange rate
  */
 export const getKwdUsdExchangeRateResponseRateExclusiveMin = 0;
-
-
-
 export const GetKwdUsdExchangeRateResponse = zod.object({
-  "baseCurrency": zod.enum(['KWD']),
-  "quoteCurrency": zod.enum(['USD']),
-  "rate": zod.number().gt(getKwdUsdExchangeRateResponseRateExclusiveMin),
-  "updatedAt": zod.coerce.date()
-})
-
-
+  baseCurrency: zod.enum(["KWD"]),
+  quoteCurrency: zod.enum(["USD"]),
+  rate: zod.number().gt(getKwdUsdExchangeRateResponseRateExclusiveMin),
+  updatedAt: zod.coerce.date(),
+});
 /**
  * @summary Create a Stripe checkout session to pay an invoice
  */
 export const CreateInvoiceCheckoutSessionParams = zod.object({
-  "id": zod.coerce.number()
-})
-
+  id: zod.coerce.number(),
+});
 export const CreateInvoiceCheckoutSessionBody = zod.object({
-  "returnUrl": zod.string().describe('Absolute URL of the finance page to redirect back to after checkout.')
-})
-
+  returnUrl: zod
+    .string()
+    .describe(
+      "Absolute URL of the finance page to redirect back to after checkout.",
+    ),
+});
 export const CreateInvoiceCheckoutSessionResponse = zod.object({
-  "url": zod.string()
-})
-
-
+  url: zod.string(),
+});
 /**
  * @summary Send a due-date payment reminder to the guardian
  */
 export const SendInvoiceReminderParams = zod.object({
-  "id": zod.coerce.number()
-})
-
+  id: zod.coerce.number(),
+});
 export const SendInvoiceReminderResponse = zod.object({
-  "status": zod.enum(['sent', 'failed']),
-  "message": zod.string()
-})
-
-
+  status: zod.enum(["sent", "failed"]),
+  message: zod.string(),
+});
 /**
  * @summary Get the authenticated guardian's overview
  */
 export const GetParentOverviewResponse = zod.object({
-  "guardianId": zod.number(),
-  "guardianName": zod.string(),
-  "children": zod.array(zod.object({
-  "id": zod.number(),
-  "firstName": zod.string(),
-  "lastName": zod.string(),
-  "fullName": zod.string(),
-  "birthDate": zod.string(),
-  "level": zod.string(),
-  "classroomName": zod.string().nullable(),
-  "attendanceRate": zod.number(),
-  "avatarUrl": zod.string().nullish()
-})),
-  "outstandingBalance": zod.number(),
-  "unreadMessages": zod.number(),
-  "announcementsCount": zod.number()
-})
-
-
+  guardianId: zod.number(),
+  guardianName: zod.string(),
+  children: zod.array(
+    zod.object({
+      id: zod.number(),
+      firstName: zod.string(),
+      lastName: zod.string(),
+      fullName: zod.string(),
+      birthDate: zod.string(),
+      level: zod.string(),
+      classroomName: zod.string().nullable(),
+      attendanceRate: zod.number(),
+      avatarUrl: zod.string().nullish(),
+    }),
+  ),
+  outstandingBalance: zod.number(),
+  unreadMessages: zod.number(),
+  announcementsCount: zod.number(),
+});
 /**
  * @summary Resolve the authenticated user's application role
  */
 export const GetSessionContextResponse = zod.object({
-  "role": zod.enum(['parent', 'admin', 'pending'])
-})
-
-
+  role: zod.enum(["parent", "admin", "pending"]),
+});
 /**
  * @summary List children belonging to the authenticated guardian
  */
 export const ListParentChildrenResponseItem = zod.object({
-  "id": zod.number(),
-  "firstName": zod.string(),
-  "lastName": zod.string(),
-  "fullName": zod.string(),
-  "birthDate": zod.string(),
-  "level": zod.string(),
-  "classroomName": zod.string().nullable(),
-  "attendanceRate": zod.number(),
-  "avatarUrl": zod.string().nullish()
-})
-export const ListParentChildrenResponse = zod.array(ListParentChildrenResponseItem)
-
-
+  id: zod.number(),
+  firstName: zod.string(),
+  lastName: zod.string(),
+  fullName: zod.string(),
+  birthDate: zod.string(),
+  level: zod.string(),
+  classroomName: zod.string().nullable(),
+  attendanceRate: zod.number(),
+  avatarUrl: zod.string().nullish(),
+});
+export const ListParentChildrenResponse = zod.array(
+  ListParentChildrenResponseItem,
+);
 /**
  * @summary Get attendance history for guardian children
  */
 export const ListParentAttendanceQueryParams = zod.object({
-  "childId": zod.coerce.number().optional()
-})
-
+  childId: zod.coerce.number().optional(),
+});
 export const ListParentAttendanceResponseItem = zod.object({
-  "id": zod.number(),
-  "childId": zod.number(),
-  "childName": zod.string(),
-  "date": zod.string(),
-  "status": zod.enum(['present', 'absent', 'late', 'excused']),
-  "checkIn": zod.string().nullable(),
-  "checkOut": zod.string().nullable(),
-  "note": zod.string().nullish()
-})
-export const ListParentAttendanceResponse = zod.array(ListParentAttendanceResponseItem)
-
-
+  id: zod.number(),
+  childId: zod.number(),
+  childName: zod.string(),
+  date: zod.string(),
+  status: zod.enum(["present", "absent", "late", "excused"]),
+  checkIn: zod.string().nullable(),
+  checkOut: zod.string().nullable(),
+  departureType: zod
+    .union([zod.literal("normal"), zod.literal("early"), zod.literal(null)])
+    .nullish(),
+  source: zod.enum(["manual", "device", "import"]),
+  recordedBy: zod.string().nullish(),
+  note: zod.string().nullish(),
+});
+export const ListParentAttendanceResponse = zod.array(
+  ListParentAttendanceResponseItem,
+);
 /**
  * @summary Get progress reports for guardian children
  */
 export const ListParentProgressReportsQueryParams = zod.object({
-  "childId": zod.coerce.number().optional()
-})
-
+  childId: zod.coerce.number().optional(),
+});
 export const ListParentProgressReportsResponseItem = zod.object({
-  "id": zod.number(),
-  "childId": zod.number(),
-  "childName": zod.string(),
-  "title": zod.string(),
-  "summary": zod.string(),
-  "period": zod.string(),
-  "educatorName": zod.string(),
-  "publishedAt": zod.string()
-})
-export const ListParentProgressReportsResponse = zod.array(ListParentProgressReportsResponseItem)
-
-
+  id: zod.number(),
+  childId: zod.number(),
+  childName: zod.string(),
+  title: zod.string(),
+  summary: zod.string(),
+  period: zod.string(),
+  educatorName: zod.string(),
+  publishedAt: zod.string(),
+});
+export const ListParentProgressReportsResponse = zod.array(
+  ListParentProgressReportsResponseItem,
+);
 /**
  * @summary Get activities and photos for guardian children
  */
 export const ListParentActivitiesQueryParams = zod.object({
-  "childId": zod.coerce.number().optional()
-})
-
+  childId: zod.coerce.number().optional(),
+});
 export const ListParentActivitiesResponseItem = zod.object({
-  "id": zod.number(),
-  "childId": zod.number(),
-  "childName": zod.string(),
-  "category": zod.string(),
-  "title": zod.string(),
-  "description": zod.string(),
-  "photoUrl": zod.string().nullish(),
-  "educatorName": zod.string(),
-  "occurredAt": zod.string()
-})
-export const ListParentActivitiesResponse = zod.array(ListParentActivitiesResponseItem)
-
-
+  id: zod.number(),
+  childId: zod.number(),
+  childName: zod.string(),
+  category: zod.string(),
+  title: zod.string(),
+  description: zod.string(),
+  photoUrl: zod.string().nullish(),
+  educatorName: zod.string(),
+  occurredAt: zod.string(),
+});
+export const ListParentActivitiesResponse = zod.array(
+  ListParentActivitiesResponseItem,
+);
 /**
  * @summary Get invoices belonging to the authenticated guardian
  */
 export const ListParentInvoicesResponseItem = zod.object({
-  "id": zod.number(),
-  "invoiceNumber": zod.string(),
-  "guardianName": zod.string(),
-  "childName": zod.string(),
-  "amount": zod.number(),
-  "dueDate": zod.string(),
-  "status": zod.enum(['paid', 'pending', 'overdue']),
-  "paidAt": zod.string().nullable(),
-  "lastPaymentStatus": zod.string().nullable(),
-  "lastPaymentError": zod.string().nullish(),
-  "chargedCurrency": zod.string().nullish(),
-  "chargedAmount": zod.number().nullish()
-})
-export const ListParentInvoicesResponse = zod.array(ListParentInvoicesResponseItem)
-
-
+  id: zod.number(),
+  invoiceNumber: zod.string(),
+  guardianName: zod.string(),
+  childName: zod.string(),
+  amount: zod.number(),
+  dueDate: zod.string(),
+  status: zod.enum(["paid", "pending", "overdue"]),
+  paidAt: zod.string().nullable(),
+  lastPaymentStatus: zod.string().nullable(),
+  lastPaymentError: zod.string().nullish(),
+  chargedCurrency: zod.string().nullish(),
+  chargedAmount: zod.number().nullish(),
+});
+export const ListParentInvoicesResponse = zod.array(
+  ListParentInvoicesResponseItem,
+);
 /**
  * @summary Create a Stripe checkout session for a guardian invoice
  */
 export const CreateParentInvoiceCheckoutSessionParams = zod.object({
-  "id": zod.coerce.number()
-})
-
+  id: zod.coerce.number(),
+});
 export const CreateParentInvoiceCheckoutSessionBody = zod.object({
-  "returnUrl": zod.string().describe('Absolute URL of the finance page to redirect back to after checkout.')
-})
-
+  returnUrl: zod
+    .string()
+    .describe(
+      "Absolute URL of the finance page to redirect back to after checkout.",
+    ),
+});
 export const CreateParentInvoiceCheckoutSessionResponse = zod.object({
-  "url": zod.string()
-})
-
-
+  url: zod.string(),
+});
 /**
  * @summary Get messages for the authenticated guardian
  */
 export const ListParentMessagesResponseItem = zod.object({
-  "id": zod.number(),
-  "senderType": zod.enum(['parent', 'staff']),
-  "senderName": zod.string(),
-  "subject": zod.string(),
-  "content": zod.string(),
-  "read": zod.boolean(),
-  "createdAt": zod.string()
-})
-export const ListParentMessagesResponse = zod.array(ListParentMessagesResponseItem)
-
-
+  id: zod.number(),
+  senderType: zod.enum(["parent", "staff"]),
+  senderName: zod.string(),
+  subject: zod.string(),
+  content: zod.string(),
+  read: zod.boolean(),
+  createdAt: zod.string(),
+});
+export const ListParentMessagesResponse = zod.array(
+  ListParentMessagesResponseItem,
+);
 /**
  * @summary Send a message to the nursery
  */
 export const sendParentMessageBodySubjectMax = 160;
-
 export const sendParentMessageBodyContentMax = 5000;
-
-
-
 export const SendParentMessageBody = zod.object({
-  "subject": zod.string().min(1).max(sendParentMessageBodySubjectMax),
-  "content": zod.string().min(1).max(sendParentMessageBodyContentMax)
-})
-
+  subject: zod.string().min(1).max(sendParentMessageBodySubjectMax),
+  content: zod.string().min(1).max(sendParentMessageBodyContentMax),
+});
 export const SendParentMessageResponse = zod.object({
-  "id": zod.number(),
-  "senderType": zod.enum(['parent', 'staff']),
-  "senderName": zod.string(),
-  "subject": zod.string(),
-  "content": zod.string(),
-  "read": zod.boolean(),
-  "createdAt": zod.string()
-})
-
-
+  id: zod.number(),
+  senderType: zod.enum(["parent", "staff"]),
+  senderName: zod.string(),
+  subject: zod.string(),
+  content: zod.string(),
+  read: zod.boolean(),
+  createdAt: zod.string(),
+});
 /**
  * @summary Get announcements visible to parents
  */
 export const ListParentAnnouncementsResponseItem = zod.object({
-  "id": zod.number(),
-  "title": zod.string(),
-  "content": zod.string(),
-  "publishedAt": zod.string()
-})
-export const ListParentAnnouncementsResponse = zod.array(ListParentAnnouncementsResponseItem)
+  id: zod.number(),
+  title: zod.string(),
+  content: zod.string(),
+  publishedAt: zod.string(),
+});
+export const ListParentAnnouncementsResponse = zod.array(
+  ListParentAnnouncementsResponseItem,
+);
+/**
+ * @summary List health, emergency, allergy, medication, document, photo, note, or history entries
+ */
+export const ListChildRecordsParams = zod.object({
+  id: zod.coerce.number(),
+});
+export const ListChildRecordsResponseItem = zod.object({
+  id: zod.number(),
+  childId: zod.number(),
+  category: zod.enum([
+    "health",
+    "emergency",
+    "allergy",
+    "medication",
+    "document",
+    "photo",
+    "note",
+    "history",
+  ]),
+  title: zod.string(),
+  status: zod.string(),
+  occurredOn: zod.string().nullish(),
+  confidential: zod.boolean(),
+  data: zod.record(zod.string(), zod.unknown()),
+  createdBy: zod.string(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+export const ListChildRecordsResponse = zod.array(ListChildRecordsResponseItem);
+/**
+ * @summary Add an entry to a child dossier
+ */
+export const CreateChildRecordParams = zod.object({
+  id: zod.coerce.number(),
+});
+export const createChildRecordBodyStatusDefault = `active`;
+export const createChildRecordBodyConfidentialDefault = false;
+export const CreateChildRecordBody = zod.object({
+  category: zod.enum([
+    "health",
+    "emergency",
+    "allergy",
+    "medication",
+    "document",
+    "photo",
+    "note",
+    "history",
+  ]),
+  title: zod.string().min(1),
+  status: zod.string().default(createChildRecordBodyStatusDefault),
+  occurredOn: zod.string().nullish(),
+  confidential: zod.boolean().default(createChildRecordBodyConfidentialDefault),
+  data: zod.record(zod.string(), zod.unknown()).optional(),
+});
+export const CreateChildRecordResponse = zod.object({
+  id: zod.number(),
+  childId: zod.number(),
+  category: zod.enum([
+    "health",
+    "emergency",
+    "allergy",
+    "medication",
+    "document",
+    "photo",
+    "note",
+    "history",
+  ]),
+  title: zod.string(),
+  status: zod.string(),
+  occurredOn: zod.string().nullish(),
+  confidential: zod.boolean(),
+  data: zod.record(zod.string(), zod.unknown()),
+  createdBy: zod.string(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+/**
+ * @summary List staff attendance with date and staff filters
+ */
+export const ListStaffAttendanceQueryParams = zod.object({
+  staffId: zod.coerce.number().optional(),
+  dateFrom: zod.coerce.string().optional(),
+  dateTo: zod.coerce.string().optional(),
+});
+export const ListStaffAttendanceResponseItem = zod.object({
+  id: zod.number(),
+  staffId: zod.number(),
+  date: zod.string(),
+  status: zod.enum(["present", "absent", "late", "leave"]),
+  checkIn: zod.string().nullish(),
+  checkOut: zod.string().nullish(),
+  departureType: zod
+    .union([zod.literal("normal"), zod.literal("early"), zod.literal(null)])
+    .nullish(),
+  source: zod.enum(["manual", "device", "import"]),
+  note: zod.string().nullish(),
+  recordedBy: zod.string(),
+});
+export const ListStaffAttendanceResponse = zod.array(
+  ListStaffAttendanceResponseItem,
+);
+/**
+ * @summary Manually record attendance, lateness, or early departure for staff
+ */
+export const recordStaffAttendanceBodySourceDefault = `manual`;
+export const RecordStaffAttendanceBody = zod.object({
+  staffId: zod.number(),
+  date: zod.string(),
+  status: zod.enum(["present", "absent", "late", "leave"]),
+  checkIn: zod.string().nullish(),
+  checkOut: zod.string().nullish(),
+  departureType: zod
+    .union([zod.literal("normal"), zod.literal("early"), zod.literal(null)])
+    .nullish(),
+  source: zod
+    .enum(["manual", "device", "import"])
+    .default(recordStaffAttendanceBodySourceDefault),
+  note: zod.string().nullish(),
+});
+export const RecordStaffAttendanceResponse = zod.object({
+  id: zod.number(),
+  staffId: zod.number(),
+  date: zod.string(),
+  status: zod.enum(["present", "absent", "late", "leave"]),
+  checkIn: zod.string().nullish(),
+  checkOut: zod.string().nullish(),
+  departureType: zod
+    .union([zod.literal("normal"), zod.literal("early"), zod.literal(null)])
+    .nullish(),
+  source: zod.enum(["manual", "device", "import"]),
+  note: zod.string().nullish(),
+  recordedBy: zod.string(),
+});
+/**
+ * @summary List records for a nursery operational resource
+ */
+export const ListOperationalRecordsParams = zod.object({
+  resource: zod.enum([
+    "branch",
+    "stage",
+    "teacher-assignment",
+    "classroom-schedule",
+    "staff-profile",
+    "staff-job",
+    "staff-leave",
+    "payroll",
+    "evaluation",
+    "curriculum",
+    "lesson-plan",
+    "skill",
+    "assessment",
+    "progress-report",
+    "event",
+    "media",
+    "fee-plan",
+    "discount",
+    "refund",
+    "expense",
+    "revenue",
+    "setting",
+    "holiday",
+    "notification",
+    "integration",
+  ]),
+});
+export const ListOperationalRecordsResponseItem = zod.object({
+  id: zod.number(),
+  resource: zod.enum([
+    "branch",
+    "stage",
+    "teacher-assignment",
+    "classroom-schedule",
+    "staff-profile",
+    "staff-job",
+    "staff-leave",
+    "payroll",
+    "evaluation",
+    "curriculum",
+    "lesson-plan",
+    "skill",
+    "assessment",
+    "progress-report",
+    "event",
+    "media",
+    "fee-plan",
+    "discount",
+    "refund",
+    "expense",
+    "revenue",
+    "setting",
+    "holiday",
+    "notification",
+    "integration",
+  ]),
+  subjectId: zod.number().nullish(),
+  branchId: zod.number().nullish(),
+  title: zod.string(),
+  status: zod.string(),
+  occurredOn: zod.string().nullish(),
+  amount: zod.number().nullish(),
+  data: zod.record(zod.string(), zod.unknown()),
+  createdBy: zod.string(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+export const ListOperationalRecordsResponse = zod.array(
+  ListOperationalRecordsResponseItem,
+);
+/**
+ * @summary Create an operational record
+ */
+export const CreateOperationalRecordParams = zod.object({
+  resource: zod.enum([
+    "branch",
+    "stage",
+    "teacher-assignment",
+    "classroom-schedule",
+    "staff-profile",
+    "staff-job",
+    "staff-leave",
+    "payroll",
+    "evaluation",
+    "curriculum",
+    "lesson-plan",
+    "skill",
+    "assessment",
+    "progress-report",
+    "event",
+    "media",
+    "fee-plan",
+    "discount",
+    "refund",
+    "expense",
+    "revenue",
+    "setting",
+    "holiday",
+    "notification",
+    "integration",
+  ]),
+});
+export const createOperationalRecordBodyStatusDefault = `active`;
+export const CreateOperationalRecordBody = zod.object({
+  subjectId: zod.number().nullish(),
+  branchId: zod.number().nullish(),
+  title: zod.string().min(1),
+  status: zod.string().default(createOperationalRecordBodyStatusDefault),
+  occurredOn: zod.string().nullish(),
+  amount: zod.number().nullish(),
+  data: zod.record(zod.string(), zod.unknown()).optional(),
+});
+export const CreateOperationalRecordResponse = zod.object({
+  id: zod.number(),
+  resource: zod.enum([
+    "branch",
+    "stage",
+    "teacher-assignment",
+    "classroom-schedule",
+    "staff-profile",
+    "staff-job",
+    "staff-leave",
+    "payroll",
+    "evaluation",
+    "curriculum",
+    "lesson-plan",
+    "skill",
+    "assessment",
+    "progress-report",
+    "event",
+    "media",
+    "fee-plan",
+    "discount",
+    "refund",
+    "expense",
+    "revenue",
+    "setting",
+    "holiday",
+    "notification",
+    "integration",
+  ]),
+  subjectId: zod.number().nullish(),
+  branchId: zod.number().nullish(),
+  title: zod.string(),
+  status: zod.string(),
+  occurredOn: zod.string().nullish(),
+  amount: zod.number().nullish(),
+  data: zod.record(zod.string(), zod.unknown()),
+  createdBy: zod.string(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+/**
+ * @summary Update an operational record
+ */
+export const UpdateOperationalRecordParams = zod.object({
+  resource: zod.enum([
+    "branch",
+    "stage",
+    "teacher-assignment",
+    "classroom-schedule",
+    "staff-profile",
+    "staff-job",
+    "staff-leave",
+    "payroll",
+    "evaluation",
+    "curriculum",
+    "lesson-plan",
+    "skill",
+    "assessment",
+    "progress-report",
+    "event",
+    "media",
+    "fee-plan",
+    "discount",
+    "refund",
+    "expense",
+    "revenue",
+    "setting",
+    "holiday",
+    "notification",
+    "integration",
+  ]),
+  id: zod.coerce.number(),
+});
+export const UpdateOperationalRecordBody = zod.object({
+  subjectId: zod.number().nullish(),
+  branchId: zod.number().nullish(),
+  title: zod.string().min(1).optional(),
+  status: zod.string().optional(),
+  occurredOn: zod.string().nullish(),
+  amount: zod.number().nullish(),
+  data: zod.record(zod.string(), zod.unknown()).optional(),
+});
+export const UpdateOperationalRecordResponse = zod.object({
+  id: zod.number(),
+  resource: zod.enum([
+    "branch",
+    "stage",
+    "teacher-assignment",
+    "classroom-schedule",
+    "staff-profile",
+    "staff-job",
+    "staff-leave",
+    "payroll",
+    "evaluation",
+    "curriculum",
+    "lesson-plan",
+    "skill",
+    "assessment",
+    "progress-report",
+    "event",
+    "media",
+    "fee-plan",
+    "discount",
+    "refund",
+    "expense",
+    "revenue",
+    "setting",
+    "holiday",
+    "notification",
+    "integration",
+  ]),
+  subjectId: zod.number().nullish(),
+  branchId: zod.number().nullish(),
+  title: zod.string(),
+  status: zod.string(),
+  occurredOn: zod.string().nullish(),
+  amount: zod.number().nullish(),
+  data: zod.record(zod.string(), zod.unknown()),
+  createdBy: zod.string(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+/**
+ * @summary Delete an operational record
+ */
+export const DeleteOperationalRecordParams = zod.object({
+  resource: zod.enum([
+    "branch",
+    "stage",
+    "teacher-assignment",
+    "classroom-schedule",
+    "staff-profile",
+    "staff-job",
+    "staff-leave",
+    "payroll",
+    "evaluation",
+    "curriculum",
+    "lesson-plan",
+    "skill",
+    "assessment",
+    "progress-report",
+    "event",
+    "media",
+    "fee-plan",
+    "discount",
+    "refund",
+    "expense",
+    "revenue",
+    "setting",
+    "holiday",
+    "notification",
+    "integration",
+  ]),
+  id: zod.coerce.number(),
+});
+export const DeleteOperationalRecordResponse = zod.void();
+/**
+ * @summary Generate filtered operational, academic, or financial report
+ */
+export const GetNurseryReportQueryParams = zod.object({
+  domain: zod.enum(["operational", "academic", "financial"]),
+  branchId: zod.coerce.number().optional(),
+  classroomId: zod.coerce.number().optional(),
+  status: zod.coerce.string().optional(),
+  dateFrom: zod.coerce.string().optional(),
+  dateTo: zod.coerce.string().optional(),
+});
+export const GetNurseryReportResponse = zod.object({
+  domain: zod.enum(["operational", "academic", "financial"]),
+  count: zod.number(),
+  totalAmount: zod.number(),
+  byStatus: zod.record(zod.string(), zod.number()),
+  records: zod.array(
+    zod.object({
+      id: zod.number(),
+      resource: zod.enum([
+        "branch",
+        "stage",
+        "teacher-assignment",
+        "classroom-schedule",
+        "staff-profile",
+        "staff-job",
+        "staff-leave",
+        "payroll",
+        "evaluation",
+        "curriculum",
+        "lesson-plan",
+        "skill",
+        "assessment",
+        "progress-report",
+        "event",
+        "media",
+        "fee-plan",
+        "discount",
+        "refund",
+        "expense",
+        "revenue",
+        "setting",
+        "holiday",
+        "notification",
+        "integration",
+      ]),
+      subjectId: zod.number().nullish(),
+      branchId: zod.number().nullish(),
+      title: zod.string(),
+      status: zod.string(),
+      occurredOn: zod.string().nullish(),
+      amount: zod.number().nullish(),
+      data: zod.record(zod.string(), zod.unknown()),
+      createdBy: zod.string(),
+      createdAt: zod.string(),
+      updatedAt: zod.string(),
+    }),
+  ),
+});
+/**
+ * @summary List configured role permissions
+ */
+export const ListRolePermissionsResponseItem = zod.object({
+  id: zod.number(),
+  role: zod.string(),
+  operation: zod.string(),
+  allowed: zod.boolean(),
+  updatedAt: zod.string(),
+});
+export const ListRolePermissionsResponse = zod.array(
+  ListRolePermissionsResponseItem,
+);
+/**
+ * @summary Set a role permission (owner only)
+ */
+export const SetRolePermissionBody = zod.object({
+  role: zod.string().min(1),
+  operation: zod.string().min(1),
+  allowed: zod.boolean(),
+});
+export const SetRolePermissionResponse = zod.object({
+  id: zod.number(),
+  role: zod.string(),
+  operation: zod.string(),
+  allowed: zod.boolean(),
+  updatedAt: zod.string(),
+});
+/**
+ * @summary List owner-scoped sensitive-operation audit events
+ */
+export const ListAuditLogsQueryParams = zod.object({
+  operation: zod.coerce.string().optional(),
+  entityType: zod.coerce.string().optional(),
+});
+export const ListAuditLogsResponseItem = zod.object({
+  id: zod.number(),
+  actorId: zod.string(),
+  actorRole: zod.string().nullish(),
+  operation: zod.string(),
+  entityType: zod.string(),
+  entityId: zod.string().nullish(),
+  before: zod.record(zod.string(), zod.unknown()).nullish(),
+  after: zod.record(zod.string(), zod.unknown()).nullish(),
+  createdAt: zod.string(),
+});
+export const ListAuditLogsResponse = zod.array(ListAuditLogsResponseItem);

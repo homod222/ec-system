@@ -5,6 +5,8 @@
  * API for the nursery management platform
  * OpenAPI spec version: 0.1.0
  */
+import type { AttendanceRecordDepartureType } from './attendanceRecordDepartureType';
+import type { AttendanceRecordSource } from './attendanceRecordSource';
 import type { AttendanceRecordStatus } from './attendanceRecordStatus';
 
 export interface AttendanceRecord {
@@ -17,6 +19,11 @@ export interface AttendanceRecord {
   checkIn: string | null;
   /** @nullable */
   checkOut: string | null;
+  /** @nullable */
+  departureType?: AttendanceRecordDepartureType;
+  source: AttendanceRecordSource;
+  /** @nullable */
+  recordedBy?: string | null;
   /** @nullable */
   note?: string | null;
 }

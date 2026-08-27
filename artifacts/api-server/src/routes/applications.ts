@@ -1,4 +1,3 @@
-import { getAuth } from "@clerk/express";
 import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
 import { Router, type IRouter } from "express";
 import {
@@ -39,7 +38,12 @@ import {
   ObjectStorageService,
 } from "../lib/objectStorage";
 import { checkClassroomCapacity } from "../lib/classroomCapacity";
-import { requireApplicationAdmin } from "../middlewares/requireApplicationAdmin";
+import {
+  auditNurseryOperation,
+  nurseryContext,
+  requireNurseryPermission,
+  resolveNurseryContext,
+} from "./nurseryOperations";
 
 const router: IRouter = Router();
 const storage = new ObjectStorageService();
@@ -47,6 +51,19 @@ const uploadObjectPathPattern = /^\/objects\/uploads\/[0-9a-f]{8}-(?:[0-9a-f]{4}
 const MAX_DOCUMENT_SIZE = 10 * 1024 * 1024;
 
 type ApplicationRow = typeof applicationsTable.$inferSelect;
+
+function applicationAuditSnapshot(application: ApplicationRow): Record<string, unknown> {
+  return {
+    id: application.id,
+    type: application.type,
+    status: application.status,
+    classroomId: application.classroomId,
+    childId: application.childId,
+    sourceChildId: application.sourceChildId,
+    level: application.level,
+    updatedAt: application.updatedAt.toISOString(),
+  };
+}
 
 async function applicationRecord(application: ApplicationRow) {
   const documents = await db
@@ -83,9 +100,9 @@ async function lockApplication(
   return application;
 }
 
-router.use("/applications", requireApplicationAdmin);
+router.use("/applications", resolveNurseryContext);
 
-router.get("/applications", async (req, res): Promise<void> => {
+router.get("/applications", requireNurseryPermission("read:application"), async (req, res): Promise<void> => {
   const parsed = ListApplicationsQueryParams.safeParse(req.query);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -96,7 +113,7 @@ router.get("/applications", async (req, res): Promise<void> => {
     .select()
     .from(applicationsTable)
     .where(and(
-      eq(applicationsTable.ownerId, getAuth(req).userId!),
+      eq(applicationsTable.ownerId, nurseryContext(req).ownerId),
       parsed.data.status ? eq(applicationsTable.status, parsed.data.status) : undefined,
       parsed.data.type ? eq(applicationsTable.type, parsed.data.type) : undefined,
     ))
@@ -105,14 +122,14 @@ router.get("/applications", async (req, res): Promise<void> => {
   res.json(ListApplicationsResponse.parse(records));
 });
 
-router.post("/applications", async (req, res): Promise<void> => {
+router.post("/applications", requireNurseryPermission("write:application"), async (req, res): Promise<void> => {
   const parsed = CreateApplicationBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
 
-  const ownerId = getAuth(req).userId!;
+  const ownerId = nurseryContext(req).ownerId;
   const result = await db.transaction(async (tx) => {
     if (parsed.data.classroomId != null) {
       const capacity = await checkClassroomCapacity(tx, ownerId, parsed.data.classroomId);
@@ -137,10 +154,14 @@ router.post("/applications", async (req, res): Promise<void> => {
     res.status(409).json({ error: "Classroom is full" });
     return;
   }
+  await auditNurseryOperation(
+    req, "create", "application", String(result.application.id),
+    null, applicationAuditSnapshot(result.application),
+  );
   res.status(201).json(CreateApplicationResponse.parse(await applicationRecord(result.application)));
 });
 
-router.get("/applications/:id", async (req, res): Promise<void> => {
+router.get("/applications/:id", requireNurseryPermission("read:application"), async (req, res): Promise<void> => {
   const parsed = GetApplicationParams.safeParse(req.params);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -151,7 +172,7 @@ router.get("/applications/:id", async (req, res): Promise<void> => {
     .from(applicationsTable)
     .where(and(
       eq(applicationsTable.id, parsed.data.id),
-      eq(applicationsTable.ownerId, getAuth(req).userId!),
+      eq(applicationsTable.ownerId, nurseryContext(req).ownerId),
     ));
   if (!application) {
     res.status(404).json({ error: "Application not found" });
@@ -160,7 +181,7 @@ router.get("/applications/:id", async (req, res): Promise<void> => {
   res.json(GetApplicationResponse.parse(await applicationRecord(application)));
 });
 
-router.patch("/applications/:id", async (req, res): Promise<void> => {
+router.patch("/applications/:id", requireNurseryPermission("write:application"), async (req, res): Promise<void> => {
   const params = UpdateApplicationParams.safeParse(req.params);
   const body = UpdateApplicationBody.safeParse(req.body);
   if (!params.success) {
@@ -173,7 +194,7 @@ router.patch("/applications/:id", async (req, res): Promise<void> => {
   }
 
   const result = await db.transaction(async (tx) => {
-    const current = await lockApplication(tx, params.data.id, getAuth(req).userId!);
+    const current = await lockApplication(tx, params.data.id, nurseryContext(req).ownerId);
     if (!current) return { kind: "missing" as const };
     if (current.status === "accepted") return { kind: "accepted" as const };
     if (body.data.classroomId != null && body.data.classroomId !== current.classroomId) {
@@ -194,7 +215,7 @@ router.patch("/applications/:id", async (req, res): Promise<void> => {
         eq(applicationsTable.ownerId, current.ownerId),
       ))
       .returning();
-    return { kind: "updated" as const, application };
+    return { kind: "updated" as const, application, before: current };
   });
   if (result.kind === "missing") {
     res.status(404).json({ error: "Application not found" });
@@ -212,10 +233,14 @@ router.patch("/applications/:id", async (req, res): Promise<void> => {
     res.status(409).json({ error: "Classroom is full" });
     return;
   }
+  await auditNurseryOperation(
+    req, "update", "application", String(result.application.id),
+    applicationAuditSnapshot(result.before), applicationAuditSnapshot(result.application),
+  );
   res.json(UpdateApplicationResponse.parse(await applicationRecord(result.application)));
 });
 
-router.post("/applications/:id/documents", async (req, res): Promise<void> => {
+router.post("/applications/:id/documents", requireNurseryPermission("write:application-document"), async (req, res): Promise<void> => {
   const params = AttachApplicationDocumentParams.safeParse(req.params);
   const body = AttachApplicationDocumentBody.safeParse(req.body);
   if (!params.success || !body.success || (body.success && (
@@ -241,7 +266,7 @@ router.post("/applications/:id/documents", async (req, res): Promise<void> => {
     res.status(415).json({ error: "Unsupported document type" });
     return;
   }
-  const ownerId = getAuth(req).userId!;
+  const ownerId = nurseryContext(req).ownerId;
   const now = new Date();
   const [grant] = await db.select().from(uploadGrantsTable).where(and(
     eq(uploadGrantsTable.objectPath, body.data.objectPath),
@@ -330,7 +355,7 @@ router.post("/applications/:id/documents", async (req, res): Promise<void> => {
   }));
 });
 
-router.get("/applications/:applicationId/documents/:documentId/content", async (req, res): Promise<void> => {
+router.get("/applications/:applicationId/documents/:documentId/content", requireNurseryPermission("read:application"), async (req, res): Promise<void> => {
   const params = GetApplicationDocumentContentParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -341,7 +366,7 @@ router.get("/applications/:applicationId/documents/:documentId/content", async (
     .from(applicationDocumentsTable)
     .innerJoin(applicationsTable, and(
       eq(applicationDocumentsTable.applicationId, applicationsTable.id),
-      eq(applicationsTable.ownerId, getAuth(req).userId!),
+      eq(applicationsTable.ownerId, nurseryContext(req).ownerId),
     ))
     .where(and(
       eq(applicationDocumentsTable.id, params.data.documentId),
@@ -386,7 +411,7 @@ router.get("/applications/:applicationId/documents/:documentId/content", async (
   }
 });
 
-router.patch("/applications/:id/status", async (req, res): Promise<void> => {
+router.patch("/applications/:id/status", requireNurseryPermission("write:application"), async (req, res): Promise<void> => {
   const params = UpdateApplicationStatusParams.safeParse(req.params);
   const body = UpdateApplicationStatusBody.safeParse(req.body);
   if (!params.success) {
@@ -399,7 +424,7 @@ router.patch("/applications/:id/status", async (req, res): Promise<void> => {
   }
 
   const result = await db.transaction(async (tx) => {
-    const current = await lockApplication(tx, params.data.id, getAuth(req).userId!);
+    const current = await lockApplication(tx, params.data.id, nurseryContext(req).ownerId);
     if (!current) return { kind: "missing" as const };
     const allowed = (current.status === "new" &&
       (body.data.status === "reviewing" || body.data.status === "rejected")) ||
@@ -412,7 +437,7 @@ router.patch("/applications/:id/status", async (req, res): Promise<void> => {
       eq(applicationsTable.id, current.id),
       eq(applicationsTable.ownerId, current.ownerId),
     )).returning();
-    return { kind: "updated" as const, application };
+    return { kind: "updated" as const, application, before: current };
   });
   if (result.kind === "missing") {
     res.status(404).json({ error: "Application not found" });
@@ -422,22 +447,26 @@ router.patch("/applications/:id/status", async (req, res): Promise<void> => {
     res.status(409).json({ error: "Illegal application status transition" });
     return;
   }
+  await auditNurseryOperation(
+    req, "update-status", "application", String(result.application.id),
+    applicationAuditSnapshot(result.before), applicationAuditSnapshot(result.application),
+  );
   res.json(UpdateApplicationStatusResponse.parse(await applicationRecord(result.application)));
 });
 
-router.post("/applications/:id/accept", async (req, res): Promise<void> => {
+router.post("/applications/:id/accept", requireNurseryPermission("accept:application"), async (req, res): Promise<void> => {
   const params = AcceptApplicationParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
     return;
   }
-  const actor = getAuth(req).userId;
+  const { ownerId, actorId } = nurseryContext(req);
 
   const result = await db.transaction(async (tx) => {
-    const application = await lockApplication(tx, params.data.id, actor!);
+    const application = await lockApplication(tx, params.data.id, ownerId);
     if (!application) return { kind: "missing" as const };
     if (application.status === "accepted") {
-      return { kind: "accepted" as const, application };
+      return { kind: "accepted" as const, application, before: null };
     }
     if (application.status !== "reviewing") return { kind: "illegal" as const };
     let childId: number;
@@ -529,9 +558,9 @@ router.post("/applications/:id/accept", async (req, res): Promise<void> => {
       type: "enrollment",
       title: application.type === "renewal" ? "تم قبول التجديد" : "تم قبول التسجيل",
       description: `تم تفعيل ملف ${application.firstName} ${application.lastName}`,
-      actor,
+      actor: actorId,
     });
-    return { kind: "accepted" as const, application: accepted };
+    return { kind: "accepted" as const, application: accepted, before: application };
   });
 
   if (result.kind === "missing") {
@@ -554,48 +583,58 @@ router.post("/applications/:id/accept", async (req, res): Promise<void> => {
     res.status(409).json({ error: "Only reviewing applications can be accepted" });
     return;
   }
+  if (result.before) {
+    await auditNurseryOperation(
+      req, "accept", "application", String(result.application.id),
+      applicationAuditSnapshot(result.before), applicationAuditSnapshot(result.application),
+    );
+  }
   res.json(AcceptApplicationResponse.parse(await applicationRecord(result.application)));
 });
 
-router.post("/children/:id/renewals", requireApplicationAdmin, async (req, res): Promise<void> => {
+router.post(
+  "/children/:id/renewals",
+  resolveNurseryContext,
+  requireNurseryPermission("write:application"),
+  async (req, res): Promise<void> => {
   const params = StartChildRenewalParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
     return;
   }
-  const actor = getAuth(req).userId!;
+  const { ownerId, actorId } = nurseryContext(req);
 
   const result = await db.transaction(async (tx) => {
-    await tx.execute(sql`select id from children where id = ${params.data.id} and owner_id = ${actor} for update`);
+    await tx.execute(sql`select id from children where id = ${params.data.id} and owner_id = ${ownerId} for update`);
     const [child] = await tx.select().from(childrenTable).where(and(
       eq(childrenTable.id, params.data.id),
-      eq(childrenTable.ownerId, actor),
+      eq(childrenTable.ownerId, ownerId),
     ));
     if (!child) return undefined;
     const pending = await tx.select().from(applicationsTable).where(and(
       eq(applicationsTable.type, "renewal"),
       eq(applicationsTable.sourceChildId, child.id),
-      eq(applicationsTable.ownerId, actor),
+      eq(applicationsTable.ownerId, ownerId),
     ));
     const existing = pending.find((application) =>
       application.status === "new" || application.status === "reviewing");
-    if (existing) return existing;
+    if (existing) return { application: existing, created: false as const };
 
     const [guardian] = await tx.select().from(guardiansTable).where(and(
       eq(guardiansTable.id, child.guardianId),
-      eq(guardiansTable.ownerId, actor),
+      eq(guardiansTable.ownerId, ownerId),
     ));
     if (!guardian) return undefined;
     let classroomId: number | null = null;
     if (child.classroomId != null) {
       const [classroom] = await tx.select({ id: classroomsTable.id }).from(classroomsTable).where(and(
         eq(classroomsTable.id, child.classroomId),
-        eq(classroomsTable.ownerId, actor),
+        eq(classroomsTable.ownerId, ownerId),
       ));
       classroomId = classroom?.id ?? null;
     }
     const [application] = await tx.insert(applicationsTable).values({
-      ownerId: actor,
+      ownerId,
       type: "renewal",
       status: "new",
       sourceChildId: child.id,
@@ -611,20 +650,27 @@ router.post("/children/:id/renewals", requireApplicationAdmin, async (req, res):
       guardianEmail: guardian.email,
     }).returning();
     await tx.insert(activitiesTable).values({
-      ownerId: actor,
+      ownerId,
       type: "enrollment",
       title: "بدء طلب تجديد",
       description: `تم بدء تجديد تسجيل ${child.firstName} ${child.lastName}`,
-      actor,
+      actor: actorId,
     });
-    return application;
+    return { application, created: true as const };
   });
 
   if (!result) {
     res.status(404).json({ error: "Child or guardian not found" });
     return;
   }
-  res.status(201).json(StartChildRenewalResponse.parse(await applicationRecord(result)));
-});
+  if (result.created) {
+    await auditNurseryOperation(
+      req, "create", "application", String(result.application.id),
+      null, applicationAuditSnapshot(result.application),
+    );
+  }
+  res.status(201).json(StartChildRenewalResponse.parse(await applicationRecord(result.application)));
+  },
+);
 
 export default router;

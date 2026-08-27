@@ -67,6 +67,12 @@ import { checkClassroomCapacity } from "../lib/classroomCapacity";
 import { createInvoiceCheckoutSession, isAllowedReturnUrl } from "../lib/financePayments";
 import { ExchangeRateUnavailableError, getCurrentKwdToUsdRate } from "../lib/exchangeRates";
 import { sendDueReminder } from "../lib/notifications";
+import {
+  auditNurseryOperation,
+  nurseryContext,
+  permitted,
+  resolveNurseryContext,
+} from "./nurseryOperations";
 
 const router: IRouter = Router();
 const today = () => new Date().toISOString().slice(0, 10);
@@ -235,7 +241,10 @@ router.use(requireAuth);
 router.get("/session/context", async (req, res, next): Promise<void> => {
   try {
     const identity = await clerkIdentity(req);
-    const administrativeRoles = new Set(["admin", "nursery_admin", "staff", "manager", "owner", "superadmin"]);
+    const administrativeRoles = new Set([
+      "admin", "nursery_admin", "manager", "supervisor", "teacher", "accountant",
+      "receptionist", "owner", "superadmin",
+    ]);
     if (identity.role && administrativeRoles.has(identity.role)) {
       res.json(GetSessionContextResponse.parse({ role: "admin" }));
       return;
@@ -254,6 +263,7 @@ router.get("/session/context", async (req, res, next): Promise<void> => {
   }
 });
 router.use("/parent", requireParentGuardian);
+router.use(resolveNurseryContext);
 
 router.get("/exchange-rates/kwd-usd", async (req, res): Promise<void> => {
   try {
@@ -280,10 +290,24 @@ router.use(async (req, res, next) => {
     return;
   }
   try {
-    const { role } = await clerkIdentity(req);
-    const administrativeRoles = new Set(["admin", "nursery_admin", "staff", "manager", "owner", "superadmin"]);
-    if (!role || !administrativeRoles.has(role)) {
-      res.status(403).json({ error: "Administrative access required" });
+    const routePermission = (() => {
+      if (req.path.startsWith("/dashboard/")) return "read:dashboard";
+      if (req.path === "/guardians") return "read:children";
+      if (req.path.startsWith("/children")) {
+        return req.method === "GET" ? "read:children"
+          : req.method === "DELETE" ? "delete:children" : "write:children";
+      }
+      if (req.path === "/classrooms") return req.method === "GET" ? "read:classroom" : "write:classroom";
+      if (req.path === "/staff") return "read:staff-profile";
+      if (req.path.startsWith("/attendance")) return req.method === "GET" ? "read:attendance" : "write:attendance";
+      if (req.path === "/finance/summary") return "read:report-financial";
+      if (req.path === "/invoices") return "read:invoice";
+      if (/^\/invoices\/\d+\/checkout-session$/.test(req.path)) return "write:payment";
+      if (/^\/invoices\/\d+\/reminder$/.test(req.path)) return "write:notification";
+      return null;
+    })();
+    if (!routePermission || !await permitted(req, routePermission)) {
+      res.status(403).json({ error: "Operation not permitted" });
       return;
     }
     next();
@@ -294,7 +318,7 @@ router.use(async (req, res, next) => {
 });
 
 router.get("/dashboard/summary", async (req, res): Promise<void> => {
-  const ownerId = getAuth(req).userId!;
+  const ownerId = nurseryContext(req).ownerId;
   const [children, attendance, staff, invoiceRows] = await Promise.all([
     db.select().from(childrenTable).where(eq(childrenTable.ownerId, ownerId)),
     db.select({ attendance: attendanceTable })
@@ -304,14 +328,19 @@ router.get("/dashboard/summary", async (req, res): Promise<void> => {
         eq(childrenTable.ownerId, ownerId),
       ))
       .where(eq(attendanceTable.date, today())),
-    db.select().from(staffTable),
+    db.select().from(staffTable).where(eq(staffTable.ownerId, nurseryContext(req).ownerId)),
     db
       .select({ invoice: invoicesTable })
       .from(invoicesTable)
       .innerJoin(childrenTable, and(
         eq(invoicesTable.childId, childrenTable.id),
         eq(childrenTable.ownerId, ownerId),
-      )),
+      ))
+      .innerJoin(guardiansTable, and(
+        eq(invoicesTable.guardianId, guardiansTable.id),
+        eq(guardiansTable.ownerId, ownerId),
+      ))
+      .where(eq(invoicesTable.ownerId, ownerId)),
   ]);
   const invoices = invoiceRows.map(({ invoice }) => invoice);
   const presentToday = attendance.filter(({ attendance: entry }) => entry.status === "present" || entry.status === "late").length;
@@ -336,7 +365,7 @@ router.get("/dashboard/summary", async (req, res): Promise<void> => {
 });
 
 router.get("/dashboard/activity", async (req, res): Promise<void> => {
-  const ownerId = getAuth(req).userId!;
+  const ownerId = nurseryContext(req).ownerId;
   const activities = await db
     .select()
     .from(activitiesTable)
@@ -356,7 +385,7 @@ router.get("/children", async (req, res): Promise<void> => {
     return;
   }
   const search = parsed.data.search?.trim().toLowerCase();
-  const rows = (await childRows(getAuth(req).userId!)).filter((child) => {
+  const rows = (await childRows(nurseryContext(req).ownerId)).filter((child) => {
     const matchesSearch = !search || `${child.fullName} ${child.guardianName}`.toLowerCase().includes(search);
     const matchesClassroom = !parsed.data.classroomId || child.classroomId === parsed.data.classroomId;
     return matchesSearch && matchesClassroom;
@@ -371,7 +400,7 @@ router.post("/children", async (req, res): Promise<void> => {
     return;
   }
   const input = parsed.data;
-  const ownerId = getAuth(req).userId!;
+  const ownerId = nurseryContext(req).ownerId;
   const result = await db.transaction(async (tx) => {
     if (input.classroomId != null) {
       const capacity = await checkClassroomCapacity(tx, ownerId, input.classroomId);
@@ -407,6 +436,7 @@ router.post("/children", async (req, res): Promise<void> => {
   }
   const child = result.child;
   const record = (await childRows(ownerId)).find((row) => row.id === child.id);
+  await auditNurseryOperation(req, "create", "child", String(child.id), null, child as unknown as Record<string, unknown>);
   res.status(201).json(CreateChildResponse.parse(record));
 });
 
@@ -416,7 +446,7 @@ router.get("/children/:id", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  const record = (await childRows(getAuth(req).userId!)).find((row) => row.id === parsed.data.id);
+  const record = (await childRows(nurseryContext(req).ownerId)).find((row) => row.id === parsed.data.id);
   if (!record) {
     res.status(404).json({ error: "Child not found" });
     return;
@@ -435,7 +465,7 @@ router.patch("/children/:id", async (req, res): Promise<void> => {
     res.status(400).json({ error: body.error.message });
     return;
   }
-  const ownerId = getAuth(req).userId!;
+  const ownerId = nurseryContext(req).ownerId;
   const [current] = await db.select().from(childrenTable).where(and(
     eq(childrenTable.id, params.data.id),
     eq(childrenTable.ownerId, ownerId),
@@ -486,6 +516,11 @@ router.patch("/children/:id", async (req, res): Promise<void> => {
     return;
   }
   const record = (await childRows(ownerId)).find((row) => row.id === params.data.id);
+  await auditNurseryOperation(
+    req, "update", "child", String(current.id),
+    current as unknown as Record<string, unknown>,
+    record as unknown as Record<string, unknown>,
+  );
   res.json(UpdateChildResponse.parse(record));
 });
 
@@ -497,17 +532,18 @@ router.delete("/children/:id", async (req, res): Promise<void> => {
   }
   const [deleted] = await db.delete(childrenTable).where(and(
     eq(childrenTable.id, parsed.data.id),
-    eq(childrenTable.ownerId, getAuth(req).userId!),
+    eq(childrenTable.ownerId, nurseryContext(req).ownerId),
   )).returning();
   if (!deleted) {
     res.status(404).json({ error: "Child not found" });
     return;
   }
+  await auditNurseryOperation(req, "delete", "child", String(deleted.id), deleted as unknown as Record<string, unknown>, null);
   res.sendStatus(204);
 });
 
 router.get("/guardians", async (req, res): Promise<void> => {
-  const ownerId = getAuth(req).userId!;
+  const ownerId = nurseryContext(req).ownerId;
   const [guardians, children] = await Promise.all([
     db.select().from(guardiansTable).where(eq(guardiansTable.ownerId, ownerId)),
     db.select().from(childrenTable).where(eq(childrenTable.ownerId, ownerId)),
@@ -523,7 +559,7 @@ router.get("/guardians", async (req, res): Promise<void> => {
 });
 
 router.get("/classrooms", async (req, res): Promise<void> => {
-  const ownerId = getAuth(req).userId!;
+  const ownerId = nurseryContext(req).ownerId;
   const [classrooms, children] = await Promise.all([
     db.select().from(classroomsTable).where(eq(classroomsTable.ownerId, ownerId)),
     db.select().from(childrenTable).where(eq(childrenTable.ownerId, ownerId)),
@@ -535,8 +571,8 @@ router.get("/classrooms", async (req, res): Promise<void> => {
   }))));
 });
 
-router.get("/staff", async (_req, res): Promise<void> => {
-  const staff = await db.select().from(staffTable);
+router.get("/staff", async (req, res): Promise<void> => {
+  const staff = await db.select().from(staffTable).where(eq(staffTable.ownerId, nurseryContext(req).ownerId));
   res.json(ListStaffResponse.parse(staff.map((member) => ({
     ...member,
     attendanceRate: member.status === "present" ? 100 : member.status === "leave" ? 85 : 70,
@@ -544,7 +580,7 @@ router.get("/staff", async (_req, res): Promise<void> => {
 });
 
 router.get("/attendance/today", async (req, res): Promise<void> => {
-  const ownerId = getAuth(req).userId!;
+  const ownerId = nurseryContext(req).ownerId;
   const [records, children] = await Promise.all([
     db.select({ attendance: attendanceTable })
       .from(attendanceTable)
@@ -573,7 +609,7 @@ router.post("/attendance", async (req, res): Promise<void> => {
   }
   const [child] = await db.select().from(childrenTable).where(and(
     eq(childrenTable.id, parsed.data.childId),
-    eq(childrenTable.ownerId, getAuth(req).userId!),
+    eq(childrenTable.ownerId, nurseryContext(req).ownerId),
   ));
   if (!child) {
     res.status(404).json({ error: "Child not found" });
@@ -587,11 +623,19 @@ router.post("/attendance", async (req, res): Promise<void> => {
     status: parsed.data.status,
     checkIn: parsed.data.checkIn ?? null,
     checkOut: parsed.data.checkOut ?? null,
+    departureType: parsed.data.departureType ?? null,
+    source: parsed.data.source ?? "manual",
+    recordedBy: nurseryContext(req).actorId,
     note: parsed.data.note ?? null,
   };
   const [record] = existing
     ? await db.update(attendanceTable).set(payload).where(eq(attendanceTable.id, existing.id)).returning()
     : await db.insert(attendanceTable).values({ childId: parsed.data.childId, date: parsed.data.date, ...payload }).returning();
+  await auditNurseryOperation(
+    req, existing ? "update" : "create", "child-attendance", String(record.id),
+    existing as unknown as Record<string, unknown> | null,
+    record as unknown as Record<string, unknown>,
+  );
   res.status(201).json(RecordAttendanceResponse.parse({
     ...record,
     childName: `${child.firstName} ${child.lastName}`,
@@ -607,28 +651,37 @@ router.post("/classrooms", async (req, res): Promise<void> => {
     return;
   }
   const [classroom] = await db.insert(classroomsTable).values({
-    ownerId: getAuth(req).userId!,
+    ownerId: nurseryContext(req).ownerId,
     name: parsed.data.name,
     level: parsed.data.level,
     teacherName: parsed.data.teacherName,
     capacity: parsed.data.capacity,
     color: parsed.data.color ?? "teal",
+    branchId: parsed.data.branchId ?? null,
+    stageId: parsed.data.stageId ?? null,
+    schedule: parsed.data.schedule ?? {},
   }).returning();
   const { ownerId: _ownerId, ...data } = classroom;
+  await auditNurseryOperation(req, "create", "classroom", String(classroom.id), null, classroom as unknown as Record<string, unknown>);
   res.status(201).json(CreateClassroomResponse.parse({ ...data, childrenCount: 0 }));
 });
 
 const arMonthLabel = new Intl.DateTimeFormat("ar", { month: "long" });
 
 router.get("/finance/summary", async (req, res): Promise<void> => {
-  const ownerId = getAuth(req).userId!;
+  const ownerId = nurseryContext(req).ownerId;
   const invoiceRows = await db
     .select({ invoice: invoicesTable })
     .from(invoicesTable)
     .innerJoin(childrenTable, and(
       eq(invoicesTable.childId, childrenTable.id),
       eq(childrenTable.ownerId, ownerId),
-    ));
+    ))
+    .innerJoin(guardiansTable, and(
+      eq(invoicesTable.guardianId, guardiansTable.id),
+      eq(guardiansTable.ownerId, ownerId),
+    ))
+    .where(eq(invoicesTable.ownerId, ownerId));
   const invoices = invoiceRows.map(({ invoice }) => invoice);
   const now = new Date();
   const isSameMonth = (date: Date, ref: Date) =>
@@ -665,7 +718,7 @@ router.get("/invoices", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  const ownerId = getAuth(req).userId!;
+  const ownerId = nurseryContext(req).ownerId;
   const invoiceRows = await db
     .select({
       invoice: invoicesTable,
@@ -681,7 +734,8 @@ router.get("/invoices", async (req, res): Promise<void> => {
     .innerJoin(guardiansTable, and(
       eq(invoicesTable.guardianId, guardiansTable.id),
       eq(guardiansTable.ownerId, ownerId),
-    ));
+    ))
+    .where(eq(invoicesTable.ownerId, ownerId));
   const rows = invoiceRows
     .filter(({ invoice }) => !parsed.data.status || invoice.status === parsed.data.status)
     .map(({ invoice, guardianName, childFirstName, childLastName }) => ({
@@ -701,7 +755,7 @@ router.get("/invoices", async (req, res): Promise<void> => {
   res.json(ListInvoicesResponse.parse(rows));
 });
 
-/** Loads an invoice only if it belongs (via its child) to the authenticated owner. */
+/** Loads an invoice only when the invoice and both related records share the authenticated owner. */
 async function loadOwnedInvoice(ownerId: string, invoiceId: number) {
   const [row] = await db
     .select({ invoice: invoicesTable })
@@ -710,7 +764,14 @@ async function loadOwnedInvoice(ownerId: string, invoiceId: number) {
       eq(invoicesTable.childId, childrenTable.id),
       eq(childrenTable.ownerId, ownerId),
     ))
-    .where(eq(invoicesTable.id, invoiceId));
+    .innerJoin(guardiansTable, and(
+      eq(invoicesTable.guardianId, guardiansTable.id),
+      eq(guardiansTable.ownerId, ownerId),
+    ))
+    .where(and(
+      eq(invoicesTable.id, invoiceId),
+      eq(invoicesTable.ownerId, ownerId),
+    ));
   return row?.invoice ?? null;
 }
 
@@ -729,7 +790,7 @@ router.post("/invoices/:id/checkout-session", async (req, res): Promise<void> =>
     res.status(400).json({ error: "Invalid return URL" });
     return;
   }
-  const invoice = await loadOwnedInvoice(getAuth(req).userId!, params.data.id);
+  const invoice = await loadOwnedInvoice(nurseryContext(req).ownerId, params.data.id);
   if (!invoice) {
     res.status(404).json({ error: "Invoice not found" });
     return;
@@ -750,6 +811,10 @@ router.post("/invoices/:id/checkout-session", async (req, res): Promise<void> =>
       successUrl: `${body.data.returnUrl}?payment=success&invoice=${invoice.id}`,
       cancelUrl: `${body.data.returnUrl}?payment=cancelled&invoice=${invoice.id}`,
     });
+    await auditNurseryOperation(req, "create-checkout-session", "invoice", String(invoice.id), null, {
+      invoiceId: invoice.id,
+      status: invoice.status,
+    });
     res.json(CreateInvoiceCheckoutSessionResponse.parse({ url: session.url }));
   } catch (err) {
     req.log.error({ err, invoiceId: invoice.id }, "Failed to create Stripe checkout session");
@@ -767,7 +832,7 @@ router.post("/invoices/:id/reminder", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  const invoice = await loadOwnedInvoice(getAuth(req).userId!, parsed.data.id);
+  const invoice = await loadOwnedInvoice(nurseryContext(req).ownerId, parsed.data.id);
   if (!invoice) {
     res.status(404).json({ error: "Invoice not found" });
     return;
@@ -778,6 +843,11 @@ router.post("/invoices/:id/reminder", async (req, res): Promise<void> => {
     return;
   }
   const result = await sendDueReminder(invoice, guardian);
+  await auditNurseryOperation(req, "send-reminder", "invoice", String(invoice.id), null, {
+    invoiceId: invoice.id,
+    status: result.status,
+    errorMessage: result.errorMessage ?? null,
+  });
   res.json(SendInvoiceReminderResponse.parse({
     status: result.status,
     message: result.status === "sent"
@@ -786,12 +856,30 @@ router.post("/invoices/:id/reminder", async (req, res): Promise<void> => {
   }));
 });
 
-async function parentChildRows(guardianId: number) {
-  const [children, classrooms, attendance] = await Promise.all([
-    db.select().from(childrenTable).where(eq(childrenTable.guardianId, guardianId)),
-    db.select().from(classroomsTable),
-    db.select().from(attendanceTable),
+async function parentOwnedChildren(guardianId: number, ownerId: string) {
+  return db.select().from(childrenTable).where(and(
+    eq(childrenTable.guardianId, guardianId),
+    eq(childrenTable.ownerId, ownerId),
+  ));
+}
+
+async function parentChildRows(guardianId: number, ownerId: string) {
+  const children = await parentOwnedChildren(guardianId, ownerId);
+  const childIds = children.map((child) => child.id);
+  const [classrooms, attendanceRows] = await Promise.all([
+    db.select().from(classroomsTable).where(eq(classroomsTable.ownerId, ownerId)),
+    childIds.length
+      ? db.select({ attendance: attendanceTable })
+        .from(attendanceTable)
+        .innerJoin(childrenTable, and(
+          eq(attendanceTable.childId, childrenTable.id),
+          eq(childrenTable.ownerId, ownerId),
+          eq(childrenTable.guardianId, guardianId),
+        ))
+        .where(inArray(attendanceTable.childId, childIds))
+      : Promise.resolve([]),
   ]);
+  const attendance = attendanceRows.map(({ attendance: record }) => record);
   const classroomMap = new Map(classrooms.map((classroom) => [classroom.id, classroom.name]));
   return children.map((child) => {
     const records = attendance.filter((record) => record.childId === child.id);
@@ -812,15 +900,29 @@ async function parentChildRows(guardianId: number) {
 
 router.get("/parent/overview", async (_req, res): Promise<void> => {
   const guardian = res.locals.guardian as typeof guardiansTable.$inferSelect;
-  const [children, invoices, messages, announcements] = await Promise.all([
-    parentChildRows(guardian.id),
-    db.select().from(invoicesTable).where(eq(invoicesTable.guardianId, guardian.id)),
-    db.select().from(parentMessagesTable).where(eq(parentMessagesTable.guardianId, guardian.id)),
+  const [children, invoiceRows, messages, announcements] = await Promise.all([
+    parentChildRows(guardian.id, guardian.ownerId),
+    db.select({ invoice: invoicesTable })
+      .from(invoicesTable)
+      .innerJoin(childrenTable, and(
+        eq(invoicesTable.childId, childrenTable.id),
+        eq(childrenTable.ownerId, guardian.ownerId),
+        eq(childrenTable.guardianId, guardian.id),
+      ))
+      .where(and(
+        eq(invoicesTable.guardianId, guardian.id),
+        eq(invoicesTable.ownerId, guardian.ownerId),
+      )),
+    db.select().from(parentMessagesTable).where(and(
+      eq(parentMessagesTable.guardianId, guardian.id),
+      eq(parentMessagesTable.ownerId, guardian.ownerId),
+    )),
     db.select().from(announcementsTable).where(and(
       eq(announcementsTable.ownerId, guardian.ownerId),
       inArray(announcementsTable.audience, ["all", "parents"]),
     )),
   ]);
+  const invoices = invoiceRows.map(({ invoice }) => invoice);
   res.json(GetParentOverviewResponse.parse({
     guardianId: guardian.id,
     guardianName: guardian.name,
@@ -835,7 +937,7 @@ router.get("/parent/overview", async (_req, res): Promise<void> => {
 
 router.get("/parent/children", async (_req, res): Promise<void> => {
   const guardian = res.locals.guardian as typeof guardiansTable.$inferSelect;
-  res.json(ListParentChildrenResponse.parse(await parentChildRows(guardian.id)));
+  res.json(ListParentChildrenResponse.parse(await parentChildRows(guardian.id, guardian.ownerId)));
 });
 
 router.get("/parent/attendance", async (req, res): Promise<void> => {
@@ -845,7 +947,7 @@ router.get("/parent/attendance", async (req, res): Promise<void> => {
     return;
   }
   const guardian = res.locals.guardian as typeof guardiansTable.$inferSelect;
-  const children = await db.select().from(childrenTable).where(eq(childrenTable.guardianId, guardian.id));
+  const children = await parentOwnedChildren(guardian.id, guardian.ownerId);
   const scopedChildren = parsed.data.childId
     ? children.filter((child) => child.id === parsed.data.childId)
     : children;
@@ -858,9 +960,16 @@ router.get("/parent/attendance", async (req, res): Promise<void> => {
     return;
   }
   const childMap = new Map(scopedChildren.map((child) => [child.id, `${child.firstName} ${child.lastName}`]));
-  const records = await db.select().from(attendanceTable)
+  const recordRows = await db.select({ attendance: attendanceTable })
+    .from(attendanceTable)
+    .innerJoin(childrenTable, and(
+      eq(attendanceTable.childId, childrenTable.id),
+      eq(childrenTable.ownerId, guardian.ownerId),
+      eq(childrenTable.guardianId, guardian.id),
+    ))
     .where(inArray(attendanceTable.childId, [...childMap.keys()]))
     .orderBy(desc(attendanceTable.date));
+  const records = recordRows.map(({ attendance: record }) => record);
   res.json(ListParentAttendanceResponse.parse(records.map((record) => ({
     ...record,
     childName: childMap.get(record.childId)!,
@@ -874,7 +983,7 @@ router.get("/parent/progress-reports", async (req, res): Promise<void> => {
     return;
   }
   const guardian = res.locals.guardian as typeof guardiansTable.$inferSelect;
-  const children = await db.select().from(childrenTable).where(eq(childrenTable.guardianId, guardian.id));
+  const children = await parentOwnedChildren(guardian.id, guardian.ownerId);
   const scopedChildren = parsed.data.childId ? children.filter((child) => child.id === parsed.data.childId) : children;
   if (parsed.data.childId && !scopedChildren.length) {
     res.status(404).json({ error: "Child not found" });
@@ -885,9 +994,19 @@ router.get("/parent/progress-reports", async (req, res): Promise<void> => {
     return;
   }
   const childMap = new Map(scopedChildren.map((child) => [child.id, `${child.firstName} ${child.lastName}`]));
-  const reports = await db.select().from(progressReportsTable)
-    .where(inArray(progressReportsTable.childId, [...childMap.keys()]))
+  const reportRows = await db.select({ report: progressReportsTable })
+    .from(progressReportsTable)
+    .innerJoin(childrenTable, and(
+      eq(progressReportsTable.childId, childrenTable.id),
+      eq(childrenTable.ownerId, guardian.ownerId),
+      eq(childrenTable.guardianId, guardian.id),
+    ))
+    .where(and(
+      eq(progressReportsTable.ownerId, guardian.ownerId),
+      inArray(progressReportsTable.childId, [...childMap.keys()]),
+    ))
     .orderBy(desc(progressReportsTable.publishedAt));
+  const reports = reportRows.map(({ report }) => report);
   res.json(ListParentProgressReportsResponse.parse(reports.map((report) => ({
     ...report,
     childName: childMap.get(report.childId)!,
@@ -902,7 +1021,7 @@ router.get("/parent/activities", async (req, res): Promise<void> => {
     return;
   }
   const guardian = res.locals.guardian as typeof guardiansTable.$inferSelect;
-  const children = await db.select().from(childrenTable).where(eq(childrenTable.guardianId, guardian.id));
+  const children = await parentOwnedChildren(guardian.id, guardian.ownerId);
   const scopedChildren = parsed.data.childId ? children.filter((child) => child.id === parsed.data.childId) : children;
   if (parsed.data.childId && !scopedChildren.length) {
     res.status(404).json({ error: "Child not found" });
@@ -913,9 +1032,19 @@ router.get("/parent/activities", async (req, res): Promise<void> => {
     return;
   }
   const childMap = new Map(scopedChildren.map((child) => [child.id, `${child.firstName} ${child.lastName}`]));
-  const activities = await db.select().from(childActivitiesTable)
-    .where(inArray(childActivitiesTable.childId, [...childMap.keys()]))
+  const activityRows = await db.select({ activity: childActivitiesTable })
+    .from(childActivitiesTable)
+    .innerJoin(childrenTable, and(
+      eq(childActivitiesTable.childId, childrenTable.id),
+      eq(childrenTable.ownerId, guardian.ownerId),
+      eq(childrenTable.guardianId, guardian.id),
+    ))
+    .where(and(
+      eq(childActivitiesTable.ownerId, guardian.ownerId),
+      inArray(childActivitiesTable.childId, [...childMap.keys()]),
+    ))
     .orderBy(desc(childActivitiesTable.occurredAt));
+  const activities = activityRows.map(({ activity }) => activity);
   res.json(ListParentActivitiesResponse.parse(activities.map((activity) => ({
     ...activity,
     childName: childMap.get(activity.childId)!,
@@ -925,16 +1054,28 @@ router.get("/parent/activities", async (req, res): Promise<void> => {
 
 router.get("/parent/invoices", async (_req, res): Promise<void> => {
   const guardian = res.locals.guardian as typeof guardiansTable.$inferSelect;
-  const [invoices, children] = await Promise.all([
-    db.select().from(invoicesTable).where(eq(invoicesTable.guardianId, guardian.id)).orderBy(desc(invoicesTable.dueDate)),
-    db.select().from(childrenTable).where(eq(childrenTable.guardianId, guardian.id)),
-  ]);
-  const childMap = new Map(children.map((child) => [child.id, `${child.firstName} ${child.lastName}`]));
-  res.json(ListParentInvoicesResponse.parse(invoices.map((invoice) => ({
+  const invoiceRows = await db
+    .select({
+      invoice: invoicesTable,
+      childFirstName: childrenTable.firstName,
+      childLastName: childrenTable.lastName,
+    })
+    .from(invoicesTable)
+    .innerJoin(childrenTable, and(
+      eq(invoicesTable.childId, childrenTable.id),
+      eq(childrenTable.ownerId, guardian.ownerId),
+      eq(childrenTable.guardianId, guardian.id),
+    ))
+    .where(and(
+      eq(invoicesTable.guardianId, guardian.id),
+      eq(invoicesTable.ownerId, guardian.ownerId),
+    ))
+    .orderBy(desc(invoicesTable.dueDate));
+  res.json(ListParentInvoicesResponse.parse(invoiceRows.map(({ invoice, childFirstName, childLastName }) => ({
     id: invoice.id,
     invoiceNumber: invoice.invoiceNumber,
     guardianName: guardian.name,
-    childName: childMap.get(invoice.childId) ?? "طفل",
+    childName: `${childFirstName} ${childLastName}`,
     amount: invoice.amount,
     dueDate: invoice.dueDate,
     status: invoice.status,
@@ -963,14 +1104,24 @@ router.post("/parent/invoices/:id/checkout-session", async (req, res): Promise<v
   }
 
   const guardian = res.locals.guardian as typeof guardiansTable.$inferSelect;
-  const [invoice] = await db.select().from(invoicesTable).where(and(
-    eq(invoicesTable.id, params.data.id),
-    eq(invoicesTable.guardianId, guardian.id),
-  ));
-  if (!invoice) {
+  const [invoiceRow] = await db
+    .select({ invoice: invoicesTable })
+    .from(invoicesTable)
+    .innerJoin(childrenTable, and(
+      eq(invoicesTable.childId, childrenTable.id),
+      eq(childrenTable.ownerId, guardian.ownerId),
+      eq(childrenTable.guardianId, guardian.id),
+    ))
+    .where(and(
+      eq(invoicesTable.id, params.data.id),
+      eq(invoicesTable.guardianId, guardian.id),
+      eq(invoicesTable.ownerId, guardian.ownerId),
+    ));
+  if (!invoiceRow) {
     res.status(404).json({ error: "Invoice not found" });
     return;
   }
+  const invoice = invoiceRow.invoice;
   if (invoice.status === "paid") {
     res.status(400).json({ error: "Invoice already paid" });
     return;
@@ -997,7 +1148,10 @@ router.post("/parent/invoices/:id/checkout-session", async (req, res): Promise<v
 router.get("/parent/messages", async (_req, res): Promise<void> => {
   const guardian = res.locals.guardian as typeof guardiansTable.$inferSelect;
   const messages = await db.select().from(parentMessagesTable)
-    .where(eq(parentMessagesTable.guardianId, guardian.id))
+    .where(and(
+      eq(parentMessagesTable.guardianId, guardian.id),
+      eq(parentMessagesTable.ownerId, guardian.ownerId),
+    ))
     .orderBy(desc(parentMessagesTable.createdAt));
   res.json(ListParentMessagesResponse.parse(messages.map(({ guardianId: _guardianId, ...message }) => ({
     ...message,
@@ -1017,6 +1171,7 @@ router.post("/parent/messages", async (req, res): Promise<void> => {
   }
   const guardian = res.locals.guardian as typeof guardiansTable.$inferSelect;
   const [message] = await db.insert(parentMessagesTable).values({
+    ownerId: guardian.ownerId,
     guardianId: guardian.id,
     senderType: "parent",
     senderName: guardian.name,

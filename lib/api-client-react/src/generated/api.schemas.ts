@@ -19,15 +19,14 @@ export interface DashboardSummary {
   attendanceRate: number;
 }
 
-export type ActivityType = typeof ActivityType[keyof typeof ActivityType];
-
+export type ActivityType = (typeof ActivityType)[keyof typeof ActivityType];
 
 export const ActivityType = {
-  attendance: 'attendance',
-  payment: 'payment',
-  enrollment: 'enrollment',
-  message: 'message',
-  note: 'note',
+  attendance: "attendance",
+  payment: "payment",
+  enrollment: "enrollment",
+  message: "message",
+  note: "note",
 } as const;
 
 export interface Activity {
@@ -40,21 +39,19 @@ export interface Activity {
   actor?: string | null;
 }
 
-export type ChildGender = typeof ChildGender[keyof typeof ChildGender];
-
+export type ChildGender = (typeof ChildGender)[keyof typeof ChildGender];
 
 export const ChildGender = {
-  male: 'male',
-  female: 'female',
+  male: "male",
+  female: "female",
 } as const;
 
-export type ChildStatus = typeof ChildStatus[keyof typeof ChildStatus];
-
+export type ChildStatus = (typeof ChildStatus)[keyof typeof ChildStatus];
 
 export const ChildStatus = {
-  active: 'active',
-  pending: 'pending',
-  inactive: 'inactive',
+  active: "active",
+  pending: "pending",
+  inactive: "inactive",
 } as const;
 
 export interface Child {
@@ -79,12 +76,12 @@ export interface Child {
   notes?: string | null;
 }
 
-export type ChildInputGender = typeof ChildInputGender[keyof typeof ChildInputGender];
-
+export type ChildInputGender =
+  (typeof ChildInputGender)[keyof typeof ChildInputGender];
 
 export const ChildInputGender = {
-  male: 'male',
-  female: 'female',
+  male: "male",
+  female: "female",
 } as const;
 
 export interface ChildInput {
@@ -106,21 +103,21 @@ export interface ChildInput {
   notes?: string | null;
 }
 
-export type ChildUpdateGender = typeof ChildUpdateGender[keyof typeof ChildUpdateGender];
-
+export type ChildUpdateGender =
+  (typeof ChildUpdateGender)[keyof typeof ChildUpdateGender];
 
 export const ChildUpdateGender = {
-  male: 'male',
-  female: 'female',
+  male: "male",
+  female: "female",
 } as const;
 
-export type ChildUpdateStatus = typeof ChildUpdateStatus[keyof typeof ChildUpdateStatus];
-
+export type ChildUpdateStatus =
+  (typeof ChildUpdateStatus)[keyof typeof ChildUpdateStatus];
 
 export const ChildUpdateStatus = {
-  active: 'active',
-  pending: 'pending',
-  inactive: 'inactive',
+  active: "active",
+  pending: "pending",
+  inactive: "inactive",
 } as const;
 
 export interface ChildUpdate {
@@ -143,30 +140,30 @@ export interface ChildUpdate {
   notes?: string | null;
 }
 
-export type ApplicationType = typeof ApplicationType[keyof typeof ApplicationType];
-
+export type ApplicationType =
+  (typeof ApplicationType)[keyof typeof ApplicationType];
 
 export const ApplicationType = {
-  new: 'new',
-  renewal: 'renewal',
+  new: "new",
+  renewal: "renewal",
 } as const;
 
-export type ApplicationStatus = typeof ApplicationStatus[keyof typeof ApplicationStatus];
-
+export type ApplicationStatus =
+  (typeof ApplicationStatus)[keyof typeof ApplicationStatus];
 
 export const ApplicationStatus = {
-  new: 'new',
-  reviewing: 'reviewing',
-  accepted: 'accepted',
-  rejected: 'rejected',
+  new: "new",
+  reviewing: "reviewing",
+  accepted: "accepted",
+  rejected: "rejected",
 } as const;
 
-export type ApplicationGender = typeof ApplicationGender[keyof typeof ApplicationGender];
-
+export type ApplicationGender =
+  (typeof ApplicationGender)[keyof typeof ApplicationGender];
 
 export const ApplicationGender = {
-  male: 'male',
-  female: 'female',
+  male: "male",
+  female: "female",
 } as const;
 
 export interface ApplicationDocument {
@@ -206,12 +203,12 @@ export interface Application {
   updatedAt: string;
 }
 
-export type ApplicationInputGender = typeof ApplicationInputGender[keyof typeof ApplicationInputGender];
-
+export type ApplicationInputGender =
+  (typeof ApplicationInputGender)[keyof typeof ApplicationInputGender];
 
 export const ApplicationInputGender = {
-  male: 'male',
-  female: 'female',
+  male: "male",
+  female: "female",
 } as const;
 
 export interface ApplicationInput {
@@ -235,12 +232,12 @@ export interface ApplicationInput {
   guardianEmail?: string | null;
 }
 
-export type ApplicationUpdateGender = typeof ApplicationUpdateGender[keyof typeof ApplicationUpdateGender];
-
+export type ApplicationUpdateGender =
+  (typeof ApplicationUpdateGender)[keyof typeof ApplicationUpdateGender];
 
 export const ApplicationUpdateGender = {
-  male: 'male',
-  female: 'female',
+  male: "male",
+  female: "female",
 } as const;
 
 export interface ApplicationUpdate {
@@ -270,9 +267,9 @@ export interface ApplicationDocumentInput {
   /** @minLength 1 */
   contentType: string;
   /**
-     * @minimum 1
-     * @maximum 10485760
-     */
+   * @minimum 1
+   * @maximum 10485760
+   */
   size: number;
   /** @pattern ^/objects/uploads/[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$ */
   objectPath: string;
@@ -284,9 +281,9 @@ export interface UploadUrlRequest {
   /** @minLength 1 */
   name: string;
   /**
-     * @minimum 1
-     * @maximum 10485760
-     */
+   * @minimum 1
+   * @maximum 10485760
+   */
   size: number;
   /** @minLength 1 */
   contentType: string;
@@ -298,13 +295,13 @@ export interface UploadUrlResponse {
   objectPath: string;
 }
 
-export type ApplicationStatusUpdateStatus = typeof ApplicationStatusUpdateStatus[keyof typeof ApplicationStatusUpdateStatus];
-
+export type ApplicationStatusUpdateStatus =
+  (typeof ApplicationStatusUpdateStatus)[keyof typeof ApplicationStatusUpdateStatus];
 
 export const ApplicationStatusUpdateStatus = {
-  new: 'new',
-  reviewing: 'reviewing',
-  rejected: 'rejected',
+  new: "new",
+  reviewing: "reviewing",
+  rejected: "rejected",
 } as const;
 
 export interface ApplicationStatusUpdate {
@@ -321,6 +318,8 @@ export interface Guardian {
   balance: number;
 }
 
+export type ClassroomSchedule = { [key: string]: unknown };
+
 export interface Classroom {
   id: number;
   name: string;
@@ -329,7 +328,14 @@ export interface Classroom {
   capacity: number;
   childrenCount: number;
   color: string;
+  /** @nullable */
+  branchId?: number | null;
+  /** @nullable */
+  stageId?: number | null;
+  schedule?: ClassroomSchedule;
 }
+
+export type ClassroomInputSchedule = { [key: string]: unknown };
 
 export interface ClassroomInput {
   /** @minLength 1 */
@@ -342,15 +348,20 @@ export interface ClassroomInput {
   capacity: number;
   /** @minLength 1 */
   color?: string;
+  /** @nullable */
+  branchId?: number | null;
+  /** @nullable */
+  stageId?: number | null;
+  schedule?: ClassroomInputSchedule;
 }
 
-export type StaffMemberStatus = typeof StaffMemberStatus[keyof typeof StaffMemberStatus];
-
+export type StaffMemberStatus =
+  (typeof StaffMemberStatus)[keyof typeof StaffMemberStatus];
 
 export const StaffMemberStatus = {
-  present: 'present',
-  absent: 'absent',
-  leave: 'leave',
+  present: "present",
+  absent: "absent",
+  leave: "leave",
 } as const;
 
 export interface StaffMember {
@@ -364,14 +375,35 @@ export interface StaffMember {
   avatarUrl?: string | null;
 }
 
-export type AttendanceRecordStatus = typeof AttendanceRecordStatus[keyof typeof AttendanceRecordStatus];
-
+export type AttendanceRecordStatus =
+  (typeof AttendanceRecordStatus)[keyof typeof AttendanceRecordStatus];
 
 export const AttendanceRecordStatus = {
-  present: 'present',
-  absent: 'absent',
-  late: 'late',
-  excused: 'excused',
+  present: "present",
+  absent: "absent",
+  late: "late",
+  excused: "excused",
+} as const;
+
+/**
+ * @nullable
+ */
+export type AttendanceRecordDepartureType =
+  | (typeof AttendanceRecordDepartureType)[keyof typeof AttendanceRecordDepartureType]
+  | null;
+
+export const AttendanceRecordDepartureType = {
+  normal: "normal",
+  early: "early",
+} as const;
+
+export type AttendanceRecordSource =
+  (typeof AttendanceRecordSource)[keyof typeof AttendanceRecordSource];
+
+export const AttendanceRecordSource = {
+  manual: "manual",
+  device: "device",
+  import: "import",
 } as const;
 
 export interface AttendanceRecord {
@@ -385,17 +417,43 @@ export interface AttendanceRecord {
   /** @nullable */
   checkOut: string | null;
   /** @nullable */
+  departureType?: AttendanceRecordDepartureType;
+  source: AttendanceRecordSource;
+  /** @nullable */
+  recordedBy?: string | null;
+  /** @nullable */
   note?: string | null;
 }
 
-export type AttendanceInputStatus = typeof AttendanceInputStatus[keyof typeof AttendanceInputStatus];
-
+export type AttendanceInputStatus =
+  (typeof AttendanceInputStatus)[keyof typeof AttendanceInputStatus];
 
 export const AttendanceInputStatus = {
-  present: 'present',
-  absent: 'absent',
-  late: 'late',
-  excused: 'excused',
+  present: "present",
+  absent: "absent",
+  late: "late",
+  excused: "excused",
+} as const;
+
+/**
+ * @nullable
+ */
+export type AttendanceInputDepartureType =
+  | (typeof AttendanceInputDepartureType)[keyof typeof AttendanceInputDepartureType]
+  | null;
+
+export const AttendanceInputDepartureType = {
+  normal: "normal",
+  early: "early",
+} as const;
+
+export type AttendanceInputSource =
+  (typeof AttendanceInputSource)[keyof typeof AttendanceInputSource];
+
+export const AttendanceInputSource = {
+  manual: "manual",
+  device: "device",
+  import: "import",
 } as const;
 
 export interface AttendanceInput {
@@ -406,6 +464,9 @@ export interface AttendanceInput {
   checkIn?: string | null;
   /** @nullable */
   checkOut?: string | null;
+  /** @nullable */
+  departureType?: AttendanceInputDepartureType;
+  source?: AttendanceInputSource;
   /** @nullable */
   note?: string | null;
 }
@@ -424,13 +485,12 @@ export interface FinanceSummary {
   monthlyTrend: FinanceMonth[];
 }
 
-export type InvoiceStatus = typeof InvoiceStatus[keyof typeof InvoiceStatus];
-
+export type InvoiceStatus = (typeof InvoiceStatus)[keyof typeof InvoiceStatus];
 
 export const InvoiceStatus = {
-  paid: 'paid',
-  pending: 'pending',
-  overdue: 'overdue',
+  paid: "paid",
+  pending: "pending",
+  overdue: "overdue",
 } as const;
 
 export interface Invoice {
@@ -462,18 +522,18 @@ export interface InvoiceCheckoutSession {
   url: string;
 }
 
-export type ExchangeRateBaseCurrency = typeof ExchangeRateBaseCurrency[keyof typeof ExchangeRateBaseCurrency];
-
+export type ExchangeRateBaseCurrency =
+  (typeof ExchangeRateBaseCurrency)[keyof typeof ExchangeRateBaseCurrency];
 
 export const ExchangeRateBaseCurrency = {
-  KWD: 'KWD',
+  KWD: "KWD",
 } as const;
 
-export type ExchangeRateQuoteCurrency = typeof ExchangeRateQuoteCurrency[keyof typeof ExchangeRateQuoteCurrency];
-
+export type ExchangeRateQuoteCurrency =
+  (typeof ExchangeRateQuoteCurrency)[keyof typeof ExchangeRateQuoteCurrency];
 
 export const ExchangeRateQuoteCurrency = {
-  USD: 'USD',
+  USD: "USD",
 } as const;
 
 export interface ExchangeRate {
@@ -484,12 +544,12 @@ export interface ExchangeRate {
   updatedAt: string;
 }
 
-export type InvoiceReminderResultStatus = typeof InvoiceReminderResultStatus[keyof typeof InvoiceReminderResultStatus];
-
+export type InvoiceReminderResultStatus =
+  (typeof InvoiceReminderResultStatus)[keyof typeof InvoiceReminderResultStatus];
 
 export const InvoiceReminderResultStatus = {
-  sent: 'sent',
-  failed: 'failed',
+  sent: "sent",
+  failed: "failed",
 } as const;
 
 export interface InvoiceReminderResult {
@@ -520,13 +580,13 @@ export interface ParentOverview {
   announcementsCount: number;
 }
 
-export type SessionContextRole = typeof SessionContextRole[keyof typeof SessionContextRole];
-
+export type SessionContextRole =
+  (typeof SessionContextRole)[keyof typeof SessionContextRole];
 
 export const SessionContextRole = {
-  parent: 'parent',
-  admin: 'admin',
-  pending: 'pending',
+  parent: "parent",
+  admin: "admin",
+  pending: "pending",
 } as const;
 
 export interface SessionContext {
@@ -557,12 +617,12 @@ export interface ParentChildActivity {
   occurredAt: string;
 }
 
-export type ParentMessageSenderType = typeof ParentMessageSenderType[keyof typeof ParentMessageSenderType];
-
+export type ParentMessageSenderType =
+  (typeof ParentMessageSenderType)[keyof typeof ParentMessageSenderType];
 
 export const ParentMessageSenderType = {
-  parent: 'parent',
-  staff: 'staff',
+  parent: "parent",
+  staff: "staff",
 } as const;
 
 export interface ParentMessage {
@@ -577,14 +637,14 @@ export interface ParentMessage {
 
 export interface ParentMessageInput {
   /**
-     * @minLength 1
-     * @maxLength 160
-     */
+   * @minLength 1
+   * @maxLength 160
+   */
   subject: string;
   /**
-     * @minLength 1
-     * @maxLength 5000
-     */
+   * @minLength 1
+   * @maxLength 5000
+   */
   content: string;
 }
 
@@ -595,57 +655,371 @@ export interface ParentAnnouncement {
   publishedAt: string;
 }
 
+export type ChildRecordCategory =
+  (typeof ChildRecordCategory)[keyof typeof ChildRecordCategory];
+
+export const ChildRecordCategory = {
+  health: "health",
+  emergency: "emergency",
+  allergy: "allergy",
+  medication: "medication",
+  document: "document",
+  photo: "photo",
+  note: "note",
+  history: "history",
+} as const;
+
+export type ChildRecordData = { [key: string]: unknown };
+
+export interface ChildRecord {
+  id: number;
+  childId: number;
+  category: ChildRecordCategory;
+  title: string;
+  status: string;
+  /** @nullable */
+  occurredOn?: string | null;
+  confidential: boolean;
+  data: ChildRecordData;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type ChildRecordInputData = { [key: string]: unknown };
+
+export interface ChildRecordInput {
+  category: ChildRecordCategory;
+  /** @minLength 1 */
+  title: string;
+  status?: string;
+  /** @nullable */
+  occurredOn?: string | null;
+  confidential?: boolean;
+  data?: ChildRecordInputData;
+}
+
+export type StaffAttendanceStatus =
+  (typeof StaffAttendanceStatus)[keyof typeof StaffAttendanceStatus];
+
+export const StaffAttendanceStatus = {
+  present: "present",
+  absent: "absent",
+  late: "late",
+  leave: "leave",
+} as const;
+
+/**
+ * @nullable
+ */
+export type StaffAttendanceDepartureType =
+  | (typeof StaffAttendanceDepartureType)[keyof typeof StaffAttendanceDepartureType]
+  | null;
+
+export const StaffAttendanceDepartureType = {
+  normal: "normal",
+  early: "early",
+} as const;
+
+export type StaffAttendanceSource =
+  (typeof StaffAttendanceSource)[keyof typeof StaffAttendanceSource];
+
+export const StaffAttendanceSource = {
+  manual: "manual",
+  device: "device",
+  import: "import",
+} as const;
+
+export interface StaffAttendance {
+  id: number;
+  staffId: number;
+  date: string;
+  status: StaffAttendanceStatus;
+  /** @nullable */
+  checkIn?: string | null;
+  /** @nullable */
+  checkOut?: string | null;
+  /** @nullable */
+  departureType?: StaffAttendanceDepartureType;
+  source: StaffAttendanceSource;
+  /** @nullable */
+  note?: string | null;
+  recordedBy: string;
+}
+
+export type StaffAttendanceInputStatus =
+  (typeof StaffAttendanceInputStatus)[keyof typeof StaffAttendanceInputStatus];
+
+export const StaffAttendanceInputStatus = {
+  present: "present",
+  absent: "absent",
+  late: "late",
+  leave: "leave",
+} as const;
+
+/**
+ * @nullable
+ */
+export type StaffAttendanceInputDepartureType =
+  | (typeof StaffAttendanceInputDepartureType)[keyof typeof StaffAttendanceInputDepartureType]
+  | null;
+
+export const StaffAttendanceInputDepartureType = {
+  normal: "normal",
+  early: "early",
+} as const;
+
+export type StaffAttendanceInputSource =
+  (typeof StaffAttendanceInputSource)[keyof typeof StaffAttendanceInputSource];
+
+export const StaffAttendanceInputSource = {
+  manual: "manual",
+  device: "device",
+  import: "import",
+} as const;
+
+export interface StaffAttendanceInput {
+  staffId: number;
+  date: string;
+  status: StaffAttendanceInputStatus;
+  /** @nullable */
+  checkIn?: string | null;
+  /** @nullable */
+  checkOut?: string | null;
+  /** @nullable */
+  departureType?: StaffAttendanceInputDepartureType;
+  source?: StaffAttendanceInputSource;
+  /** @nullable */
+  note?: string | null;
+}
+
+export type OperationalResource =
+  (typeof OperationalResource)[keyof typeof OperationalResource];
+
+export const OperationalResource = {
+  branch: "branch",
+  stage: "stage",
+  "teacher-assignment": "teacher-assignment",
+  "classroom-schedule": "classroom-schedule",
+  "staff-profile": "staff-profile",
+  "staff-job": "staff-job",
+  "staff-leave": "staff-leave",
+  payroll: "payroll",
+  evaluation: "evaluation",
+  curriculum: "curriculum",
+  "lesson-plan": "lesson-plan",
+  skill: "skill",
+  assessment: "assessment",
+  "progress-report": "progress-report",
+  event: "event",
+  media: "media",
+  "fee-plan": "fee-plan",
+  discount: "discount",
+  refund: "refund",
+  expense: "expense",
+  revenue: "revenue",
+  setting: "setting",
+  holiday: "holiday",
+  notification: "notification",
+  integration: "integration",
+} as const;
+
+export type OperationalRecordData = { [key: string]: unknown };
+
+export interface OperationalRecord {
+  id: number;
+  resource: OperationalResource;
+  /** @nullable */
+  subjectId?: number | null;
+  /** @nullable */
+  branchId?: number | null;
+  title: string;
+  status: string;
+  /** @nullable */
+  occurredOn?: string | null;
+  /** @nullable */
+  amount?: number | null;
+  data: OperationalRecordData;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type OperationalRecordInputData = { [key: string]: unknown };
+
+export interface OperationalRecordInput {
+  /** @nullable */
+  subjectId?: number | null;
+  /** @nullable */
+  branchId?: number | null;
+  /** @minLength 1 */
+  title: string;
+  status?: string;
+  /** @nullable */
+  occurredOn?: string | null;
+  /** @nullable */
+  amount?: number | null;
+  data?: OperationalRecordInputData;
+}
+
+export type OperationalRecordUpdateData = { [key: string]: unknown };
+
+export interface OperationalRecordUpdate {
+  /** @nullable */
+  subjectId?: number | null;
+  /** @nullable */
+  branchId?: number | null;
+  /** @minLength 1 */
+  title?: string;
+  status?: string;
+  /** @nullable */
+  occurredOn?: string | null;
+  /** @nullable */
+  amount?: number | null;
+  data?: OperationalRecordUpdateData;
+}
+
+export type NurseryReportDomain =
+  (typeof NurseryReportDomain)[keyof typeof NurseryReportDomain];
+
+export const NurseryReportDomain = {
+  operational: "operational",
+  academic: "academic",
+  financial: "financial",
+} as const;
+
+export type NurseryReportByStatus = { [key: string]: number };
+
+export interface NurseryReport {
+  domain: NurseryReportDomain;
+  count: number;
+  totalAmount: number;
+  byStatus: NurseryReportByStatus;
+  records: OperationalRecord[];
+}
+
+export interface RolePermission {
+  id: number;
+  role: string;
+  operation: string;
+  allowed: boolean;
+  updatedAt: string;
+}
+
+export interface RolePermissionInput {
+  /** @minLength 1 */
+  role: string;
+  /** @minLength 1 */
+  operation: string;
+  allowed: boolean;
+}
+
+/**
+ * @nullable
+ */
+export type AuditLogBefore = { [key: string]: unknown } | null;
+
+/**
+ * @nullable
+ */
+export type AuditLogAfter = { [key: string]: unknown } | null;
+
+export interface AuditLog {
+  id: number;
+  actorId: string;
+  /** @nullable */
+  actorRole?: string | null;
+  operation: string;
+  entityType: string;
+  /** @nullable */
+  entityId?: string | null;
+  /** @nullable */
+  before?: AuditLogBefore;
+  /** @nullable */
+  after?: AuditLogAfter;
+  createdAt: string;
+}
+
 export type OptionalChildIdParameter = number;
 
 export type ListChildrenParams = {
-search?: string;
-classroomId?: number;
+  search?: string;
+  classroomId?: number;
 };
 
 export type ListApplicationsParams = {
-status?: ListApplicationsStatus;
-type?: ListApplicationsType;
+  status?: ListApplicationsStatus;
+  type?: ListApplicationsType;
 };
 
-export type ListApplicationsStatus = typeof ListApplicationsStatus[keyof typeof ListApplicationsStatus];
-
+export type ListApplicationsStatus =
+  (typeof ListApplicationsStatus)[keyof typeof ListApplicationsStatus];
 
 export const ListApplicationsStatus = {
-  new: 'new',
-  reviewing: 'reviewing',
-  accepted: 'accepted',
-  rejected: 'rejected',
+  new: "new",
+  reviewing: "reviewing",
+  accepted: "accepted",
+  rejected: "rejected",
 } as const;
 
-export type ListApplicationsType = typeof ListApplicationsType[keyof typeof ListApplicationsType];
-
+export type ListApplicationsType =
+  (typeof ListApplicationsType)[keyof typeof ListApplicationsType];
 
 export const ListApplicationsType = {
-  new: 'new',
-  renewal: 'renewal',
+  new: "new",
+  renewal: "renewal",
 } as const;
 
 export type ListInvoicesParams = {
-status?: ListInvoicesStatus;
+  status?: ListInvoicesStatus;
 };
 
-export type ListInvoicesStatus = typeof ListInvoicesStatus[keyof typeof ListInvoicesStatus];
-
+export type ListInvoicesStatus =
+  (typeof ListInvoicesStatus)[keyof typeof ListInvoicesStatus];
 
 export const ListInvoicesStatus = {
-  paid: 'paid',
-  pending: 'pending',
-  overdue: 'overdue',
+  paid: "paid",
+  pending: "pending",
+  overdue: "overdue",
 } as const;
 
 export type ListParentAttendanceParams = {
-childId?: OptionalChildIdParameter;
+  childId?: OptionalChildIdParameter;
 };
 
 export type ListParentProgressReportsParams = {
-childId?: OptionalChildIdParameter;
+  childId?: OptionalChildIdParameter;
 };
 
 export type ListParentActivitiesParams = {
-childId?: OptionalChildIdParameter;
+  childId?: OptionalChildIdParameter;
+};
+
+export type ListStaffAttendanceParams = {
+  staffId?: number;
+  dateFrom?: string;
+  dateTo?: string;
+};
+
+export type GetNurseryReportParams = {
+  domain: GetNurseryReportDomain;
+  branchId?: number;
+  classroomId?: number;
+  status?: string;
+  dateFrom?: string;
+  dateTo?: string;
+};
+
+export type GetNurseryReportDomain =
+  (typeof GetNurseryReportDomain)[keyof typeof GetNurseryReportDomain];
+
+export const GetNurseryReportDomain = {
+  operational: "operational",
+  academic: "academic",
+  financial: "financial",
+} as const;
+
+export type ListAuditLogsParams = {
+  operation?: string;
+  entityType?: string;
 };

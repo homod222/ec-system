@@ -2,4 +2,5 @@
 - [esbuild breaks import.meta.url-relative file loading](esbuild-import-meta-url-resolution.md) — packages that load files relative to their own dir must be externalized, or resolution silently no-ops.
 - [Replit-managed Stripe connector limitations](stripe-connector-managed-webhooks-currency.md) — no exposed webhook signing secret; KWD not a supported presentment currency on the sandbox account.
 - [Rebase tool can silently drop content](rebase-tool-silent-content-drop.md) — "no conflict markers" after continueMergeResolution isn't proof the merge is correct; verify against source commits.
+- [Ambiguous tenant ownership](ambiguous-tenant-ownership.md) — quarantine legacy rows when ownership is ambiguous; never expose them through a shared fallback.
 - [WhatsApp reminder delivery semantics](whatsapp-reminder-delivery-semantics.md) — use durable stage claims and leased recovery; Meta sends lack an idempotency key.

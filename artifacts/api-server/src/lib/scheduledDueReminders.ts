@@ -1,4 +1,5 @@
 import {
+  childrenTable,
   db,
   guardiansTable,
   invoicesTable,
@@ -112,8 +113,19 @@ export async function runScheduledDueReminders(now = new Date()): Promise<void> 
     const rows = await db
       .select({ invoice: invoicesTable, guardianPhone: guardiansTable.phone })
       .from(invoicesTable)
-      .innerJoin(guardiansTable, eq(invoicesTable.guardianId, guardiansTable.id))
-      .where(ne(invoicesTable.status, "paid"));
+      .innerJoin(guardiansTable, and(
+        eq(invoicesTable.guardianId, guardiansTable.id),
+        eq(invoicesTable.ownerId, guardiansTable.ownerId),
+      ))
+      .innerJoin(childrenTable, and(
+        eq(invoicesTable.childId, childrenTable.id),
+        eq(invoicesTable.ownerId, childrenTable.ownerId),
+        eq(childrenTable.guardianId, guardiansTable.id),
+      ))
+      .where(and(
+        ne(invoicesTable.status, "paid"),
+        ne(invoicesTable.ownerId, "__legacy__"),
+      ));
 
     let sent = 0;
     let failed = 0;

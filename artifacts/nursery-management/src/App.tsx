@@ -10,7 +10,7 @@ import {
   Activity as ActivityIcon, ArrowUpRight, Baby, Banknote, BarChart3, Bell, BookOpen,
   CalendarCheck, Check, ChevronLeft, ChevronRight, CircleAlert, CircleDollarSign, Clock3,
   CreditCard, Edit3, FileText, GraduationCap, LayoutDashboard, LogOut, Menu, MoreHorizontal,
-  Phone, Plus, Search, Settings, ShieldCheck, Sparkles, Trash2, TrendingUp, Users, Wallet, X,
+  Phone, Plus, Search, Settings as SettingsIcon, ShieldCheck, Sparkles, Trash2, TrendingUp, Users, Wallet, X,
 } from 'lucide-react';
 import {
   getGetChildQueryKey, getGetTodayAttendanceQueryKey, getListChildrenQueryKey,
@@ -39,6 +39,17 @@ import { ParentReports } from './pages/parent/ParentReports';
 import { ParentActivities } from './pages/parent/ParentActivities';
 import { ParentInvoices } from './pages/parent/ParentInvoices';
 import { ParentMessages } from './pages/parent/ParentMessages';
+import { ChildProfileExpanded } from './pages/admin/ChildProfileExpanded';
+import { ClassroomsExpanded } from './pages/admin/ClassroomsExpanded';
+import { AttendanceExpanded } from './pages/admin/AttendanceExpanded';
+import { StaffExpanded } from './pages/admin/StaffExpanded';
+import { FinanceExpanded } from './pages/admin/FinanceExpanded';
+import { Education } from './pages/admin/Education';
+import { Activities } from './pages/admin/Activities';
+import { Reports } from './pages/admin/Reports';
+import { Permissions } from './pages/admin/Permissions';
+import { Settings } from './pages/admin/Settings';
+import { Audit } from './pages/admin/Audit';
 
 const queryClient = new QueryClient();
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
@@ -54,10 +65,15 @@ const navItems = [
   { href: '/classrooms', label: 'الفصول الدراسية', icon: BookOpen },
   { href: '/guardians', label: 'أولياء الأمور', icon: Users },
   { href: '/staff', label: 'فريق العمل', icon: GraduationCap },
+  { href: '/education', label: 'التعليم', icon: Sparkles },
+  { href: '/activities', label: 'الأنشطة', icon: ActivityIcon },
   { href: '/finance', label: 'المالية', icon: Wallet },
+  { href: '/reports', label: 'التقارير', icon: BarChart3 },
+  { href: '/audit', label: 'سجل النظام', icon: ShieldCheck },
+  { href: '/permissions', label: 'الصلاحيات', icon: Users },
 ];
-const arDate = new Intl.DateTimeFormat('ar-SA', { weekday: 'long', day: 'numeric', month: 'long' });
-const money = (n: number) => new Intl.NumberFormat('ar-KW', {
+export const arDate = new Intl.DateTimeFormat('ar-SA', { weekday: 'long', day: 'numeric', month: 'long' });
+export const money = (n: number) => new Intl.NumberFormat('ar-KW', {
   style: 'currency',
   currency: 'KWD',
   minimumFractionDigits: 0,
@@ -66,7 +82,7 @@ const money = (n: number) => new Intl.NumberFormat('ar-KW', {
 const initials = (name: string) => name.split(' ').slice(0, 2).map((s) => s[0]).join('');
 const today = new Date().toISOString().slice(0, 10);
 
-function Button({ children, className = '', variant = 'primary', ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'soft' | 'ghost' | 'danger' }) {
+export function Button({ children, className = '', variant = 'primary', ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'soft' | 'ghost' | 'danger' }) {
   const variants = {
     primary: 'bg-primary text-primary-foreground hover:-translate-y-0.5 hover:shadow-md',
     soft: 'bg-secondary text-secondary-foreground hover:bg-secondary/80',
@@ -76,7 +92,7 @@ function Button({ children, className = '', variant = 'primary', ...props }: Rea
   return <button {...props} className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition-all ${variants[variant]} disabled:cursor-not-allowed disabled:opacity-50 ${className}`}>{children}</button>;
 }
 
-function Pill({ children, tone = 'neutral' }: { children: React.ReactNode; tone?: 'green' | 'yellow' | 'red' | 'blue' | 'neutral' }) {
+export function Pill({ children, tone = 'neutral' }: { children: React.ReactNode; tone?: 'green' | 'yellow' | 'red' | 'blue' | 'neutral' }) {
   const colors = { 
     green: 'bg-[#e5efe9] text-[#165032]', 
     yellow: 'bg-accent/40 text-[#5a4220]', 
@@ -87,22 +103,22 @@ function Pill({ children, tone = 'neutral' }: { children: React.ReactNode; tone?
   return <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold ${colors[tone]}`}>{children}</span>;
 }
 
-function Avatar({ name, className = '' }: { name: string; className?: string }) {
+export function Avatar({ name, className = '' }: { name: string; className?: string }) {
   return <span className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent text-sm font-bold text-accent-foreground ${className}`}>{initials(name)}</span>;
 }
 
-function Skeleton({ className = '' }: { className?: string }) { 
+export function Skeleton({ className = '' }: { className?: string }) {
   return <div className={`animate-pulse rounded-lg bg-muted ${className}`} />; 
 }
 
-function QueryState({ loading, error, empty, children, onRetry }: { loading?: boolean; error?: boolean; empty?: boolean; children: React.ReactNode; onRetry?: () => void }) {
+export function QueryState({ loading, error, empty, children, onRetry }: { loading?: boolean; error?: boolean; empty?: boolean; children: React.ReactNode; onRetry?: () => void }) {
   if (loading) return <div className="space-y-4"><Skeleton className="h-16 w-full" /><Skeleton className="h-16 w-full" /><Skeleton className="h-16 w-full" /></div>;
   if (error) return <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-destructive/30 bg-destructive/5 p-12 text-center"><CircleAlert className="mb-4 text-destructive" size={32} /><p className="font-bold text-destructive">تعذر تحميل البيانات</p><p className="mt-2 text-sm text-destructive/70">تحقق من الاتصال ثم حاول مرة أخرى.</p><Button variant="danger" className="mt-5" onClick={onRetry}>إعادة المحاولة</Button></div>;
   if (empty) return <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-border bg-card p-14 text-center"><Sparkles className="mb-4 text-accent" size={32} /><p className="font-bold">لا توجد بيانات بعد</p><p className="mt-2 text-sm text-muted-foreground">ستظهر السجلات هنا عند إضافتها.</p></div>;
   return <>{children}</>;
 }
 
-function Shell({ children }: { children: React.ReactNode }) {
+export function Shell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const [location] = useLocation();
   const { user } = useUser();
@@ -141,7 +157,7 @@ function Shell({ children }: { children: React.ReactNode }) {
         </nav>
         
         <div className="mt-auto space-y-1 pt-6 border-t border-sidebar-border">
-          <Link href="/settings" data-testid="link-nav-settings" className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-bold text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"><Settings size={18} />الإعدادات</Link>
+          <Link href="/settings" data-testid="link-nav-settings" className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-bold text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"><SettingsIcon size={18} />الإعدادات</Link>
           <button data-testid="button-sign-out" onClick={() => signOut({ redirectUrl: basePath || '/' })} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-bold text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"><LogOut size={18} />تسجيل الخروج</button>
         </div>
       </aside>
@@ -174,7 +190,7 @@ function Shell({ children }: { children: React.ReactNode }) {
   );
 }
 
-function PageHeader({ eyebrow, title, description, action }: { eyebrow?: string; title: string; description?: string; action?: React.ReactNode }) {
+export function PageHeader({ eyebrow, title, description, action }: { eyebrow?: string; title: string; description?: string; action?: React.ReactNode }) {
   return (
     <div className="mb-8 flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
       <div>
@@ -187,7 +203,7 @@ function PageHeader({ eyebrow, title, description, action }: { eyebrow?: string;
   );
 }
 
-function StatCard({ icon: Icon, label, value, detail, tone = 'teal' }: { icon: typeof Users; label: string; value: string; detail?: string; tone?: 'teal' | 'gold' | 'coral' | 'sage' }) {
+export function StatCard({ icon: Icon, label, value, detail, tone = 'teal' }: { icon: typeof Users; label: string; value: string; detail?: string; tone?: 'teal' | 'gold' | 'coral' | 'sage' }) {
   const tones = { 
     teal: 'bg-primary text-primary-foreground', 
     gold: 'bg-accent text-accent-foreground', 
@@ -990,7 +1006,7 @@ function Protected({ children, allowedRole }: { children: React.ReactNode, allow
   if (session.data) {
     const role = session.data.role;
     const isParentRole = role === 'parent';
-    const isAdminRoute = location.startsWith('/dashboard') || location.startsWith('/children') || location.startsWith('/guardians') || location.startsWith('/classrooms') || location.startsWith('/staff') || location.startsWith('/finance');
+    const isAdminRoute = location.startsWith('/dashboard') || location.startsWith('/children') || location.startsWith('/guardians') || location.startsWith('/classrooms') || location.startsWith('/staff') || location.startsWith('/finance') || location.startsWith('/education') || location.startsWith('/activities') || location.startsWith('/reports') || location.startsWith('/permissions') || location.startsWith('/settings') || location.startsWith('/audit') || location.startsWith('/applications');
     const isParentRoute = location.startsWith('/parent');
 
     if (role === 'pending') {
@@ -1076,12 +1092,18 @@ function Router() {
         <Route path="/applications/new"><Protected allowedRole="admin"><NewApplication /></Protected></Route>
         <Route path="/applications/:id"><Protected allowedRole="admin"><ApplicationDetail /></Protected></Route>
         <Route path="/children"><Protected allowedRole="admin"><Children /></Protected></Route>
-        <Route path="/children/:id"><Protected allowedRole="admin"><ChildProfile /></Protected></Route>
+        <Route path="/children/:id"><Protected allowedRole="admin"><ChildProfileExpanded /></Protected></Route>
         <Route path="/guardians"><Protected allowedRole="admin"><Guardians /></Protected></Route>
-        <Route path="/classrooms"><Protected allowedRole="admin"><Classrooms /></Protected></Route>
-        <Route path="/staff"><Protected allowedRole="admin"><Staff /></Protected></Route>
-        <Route path="/attendance"><Protected allowedRole="admin"><Attendance /></Protected></Route>
-        <Route path="/finance"><Protected allowedRole="admin"><Finance /></Protected></Route>
+        <Route path="/classrooms"><Protected allowedRole="admin"><ClassroomsExpanded /></Protected></Route>
+        <Route path="/staff"><Protected allowedRole="admin"><StaffExpanded /></Protected></Route>
+        <Route path="/attendance"><Protected allowedRole="admin"><AttendanceExpanded /></Protected></Route>
+        <Route path="/finance"><Protected allowedRole="admin"><FinanceExpanded /></Protected></Route>
+        <Route path="/education"><Protected allowedRole="admin"><Education /></Protected></Route>
+        <Route path="/activities"><Protected allowedRole="admin"><Activities /></Protected></Route>
+        <Route path="/reports"><Protected allowedRole="admin"><Reports /></Protected></Route>
+        <Route path="/permissions"><Protected allowedRole="admin"><Permissions /></Protected></Route>
+        <Route path="/settings"><Protected allowedRole="admin"><Settings /></Protected></Route>
+        <Route path="/audit"><Protected allowedRole="admin"><Audit /></Protected></Route>
         <Route><Redirect to="/" /></Route>
       </Switch>
     </RoutedErrorBoundary>

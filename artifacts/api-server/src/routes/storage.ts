@@ -1,4 +1,3 @@
-import { getAuth } from "@clerk/express";
 import { and, eq, gt, isNull, lt, ne, sql } from "drizzle-orm";
 import { Router, type IRouter } from "express";
 import {
@@ -13,8 +12,12 @@ import {
   ObjectUploadSizeError,
   ObjectUploadTimeoutError,
 } from "../lib/objectStorage";
-import { requireApplicationAdmin } from "../middlewares/requireApplicationAdmin";
 import { logger } from "../lib/logger";
+import {
+  nurseryContext,
+  requireNurseryPermission,
+  resolveNurseryContext,
+} from "./nurseryOperations";
 
 const router: IRouter = Router();
 const storage = new ObjectStorageService();
@@ -66,7 +69,11 @@ const cleanupTimer = setInterval(() => {
 }, CLEANUP_INTERVAL_MS);
 cleanupTimer.unref();
 
-router.post("/storage/uploads/request-url", requireApplicationAdmin, async (req, res): Promise<void> => {
+router.post(
+  "/storage/uploads/request-url",
+  resolveNurseryContext,
+  requireNurseryPermission("write:application-document"),
+  async (req, res): Promise<void> => {
   const parsed = RequestUploadUrlBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -83,7 +90,7 @@ router.post("/storage/uploads/request-url", requireApplicationAdmin, async (req,
     res.status(415).json({ error: "Unsupported document type" });
     return;
   }
-  const ownerId = getAuth(req).userId!;
+  const ownerId = nurseryContext(req).ownerId;
   const [existing] = await db.select({ id: applicationsTable.id })
     .from(applicationsTable)
     .where(and(
@@ -126,9 +133,14 @@ router.post("/storage/uploads/request-url", requireApplicationAdmin, async (req,
   }
   const uploadUrl = `/api/storage/uploads/${result.grantId}/content`;
   res.json(RequestUploadUrlResponse.parse({ uploadUrl, objectPath }));
-});
+  },
+);
 
-router.put("/storage/uploads/:grantId/content", requireApplicationAdmin, async (req, res): Promise<void> => {
+router.put(
+  "/storage/uploads/:grantId/content",
+  resolveNurseryContext,
+  requireNurseryPermission("write:application-document"),
+  async (req, res): Promise<void> => {
   const grantId = Number(req.params.grantId);
   if (!Number.isSafeInteger(grantId) || grantId < 1) {
     res.status(400).json({ error: "Invalid upload grant" });
@@ -142,7 +154,7 @@ router.put("/storage/uploads/:grantId/content", requireApplicationAdmin, async (
   activeUploads += 1;
   const contentType = (req.header("content-type") ?? "").toLowerCase();
   const contentLength = Number(req.header("content-length"));
-  const ownerId = getAuth(req).userId!;
+  const ownerId = nurseryContext(req).ownerId;
   const reservation = await db.transaction(async (tx) => {
     await tx.execute(sql`select id from upload_grants where id = ${grantId} and owner_id = ${ownerId} for update`);
     const [grant] = await tx.select().from(uploadGrantsTable).where(and(
@@ -252,6 +264,7 @@ router.put("/storage/uploads/:grantId/content", requireApplicationAdmin, async (
   } finally {
     activeUploads -= 1;
   }
-});
+  },
+);
 
 export default router;

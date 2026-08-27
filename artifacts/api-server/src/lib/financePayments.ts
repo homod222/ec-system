@@ -1,6 +1,13 @@
 import type Stripe from "stripe";
-import { db, invoicesTable, type Guardian, type Invoice } from "@workspace/db";
-import { eq, sql } from "drizzle-orm";
+import {
+  childrenTable,
+  db,
+  guardiansTable,
+  invoicesTable,
+  type Guardian,
+  type Invoice,
+} from "@workspace/db";
+import { and, eq, sql } from "drizzle-orm";
 import { getUncachableStripeClient } from "./stripeClient";
 import { logger } from "./logger";
 import {
@@ -106,11 +113,24 @@ export async function createInvoiceCheckoutSession(params: {
     // another payable link.
     await tx.execute(sql`select pg_advisory_xact_lock(${params.invoice.id})`);
 
-    const [currentInvoice] = await tx
-      .select()
+    const [currentInvoiceRow] = await tx
+      .select({ invoice: invoicesTable })
       .from(invoicesTable)
-      .where(eq(invoicesTable.id, params.invoice.id))
+      .innerJoin(childrenTable, and(
+        eq(invoicesTable.childId, childrenTable.id),
+        eq(invoicesTable.ownerId, childrenTable.ownerId),
+      ))
+      .innerJoin(guardiansTable, and(
+        eq(invoicesTable.guardianId, guardiansTable.id),
+        eq(invoicesTable.ownerId, guardiansTable.ownerId),
+      ))
+      .where(and(
+        eq(invoicesTable.id, params.invoice.id),
+        eq(invoicesTable.ownerId, params.invoice.ownerId),
+        eq(invoicesTable.guardianId, params.guardian.id),
+      ))
       .limit(1);
+    const currentInvoice = currentInvoiceRow?.invoice;
     if (!currentInvoice || currentInvoice.status === "paid") {
       throw new Error("Invoice is no longer payable");
     }

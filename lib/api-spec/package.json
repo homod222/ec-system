@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "codegen": "orval --config ./orval.config.ts && pnpm -w run typecheck:libs"
+    "codegen": "orval --config ./orval.config.ts && node ./fix-zod-declaration-order.mjs && pnpm exec prettier --write ../api-zod/src/generated/api.ts ../api-client-react/src/generated && pnpm -w run typecheck:libs"
   },
   "devDependencies": {
     "orval": "^8.23.0"

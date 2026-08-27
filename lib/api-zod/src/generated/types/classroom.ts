@@ -5,6 +5,7 @@
  * API for the nursery management platform
  * OpenAPI spec version: 0.1.0
  */
+import type { ClassroomSchedule } from './classroomSchedule';
 
 export interface Classroom {
   id: number;
@@ -14,4 +15,9 @@ export interface Classroom {
   capacity: number;
   childrenCount: number;
   color: string;
+  /** @nullable */
+  branchId?: number | null;
+  /** @nullable */
+  stageId?: number | null;
+  schedule?: ClassroomSchedule;
 }

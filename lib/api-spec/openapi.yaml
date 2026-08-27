@@ -30,6 +30,12 @@ tags:
     description: Private application document storage
   - name: parent
     description: Guardian-scoped parent portal
+  - name: operations
+    description: Owner-scoped nursery operational records
+  - name: reports
+    description: Operational, academic, and financial reporting
+  - name: permissions
+    description: Role permissions and security audit
 paths:
   /healthz:
     get:
@@ -768,6 +774,203 @@ paths:
                   $ref: "#/components/schemas/ParentAnnouncement"
         "401": { description: Authentication required }
         "403": { description: Parent access required }
+  /children/{id}/records:
+    get:
+      operationId: listChildRecords
+      tags: [operations]
+      summary: List health, emergency, allergy, medication, document, photo, note, or history entries
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Child dossier records
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ChildRecord" }
+        "404": { description: Child not found }
+    post:
+      operationId: createChildRecord
+      tags: [operations]
+      summary: Add an entry to a child dossier
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ChildRecordInput" }
+      responses:
+        "201":
+          description: Created dossier entry
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChildRecord" }
+        "403": { description: Operation not permitted }
+        "404": { description: Child not found }
+  /staff-attendance:
+    get:
+      operationId: listStaffAttendance
+      tags: [attendance]
+      summary: List staff attendance with date and staff filters
+      parameters:
+        - { name: staffId, in: query, schema: { type: number } }
+        - { name: dateFrom, in: query, schema: { type: string } }
+        - { name: dateTo, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Staff attendance records
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/StaffAttendance" }
+    post:
+      operationId: recordStaffAttendance
+      tags: [attendance]
+      summary: Manually record attendance, lateness, or early departure for staff
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StaffAttendanceInput" }
+      responses:
+        "201":
+          description: Staff attendance record
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StaffAttendance" }
+        "404": { description: Staff member not found }
+  /operations/{resource}:
+    get:
+      operationId: listOperationalRecords
+      tags: [operations]
+      summary: List records for a nursery operational resource
+      parameters:
+        - $ref: "#/components/parameters/Resource"
+      responses:
+        "200":
+          description: Operational records
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/OperationalRecord" }
+    post:
+      operationId: createOperationalRecord
+      tags: [operations]
+      summary: Create an operational record
+      parameters:
+        - $ref: "#/components/parameters/Resource"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OperationalRecordInput" }
+      responses:
+        "201":
+          description: Created operational record
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OperationalRecord" }
+        "403": { description: Operation not permitted }
+  /operations/{resource}/{id}:
+    patch:
+      operationId: updateOperationalRecord
+      tags: [operations]
+      summary: Update an operational record
+      parameters:
+        - $ref: "#/components/parameters/Resource"
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OperationalRecordUpdate" }
+      responses:
+        "200":
+          description: Updated operational record
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OperationalRecord" }
+        "404": { description: Record not found }
+    delete:
+      operationId: deleteOperationalRecord
+      tags: [operations]
+      summary: Delete an operational record
+      parameters:
+        - $ref: "#/components/parameters/Resource"
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "204": { description: Deleted }
+        "404": { description: Record not found }
+  /reports:
+    get:
+      operationId: getNurseryReport
+      tags: [reports]
+      summary: Generate filtered operational, academic, or financial report
+      parameters:
+        - name: domain
+          in: query
+          required: true
+          schema: { type: string, enum: [operational, academic, financial] }
+        - { name: branchId, in: query, schema: { type: number } }
+        - { name: classroomId, in: query, schema: { type: number } }
+        - { name: status, in: query, schema: { type: string } }
+        - { name: dateFrom, in: query, schema: { type: string } }
+        - { name: dateTo, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Filtered report
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NurseryReport" }
+  /permissions:
+    get:
+      operationId: listRolePermissions
+      tags: [permissions]
+      summary: List configured role permissions
+      responses:
+        "200":
+          description: Role permissions
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/RolePermission" }
+    put:
+      operationId: setRolePermission
+      tags: [permissions]
+      summary: Set a role permission (owner only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RolePermissionInput" }
+      responses:
+        "200":
+          description: Updated role permission
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RolePermission" }
+        "403": { description: Owner access required }
+  /audit-logs:
+    get:
+      operationId: listAuditLogs
+      tags: [permissions]
+      summary: List owner-scoped sensitive-operation audit events
+      parameters:
+        - { name: operation, in: query, schema: { type: string } }
+        - { name: entityType, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Audit events
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AuditLog" }
 components:
   parameters:
     Id:
@@ -782,6 +985,11 @@ components:
       required: false
       schema:
         type: number
+    Resource:
+      name: resource
+      in: path
+      required: true
+      schema: { $ref: "#/components/schemas/OperationalResource" }
   schemas:
     HealthStatus:
       type: object
@@ -997,6 +1205,9 @@ components:
         capacity: { type: number }
         childrenCount: { type: number }
         color: { type: string }
+        branchId: { type: ["number", "null"] }
+        stageId: { type: ["number", "null"] }
+        schedule: { type: object, additionalProperties: true }
     ClassroomInput:
       type: object
       required: [name, level, teacherName, capacity]
@@ -1006,6 +1217,9 @@ components:
         teacherName: { type: string, minLength: 1 }
         capacity: { type: number, minimum: 1, multipleOf: 1 }
         color: { type: string, minLength: 1 }
+        branchId: { type: ["number", "null"] }
+        stageId: { type: ["number", "null"] }
+        schedule: { type: object, additionalProperties: true }
     StaffMember:
       type: object
       required: [id, name, role, phone, status, attendanceRate]
@@ -1021,7 +1235,7 @@ components:
         avatarUrl: { type: ["string", "null"] }
     AttendanceRecord:
       type: object
-      required: [id, childId, childName, date, status, checkIn, checkOut]
+      required: [id, childId, childName, date, status, checkIn, checkOut, source]
       properties:
         id: { type: number }
         childId: { type: number }
@@ -1032,6 +1246,9 @@ components:
           enum: [present, absent, late, excused]
         checkIn: { type: ["string", "null"] }
         checkOut: { type: ["string", "null"] }
+        departureType: { type: ["string", "null"], enum: [normal, early, null] }
+        source: { type: string, enum: [manual, device, import] }
+        recordedBy: { type: ["string", "null"] }
         note: { type: ["string", "null"] }
     AttendanceInput:
       type: object
@@ -1044,6 +1261,8 @@ components:
           enum: [present, absent, late, excused]
         checkIn: { type: ["string", "null"] }
         checkOut: { type: ["string", "null"] }
+        departureType: { type: ["string", "null"], enum: [normal, early, null] }
+        source: { type: string, enum: [manual, device, import], default: manual }
         note: { type: ["string", "null"] }
     FinanceSummary:
       type: object
@@ -1203,3 +1422,139 @@ components:
         title: { type: string }
         content: { type: string }
         publishedAt: { type: string }
+    ChildRecordCategory:
+      type: string
+      enum: [health, emergency, allergy, medication, document, photo, note, history]
+    ChildRecord:
+      type: object
+      required: [id, childId, category, title, status, confidential, data, createdBy, createdAt, updatedAt]
+      properties:
+        id: { type: number }
+        childId: { type: number }
+        category: { $ref: "#/components/schemas/ChildRecordCategory" }
+        title: { type: string }
+        status: { type: string }
+        occurredOn: { type: ["string", "null"] }
+        confidential: { type: boolean }
+        data: { type: object, additionalProperties: true }
+        createdBy: { type: string }
+        createdAt: { type: string }
+        updatedAt: { type: string }
+    ChildRecordInput:
+      type: object
+      required: [category, title]
+      properties:
+        category: { $ref: "#/components/schemas/ChildRecordCategory" }
+        title: { type: string, minLength: 1 }
+        status: { type: string, default: active }
+        occurredOn: { type: ["string", "null"] }
+        confidential: { type: boolean, default: false }
+        data: { type: object, additionalProperties: true }
+    StaffAttendance:
+      type: object
+      required: [id, staffId, date, status, source, recordedBy]
+      properties:
+        id: { type: number }
+        staffId: { type: number }
+        date: { type: string }
+        status: { type: string, enum: [present, absent, late, leave] }
+        checkIn: { type: ["string", "null"] }
+        checkOut: { type: ["string", "null"] }
+        departureType: { type: ["string", "null"], enum: [normal, early, null] }
+        source: { type: string, enum: [manual, device, import] }
+        note: { type: ["string", "null"] }
+        recordedBy: { type: string }
+    StaffAttendanceInput:
+      type: object
+      required: [staffId, date, status]
+      properties:
+        staffId: { type: number }
+        date: { type: string }
+        status: { type: string, enum: [present, absent, late, leave] }
+        checkIn: { type: ["string", "null"] }
+        checkOut: { type: ["string", "null"] }
+        departureType: { type: ["string", "null"], enum: [normal, early, null] }
+        source: { type: string, enum: [manual, device, import], default: manual }
+        note: { type: ["string", "null"] }
+    OperationalResource:
+      type: string
+      enum: [branch, stage, teacher-assignment, classroom-schedule, staff-profile, staff-job, staff-leave, payroll, evaluation, curriculum, lesson-plan, skill, assessment, progress-report, event, media, fee-plan, discount, refund, expense, revenue, setting, holiday, notification, integration]
+    OperationalRecord:
+      type: object
+      required: [id, resource, title, status, data, createdBy, createdAt, updatedAt]
+      properties:
+        id: { type: number }
+        resource: { $ref: "#/components/schemas/OperationalResource" }
+        subjectId: { type: ["number", "null"] }
+        branchId: { type: ["number", "null"] }
+        title: { type: string }
+        status: { type: string }
+        occurredOn: { type: ["string", "null"] }
+        amount: { type: ["number", "null"] }
+        data: { type: object, additionalProperties: true }
+        createdBy: { type: string }
+        createdAt: { type: string }
+        updatedAt: { type: string }
+    OperationalRecordInput:
+      type: object
+      required: [title]
+      properties:
+        subjectId: { type: ["number", "null"] }
+        branchId: { type: ["number", "null"] }
+        title: { type: string, minLength: 1 }
+        status: { type: string, default: active }
+        occurredOn: { type: ["string", "null"] }
+        amount: { type: ["number", "null"] }
+        data: { type: object, additionalProperties: true }
+    OperationalRecordUpdate:
+      type: object
+      properties:
+        subjectId: { type: ["number", "null"] }
+        branchId: { type: ["number", "null"] }
+        title: { type: string, minLength: 1 }
+        status: { type: string }
+        occurredOn: { type: ["string", "null"] }
+        amount: { type: ["number", "null"] }
+        data: { type: object, additionalProperties: true }
+    NurseryReport:
+      type: object
+      required: [domain, count, totalAmount, byStatus, records]
+      properties:
+        domain: { type: string, enum: [operational, academic, financial] }
+        count: { type: number }
+        totalAmount: { type: number }
+        byStatus:
+          type: object
+          additionalProperties: { type: number }
+        records:
+          type: array
+          items: { $ref: "#/components/schemas/OperationalRecord" }
+    RolePermission:
+      type: object
+      required: [id, role, operation, allowed, updatedAt]
+      properties:
+        id: { type: number }
+        role: { type: string }
+        operation: { type: string }
+        allowed: { type: boolean }
+        updatedAt: { type: string }
+    RolePermissionInput:
+      type: object
+      required: [role, operation, allowed]
+      properties:
+        role: { type: string, minLength: 1 }
+        operation: { type: string, minLength: 1 }
+        allowed: { type: boolean }
+    AuditLog:
+      type: object
+      required: [id, actorId, operation, entityType, createdAt]
+      properties:
+        id: { type: number }
+        actorId: { type: string }
+        actorRole: { type: ["string", "null"] }
+        operation: { type: string }
+        entityType: { type: string }
+        entityId: { type: ["string", "null"] }
+        before: { type: ["object", "null"], additionalProperties: true }
+        after: { type: ["object", "null"], additionalProperties: true }
+        createdAt: { type: string }
