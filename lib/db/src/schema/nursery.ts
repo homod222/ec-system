@@ -8,6 +8,7 @@ import {
   serial,
   text,
   timestamp,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -98,13 +99,15 @@ export const invoicesTable = pgTable("invoices", {
   stripeCheckoutSessionId: text("stripe_checkout_session_id"),
   stripeCheckoutAttempt: integer("stripe_checkout_attempt").notNull().default(0),
   stripePaymentIntentId: text("stripe_payment_intent_id"),
+  myFatoorahInvoiceId: text("myfatoorah_invoice_id"),
+  myFatoorahPaymentId: text("myfatoorah_payment_id"),
+  myFatoorahPaymentUrl: text("myfatoorah_payment_url"),
+  myFatoorahCheckoutAttempt: integer("myfatoorah_checkout_attempt").notNull().default(0),
   paidAt: timestamp("paid_at", { withTimezone: true }),
   lastPaymentStatus: text("last_payment_status"),
   lastPaymentError: text("last_payment_error"),
-  // Invoices are denominated in KWD, but the connected Stripe account does not
-  // support KWD as a presentment currency, so the actual card charge happens
-  // in a supported currency (currently USD). These record what Stripe actually
-  // charged, straight from the webhook payload, for audit/reconciliation.
+  // Records the actual provider charge for audit/reconciliation. New KNET
+  // payments are always charged in KWD; legacy Stripe rows may retain USD.
   chargedCurrency: text("charged_currency"),
   chargedAmount: numeric("charged_amount", { precision: 12, scale: 3, mode: "number" }),
   exchangeRate: numeric("exchange_rate", { precision: 10, scale: 4, mode: "number" }),
@@ -130,6 +133,23 @@ export const invoicePaymentsTable = pgTable("invoice_payments", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const paymentAttemptsTable = pgTable("payment_attempts", {
+  id: serial("id").primaryKey(),
+  invoiceId: integer("invoice_id").notNull(),
+  attemptNumber: integer("attempt_number").notNull(),
+  customerReference: text("customer_reference").notNull().unique(),
+  providerInvoiceId: text("provider_invoice_id").unique(),
+  providerPaymentId: text("provider_payment_id"),
+  paymentUrl: text("payment_url"),
+  status: text("status").notNull(),
+  amount: numeric("amount", { precision: 12, scale: 3, mode: "number" }).notNull(),
+  currency: text("currency").notNull().default("KWD"),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("payment_attempts_invoice_attempt_unique").on(table.invoiceId, table.attemptNumber),
+]);
 export const exchangeRatesTable = pgTable("exchange_rates", {
   pair: text("pair").primaryKey(),
   rate: numeric("rate", { precision: 12, scale: 6, mode: "number" }).notNull(),
@@ -232,7 +252,6 @@ export const insertChildSchema = createInsertSchema(childrenTable).omit({ id: tr
 export const insertStaffSchema = createInsertSchema(staffTable).omit({ id: true });
 export const insertAttendanceSchema = createInsertSchema(attendanceTable).omit({ id: true });
 export const insertInvoiceSchema = createInsertSchema(invoicesTable).omit({ id: true });
-export const insertInvoicePaymentSchema = createInsertSchema(invoicePaymentsTable).omit({ id: true, createdAt: true });
 export const insertActivitySchema = createInsertSchema(activitiesTable).omit({ id: true, ownerId: true, createdAt: true });
 
 export const insertProgressReportSchema = createInsertSchema(progressReportsTable).omit({ id: true, publishedAt: true });
@@ -248,7 +267,8 @@ export type Child = typeof childrenTable.$inferSelect;
 export type StaffMember = typeof staffTable.$inferSelect;
 export type Attendance = typeof attendanceTable.$inferSelect;
 export type Invoice = typeof invoicesTable.$inferSelect;
-export type InvoicePayment = typeof invoicePaymentsTable.$inferSelect;
+
+export type PaymentAttempt = typeof paymentAttemptsTable.$inferSelect;
 export type Activity = typeof activitiesTable.$inferSelect;
 
 export type ProgressReport = typeof progressReportsTable.$inferSelect;

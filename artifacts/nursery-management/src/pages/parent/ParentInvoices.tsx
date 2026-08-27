@@ -1,9 +1,9 @@
-import { useState } from 'react';
-import { getParentDocumentContent, useCreateParentInvoiceCheckoutSession, useGetKwdUsdExchangeRate, useListParentInvoices, useListParentDocuments, useListParentReceipts } from '@workspace/api-client-react';
+import { useCreateParentInvoiceCheckoutSession, useListParentInvoices } from '@workspace/api-client-react';
 import { ParentShell } from '../../components/ParentShell';
 import { ParentPageHeader, ParentQueryState } from '../../components/ParentShared';
 import { CreditCard, FileText, CheckCircle2, AlertCircle, Clock } from 'lucide-react';
 import { useToast } from '../../hooks/use-toast';
+import { useEffect } from 'react';
 
 const money = (n: number) => new Intl.NumberFormat('ar-KW', {
   style: 'currency',
@@ -11,27 +11,32 @@ const money = (n: number) => new Intl.NumberFormat('ar-KW', {
   minimumFractionDigits: 0,
 }).format(n || 0);
 
-function isExchangeRateUnavailable(error: unknown): boolean {
-  if (!error || typeof error !== 'object') return false;
-  const data = 'data' in error ? error.data : null;
-  return Boolean(
-    data &&
-    typeof data === 'object' &&
-    'code' in data &&
-    data.code === 'EXCHANGE_RATE_UNAVAILABLE',
-  );
-}
-
 export function ParentInvoices({ withShell = true }: { withShell?: boolean } = {}) {
   const query = useListParentInvoices();
-  const exchangeRateQuery = useGetKwdUsdExchangeRate();
-  const documentsQuery = useListParentDocuments();
-  const receiptsQuery = useListParentReceipts();
   const checkout = useCreateParentInvoiceCheckoutSession();
   const { toast } = useToast();
   const invoices = query.data || [];
-  const exchangeRate = exchangeRateQuery.data;
-  const [openingDocument, setOpeningDocument] = useState<number | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const payment = params.get('payment');
+    const invoiceId = params.get('invoice');
+    if (!payment) return;
+    if (payment === 'success') {
+      toast({
+        title: 'جارٍ تأكيد الدفع…',
+        description: 'سيتم تحديث حالة الفاتورة بعد استلام تأكيد MyFatoorah.',
+      });
+      window.setTimeout(() => query.refetch(), 2500);
+    } else {
+      toast({
+        title: 'لم تكتمل عملية الدفع',
+        description: invoiceId ? `لم تُسدّد الفاتورة رقم ${invoiceId}. يمكنك المحاولة مرة أخرى.` : 'يمكنك المحاولة مرة أخرى.',
+        variant: 'destructive',
+      });
+    }
+    window.history.replaceState({}, '', window.location.pathname);
+  }, []);
 
   const handlePay = (invoiceId: number) => {
     const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
@@ -41,30 +46,12 @@ export function ParentInvoices({ withShell = true }: { withShell?: boolean } = {
         window.location.href = result.url;
       },
       onError: (error) => {
-        const rateUnavailable = isExchangeRateUnavailable(error);
-        const description = rateUnavailable
-          ? 'انتهت صلاحية سعر التحويل المعروض. حدّث السعر ثم أعد محاولة الدفع.'
+        const description = error instanceof Error
+          ? error.message.replace(/^HTTP \d+ [^:]*:\s*/, '')
           : 'حاول مرة أخرى أو تواصل مع إدارة الحضانة.';
         toast({ title: 'تعذّر بدء عملية الدفع', description, variant: 'destructive' });
-        if (rateUnavailable) void exchangeRateQuery.refetch();
       },
     });
-  };
-  const openDocument = async (document: { id: number; name: string; contentType: string }) => {
-    setOpeningDocument(document.id);
-    try {
-      // The generated client applies the authenticated request middleware; never expose storage paths.
-      const blob = await getParentDocumentContent(document.id);
-      const url = URL.createObjectURL(blob);
-      const tab = window.open(url, '_blank', 'noopener,noreferrer');
-      if (!tab) {
-        const link = globalThis.document.createElement('a');
-        link.href = url; link.download = document.name; link.click();
-      }
-      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
-    } catch {
-      toast({ title: 'تعذر فتح المستند', description: 'تحقق من الصلاحية أو حاول مرة أخرى.', variant: 'destructive' });
-    } finally { setOpeningDocument(null); }
   };
 
   const content = (
@@ -74,24 +61,11 @@ export function ParentInvoices({ withShell = true }: { withShell?: boolean } = {
         description="سجل شفاف لجميع المدفوعات والرسوم المستحقة لضمان استمرارية الخدمات."
       />
 
-      <section data-testid="parent-exchange-rate-summary" className="mb-6 flex flex-col gap-3 rounded-2xl border border-[#165032]/10 bg-white px-5 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+      <section data-testid="parent-knet-summary" className="mb-6 rounded-2xl border border-[#165032]/10 bg-white px-5 py-4 shadow-sm">
         <div>
-          <p className="text-sm font-bold text-[#0f2416]">سعر التحويل للدفع عبر Stripe</p>
-          {exchangeRate ? (
-            <p className="mt-1 text-sm text-[#165032]/70">
-              1 د.ك = {exchangeRate.rate.toLocaleString('ar-KW', { minimumFractionDigits: 4, maximumFractionDigits: 4 })} دولار أمريكي
-            </p>
-          ) : (
-            <p className="mt-1 text-sm font-bold text-red-700">
-              {exchangeRateQuery.isLoading ? 'جارٍ تحميل سعر التحويل…' : 'لا يتوفر حاليًا سعر تحويل حديث؛ لن يبدأ الدفع حتى يتوفر سعر صالح.'}
-            </p>
-          )}
+          <p className="text-sm font-bold text-[#0f2416]">الدفع الآمن عبر KNET</p>
+          <p className="mt-1 text-sm text-[#165032]/70">سيتم خصم مبلغ الفاتورة نفسه بالدينار الكويتي عبر بوابة MyFatoorah، دون تحويل عملة.</p>
         </div>
-        {exchangeRate && (
-          <p className="text-xs font-medium text-[#165032]/60">
-            آخر تحديث ناجح: {new Date(exchangeRate.updatedAt).toLocaleString('ar-KW', { dateStyle: 'medium', timeStyle: 'short' })}
-          </p>
-        )}
       </section>
 
       <ParentQueryState loading={query.isLoading} error={query.isError} empty={!invoices.length} onRetry={() => query.refetch()}>
@@ -134,22 +108,20 @@ export function ParentInvoices({ withShell = true }: { withShell?: boolean } = {
               
               {invoice.status !== 'paid' ? (
                 <div>
-                  <div data-testid={`text-parent-usd-estimate-${invoice.id}`} className="mb-3 rounded-xl bg-[#FDFBF7] px-4 py-3 text-center text-xs leading-5 text-[#165032]/70">
-                    {exchangeRate
-                      ? <>المبلغ التقريبي: <strong className="text-[#165032]">{(invoice.amount * exchangeRate.rate).toLocaleString('ar-KW', { style: 'currency', currency: 'USD' })}</strong><br />يُثبّت المبلغ النهائي عند إنشاء جلسة الدفع.</>
-                      : 'لا يمكن حساب المبلغ بالدولار دون سعر تحويل حديث.'}
+                  <div data-testid={`text-parent-knet-amount-${invoice.id}`} className="mb-3 rounded-xl bg-[#FDFBF7] px-4 py-3 text-center text-xs leading-5 text-[#165032]/70">
+                    المبلغ المطلوب عبر KNET: <strong className="text-[#165032]">{money(invoice.amount)}</strong>
                   </div>
                   <button
                     data-testid={`button-pay-invoice-${invoice.id}`}
                     onClick={() => handlePay(invoice.id)}
-                    disabled={!exchangeRate || checkout.isPending}
+                    disabled={checkout.isPending}
                     className="w-full flex items-center justify-center gap-2 rounded-xl bg-[#165032] py-3.5 text-sm font-bold text-white hover:-translate-y-0.5 hover:shadow-md transition-all disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
                   >
-                    <CreditCard size={18} /> {checkout.isPending ? 'جارٍ التحويل…' : 'سداد الآن'}
+                    <CreditCard size={18} /> {checkout.isPending ? 'جارٍ التحويل…' : 'الدفع عبر KNET'}
                   </button>
                 </div>
               ) : (
-                <button data-testid={`button-receipt-invoice-${invoice.id}`} onClick={() => window.print()} className="w-full flex items-center justify-center gap-2 rounded-xl bg-white border border-[#165032]/10 py-3.5 text-sm font-bold text-[#165032] hover:bg-[#165032]/5 transition-colors">
+                <button data-testid={`button-receipt-invoice-${invoice.id}`} className="w-full flex items-center justify-center gap-2 rounded-xl bg-white border border-[#165032]/10 py-3.5 text-sm font-bold text-[#165032] hover:bg-[#165032]/5 transition-colors">
                   <FileText size={18} /> تحميل الإيصال
                 </button>
               )}
@@ -157,16 +129,6 @@ export function ParentInvoices({ withShell = true }: { withShell?: boolean } = {
           ))}
         </div>
       </ParentQueryState>
-      <section className="mt-8 rounded-[2rem] border border-[#165032]/10 bg-white p-7 shadow-sm">
-        <h2 className="text-xl font-bold text-[#0f2416]">الإيصالات والمستندات</h2>
-        <p className="mt-1 text-sm text-[#165032]/60">يمكنك طباعة الإيصالات والاطلاع على مستندات التسجيل المتاحة.</p>
-        <ParentQueryState loading={receiptsQuery.isLoading || documentsQuery.isLoading} error={receiptsQuery.isError || documentsQuery.isError} empty={!(receiptsQuery.data?.length || documentsQuery.data?.length)} onRetry={() => { receiptsQuery.refetch(); documentsQuery.refetch(); }}>
-          <div className="mt-5 grid gap-3 md:grid-cols-2">
-            {(receiptsQuery.data || []).map(receipt => <button key={`r${receipt.id}`} onClick={() => window.print()} className="rounded-xl border border-[#165032]/10 p-4 text-right hover:bg-[#FDFBF7]"><p className="font-bold">إيصال {receipt.receiptNumber}</p><p className="mt-1 text-sm text-[#165032]/60">{money(receipt.amount)} · {new Date(receipt.issuedAt).toLocaleDateString('ar-SA')}</p><span className="mt-2 inline-block text-xs font-bold text-[#165032]">طباعة / حفظ PDF</span></button>)}
-            {(documentsQuery.data || []).map(document => <div key={`d${document.id}`} className="rounded-xl border border-[#165032]/10 p-4"><p className="font-bold">{document.name}</p><p className="mt-1 text-sm text-[#165032]/60">{document.contentType} · {(document.size / 1024).toFixed(1)} KB</p><button type="button" disabled={openingDocument === document.id} onClick={() => openDocument(document)} className="mt-2 text-xs font-bold text-[#165032] disabled:opacity-50">{openingDocument === document.id ? 'جارٍ تجهيز المستند…' : 'فتح / تنزيل المستند'}</button></div>)}
-          </div>
-        </ParentQueryState>
-      </section>
     </>
   );
 

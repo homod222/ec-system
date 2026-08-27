@@ -619,25 +619,11 @@ paths:
         "200":
           description: Guardian receipts
           content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/Receipt" } } } }
-  /exchange-rates/kwd-usd:
-    get:
-      operationId: getKwdUsdExchangeRate
-      tags: [finance]
-      summary: Get the current fresh KWD to USD exchange rate
-      responses:
-        "200":
-          description: Current fresh exchange rate
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ExchangeRate"
-        "503":
-          description: No fresh exchange rate is available
   /invoices/{id}/checkout-session:
     post:
       operationId: createInvoiceCheckoutSession
       tags: [finance]
-      summary: Create a Stripe checkout session to pay an invoice
+      summary: Create a MyFatoorah KNET payment for an invoice in KWD
       parameters:
         - $ref: "#/components/parameters/Id"
       requestBody:
@@ -657,6 +643,10 @@ paths:
           description: Invoice already paid
         "404":
           description: Invoice not found
+        "409":
+          description: Invoice is not payable or an earlier payment attempt is still being reconciled
+        "503":
+          description: The MyFatoorah payment provider is not configured
   /invoices/{id}/cash-payment:
     post:
       operationId: recordCashInvoicePayment
@@ -814,7 +804,7 @@ paths:
     post:
       operationId: createParentInvoiceCheckoutSession
       tags: [parent, finance]
-      summary: Create a Stripe checkout session for a guardian invoice
+      summary: Create a MyFatoorah KNET payment for a guardian invoice in KWD
       parameters:
         - $ref: "#/components/parameters/Id"
       requestBody:
@@ -835,7 +825,7 @@ paths:
         "404":
           description: Invoice not found
         "503":
-          description: No fresh exchange rate is available
+          description: The MyFatoorah payment provider is not configured
         "401": { description: Authentication required }
         "403": { description: Parent access required }
   /parent/messages:
@@ -1656,22 +1646,6 @@ components:
       required: [url]
       properties:
         url: { type: string }
-    ExchangeRate:
-      type: object
-      required: [baseCurrency, quoteCurrency, rate, updatedAt]
-      properties:
-        baseCurrency:
-          type: string
-          enum: [KWD]
-        quoteCurrency:
-          type: string
-          enum: [USD]
-        rate:
-          type: number
-          exclusiveMinimum: 0
-        updatedAt:
-          type: string
-          format: date-time
     InvoiceReminderResult:
       type: object
       required: [status, message]

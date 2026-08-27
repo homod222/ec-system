@@ -4,8 +4,7 @@ import pinoHttp from "pino-http";
 import { clerkMiddleware } from "@clerk/express";
 import router from "./routes";
 import { logger } from "./lib/logger";
-import { WebhookHandlers } from "./lib/webhookHandlers";
-import { reconcileInvoicePayment } from "./lib/paymentReconciliation";
+import { reconcileInvoicePayment, verifyMyFatoorahWebhook, type PaymentWebhook } from "./lib/paymentReconciliation";
 import {
   CLERK_PROXY_PATH,
   clerkProxyMiddleware,
@@ -33,24 +32,27 @@ app.use(
   }),
 );
 
-// Stripe webhook: must be registered with express.raw() BEFORE express.json(),
-// and outside Clerk auth (Stripe calls this unauthenticated with its own
-// signature scheme). It is also unauthenticated on purpose.
+// MyFatoorah calls this route without Clerk authentication. The HMAC signature
+// is mandatory and verified before any invoice state is changed.
 app.post(
-  "/api/stripe/webhook",
-  express.raw({ type: "application/json" }),
+  "/api/myfatoorah/webhook",
+  express.json({ type: "application/json" }),
   async (req, res) => {
-    const signature = req.headers["stripe-signature"];
+    const signature = req.headers["myfatoorah-signature"];
     if (typeof signature !== "string") {
-      res.status(400).json({ error: "Missing stripe-signature header" });
+      res.status(400).json({ error: "Missing myfatoorah-signature header" });
       return;
     }
     try {
-      await WebhookHandlers.processWebhook(req.body, signature);
-      await reconcileInvoicePayment(req.body);
+      const payload = req.body as PaymentWebhook;
+      if (!verifyMyFatoorahWebhook(payload, signature)) {
+        res.status(401).json({ error: "Invalid webhook signature" });
+        return;
+      }
+      await reconcileInvoicePayment(payload);
       res.status(200).json({ received: true });
     } catch (err) {
-      req.log.error({ err }, "Stripe webhook processing failed");
+      req.log.error({ err }, "MyFatoorah webhook processing failed");
       res.status(400).json({ error: "Webhook processing failed" });
     }
   },

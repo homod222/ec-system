@@ -1,173 +1,260 @@
-import type Stripe from "stripe";
-import { db, guardiansTable, invoicesTable, invoicePaymentsTable, invoiceRefundsTable, activitiesTable } from "@workspace/db";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
+import {
+  activitiesTable,
+  db,
+  guardiansTable,
+  invoicePaymentsTable,
+  invoicesTable,
+  paymentAttemptsTable,
+  type PaymentAttempt,
+} from "@workspace/db";
 import { sendPaymentConfirmation } from "./notifications";
 import { logger } from "./logger";
-import {
-  invoiceOutstandingBalance,
-  requireCheckoutPayable,
-  settledPaymentStatuses,
-} from "./invoiceLedger";
+import type { MyFatoorahPaymentStatus } from "./financePayments";
 
-function extractInvoiceId(obj: { metadata?: Record<string, string> | null }): number | null {
-  const raw = obj.metadata?.invoiceId;
-  if (!raw) return null;
-  const id = Number(raw);
-  return Number.isFinite(id) ? id : null;
+type PaymentWebhook = {
+  Event?: { Code?: number; Name?: string; Reference?: string };
+  Data?: {
+    Invoice?: {
+      Id?: string;
+      Status?: string;
+      ExpirationDate?: string;
+      ExternalIdentifier?: string;
+    };
+    Transaction?: {
+      Status?: string;
+      PaymentId?: string;
+      Error?: { Message?: string };
+    };
+    Amount?: { PayCurrency?: string; ValueInPayCurrency?: string };
+  };
+};
+
+function signatureData(payload: PaymentWebhook): string {
+  const invoice = payload.Data?.Invoice;
+  const transaction = payload.Data?.Transaction;
+  return [
+    `Invoice.Id=${invoice?.Id ?? ""}`,
+    `Invoice.Status=${invoice?.Status ?? ""}`,
+    `Transaction.Status=${transaction?.Status ?? ""}`,
+    `Transaction.PaymentId=${transaction?.PaymentId ?? ""}`,
+    `Invoice.ExternalIdentifier=${invoice?.ExternalIdentifier ?? ""}`,
+  ].join(",");
 }
 
-function parseRate(raw: string | undefined): number | null {
-  if (!raw) return null;
-  const rate = Number(raw);
-  return Number.isFinite(rate) ? rate : null;
+export function verifyMyFatoorahWebhook(payload: PaymentWebhook, signature: string): boolean {
+  const secret = process.env.MYFATOORAH_WEBHOOK_SECRET;
+  if (!secret) return false;
+  const expected = createHmac("sha256", secret).update(signatureData(payload), "utf8").digest("base64");
+  const expectedBuffer = Buffer.from(expected);
+  const actualBuffer = Buffer.from(signature);
+  return expectedBuffer.length === actualBuffer.length && timingSafeEqual(expectedBuffer, actualBuffer);
 }
 
-async function markInvoicePaid(
-  invoiceId: number,
-  paymentIntentId: string | null,
-  charged: { amount: number; currency: string; exchangeRate: number | null } | null,
-  settlementAmountKwd: number | null,
-) {
-  const result = await db.transaction(async (tx) => {
-    await tx.execute(sql`select id from invoices where id = ${invoiceId} for update`);
-    const [invoice] = await tx.select().from(invoicesTable).where(eq(invoicesTable.id, invoiceId));
-    if (!invoice) return null;
-    if (paymentIntentId) {
-      const [existing] = await tx.select({ id: invoicePaymentsTable.id }).from(invoicePaymentsTable).where(and(
-        eq(invoicePaymentsTable.invoiceId, invoiceId),
-        eq(invoicePaymentsTable.ownerId, invoice.ownerId),
-        eq(invoicePaymentsTable.reference, paymentIntentId),
-        inArray(invoicePaymentsTable.status, [...settledPaymentStatuses]),
-      )).limit(1);
-      if (existing) return null;
+async function markPaid(
+  attempt: PaymentAttempt,
+  paymentId: string | null,
+  amount: number,
+  currency: string,
+): Promise<void> {
+  if (
+    !Number.isFinite(amount) ||
+    amount <= 0 ||
+    currency.toUpperCase() !== "KWD" ||
+    Math.abs(amount - attempt.amount) > 0.000_5
+  ) {
+    throw new Error("Invalid KWD charge details from MyFatoorah");
+  }
+
+  const outcome = await db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(${attempt.invoiceId})`);
+    const [currentAttempt] = await tx.select().from(paymentAttemptsTable)
+      .where(eq(paymentAttemptsTable.id, attempt.id)).limit(1);
+    if (!currentAttempt || currentAttempt.status === "succeeded") {
+      return { kind: "replay" as const };
     }
-    const [payments, refunds] = await Promise.all([
-      tx.select({ amount: invoicePaymentsTable.amount }).from(invoicePaymentsTable).where(and(
-        eq(invoicePaymentsTable.invoiceId, invoiceId),
-        eq(invoicePaymentsTable.ownerId, invoice.ownerId),
-        inArray(invoicePaymentsTable.status, [...settledPaymentStatuses]),
-      )),
-      tx.select({ amount: invoiceRefundsTable.amount }).from(invoiceRefundsTable).where(and(
-        eq(invoiceRefundsTable.invoiceId, invoiceId),
-        eq(invoiceRefundsTable.ownerId, invoice.ownerId),
-      )),
-    ]);
-    const outstanding = invoiceOutstandingBalance(invoice.amount, payments, refunds);
-    requireCheckoutPayable(invoice.status, outstanding);
-    const settledAmount = settlementAmountKwd ?? outstanding;
-    if (settledAmount <= 0 || settledAmount - outstanding > 0.0005) {
-      throw new Error("Stripe settlement does not match the invoice outstanding balance");
+    const [invoice] = await tx.select().from(invoicesTable)
+      .where(eq(invoicesTable.id, attempt.invoiceId)).limit(1);
+    if (!invoice) return { kind: "missing" as const };
+
+    await tx.update(paymentAttemptsTable).set({
+      status: "succeeded",
+      providerPaymentId: paymentId,
+      errorMessage: null,
+      updatedAt: new Date(),
+    }).where(eq(paymentAttemptsTable.id, attempt.id));
+
+    if (invoice.status === "paid") {
+      return { kind: "duplicate" as const, invoice };
     }
-    const paidAt = new Date();
-    const chargedNote = charged
-      ? ` (تم تحصيل ${charged.amount} ${charged.currency.toUpperCase()} عبر Stripe)`
-      : "";
-    await tx.insert(invoicePaymentsTable).values({
-      ownerId: invoice.ownerId,
-      invoiceId: invoice.id,
-      method: "payment_link",
-      amount: settledAmount,
-      currency: "KWD",
-      status: "completed",
-      reference: paymentIntentId,
-      note: chargedNote || null,
-      recordedBy: "Stripe",
-    });
-    const remaining = Math.max(0, outstanding - settledAmount);
+
+    await tx.update(paymentAttemptsTable).set({
+      status: "superseded",
+      errorMessage: "تم سداد الفاتورة من خلال محاولة دفع أخرى",
+      updatedAt: new Date(),
+    }).where(and(
+      eq(paymentAttemptsTable.invoiceId, attempt.invoiceId),
+      ne(paymentAttemptsTable.id, attempt.id),
+      inArray(paymentAttemptsTable.status, ["creating", "pending", "failed"]),
+    ));
+
     const [updated] = await tx.update(invoicesTable).set({
-      status: remaining <= 0.0005 ? "paid" : "partial",
-      paidAt: remaining <= 0.0005 ? paidAt : null,
-      stripePaymentIntentId: paymentIntentId,
+      status: "paid",
+      paidAt: new Date(),
+      myFatoorahPaymentId: paymentId,
       lastPaymentStatus: "succeeded",
       lastPaymentError: null,
+      chargedCurrency: "KWD",
+      chargedAmount: amount,
+      exchangeRate: null,
       paymentMethod: "payment_link",
-      paymentReference: paymentIntentId,
-      ...(charged ? {
-        chargedCurrency: charged.currency,
-        chargedAmount: charged.amount,
-        exchangeRate: charged.exchangeRate,
-      } : {}),
-    }).where(eq(invoicesTable.id, invoice.id)).returning();
-    await tx.insert(activitiesTable).values({
-      ownerId: invoice.ownerId,
-      type: "payment",
-      title: `تم سداد فاتورة ${invoice.invoiceNumber}`,
-      description: `تم استلام دفعة بمبلغ ${settledAmount} د.ك عبر Stripe${chargedNote}`,
-      actor: "Stripe",
+      paymentReference: paymentId,
+    }).where(eq(invoicesTable.id, attempt.invoiceId)).returning();
+    await tx.insert(invoicePaymentsTable).values({
+      ownerId: updated.ownerId,
+      invoiceId: updated.id,
+      method: "payment_link",
+      amount: updated.amount,
+      currency: "KWD",
+      status: "completed",
+      reference: paymentId,
+      note: `تم التحصيل عبر KNET / MyFatoorah`,
+      recordedBy: "MyFatoorah",
     });
-    return updated;
+    return { kind: "paid" as const, invoice: updated };
   });
-  if (!result) return;
+  if (outcome.kind === "replay" || outcome.kind === "missing") return;
 
-  const [guardian] = await db.select().from(guardiansTable).where(eq(guardiansTable.id, result.guardianId)).limit(1);
-  if (guardian) {
-    await sendPaymentConfirmation(result, guardian);
+  const [guardian] = await db.select().from(guardiansTable)
+    .where(eq(guardiansTable.id, outcome.invoice.guardianId)).limit(1);
+  if (outcome.kind === "duplicate") {
+    await db.insert(activitiesTable).values({
+      ownerId: outcome.invoice.ownerId,
+      type: "payment_overpayment",
+      title: `دفعة مكررة للفاتورة ${outcome.invoice.invoiceNumber}`,
+      description: `وصلت دفعة إضافية بمبلغ ${amount} د.ك عبر KNET وتتطلب المراجعة والاسترداد`,
+      actor: "MyFatoorah / KNET",
+    });
+    logger.error({
+      invoiceId: attempt.invoiceId,
+      paymentAttemptId: attempt.id,
+      paymentId,
+    }, "Duplicate MyFatoorah payment requires refund review");
+    return;
   }
 
-  logger.info({ invoiceId }, "Invoice marked as paid via Stripe webhook");
+  await db.insert(activitiesTable).values({
+    ownerId: outcome.invoice.ownerId,
+    type: "payment",
+    title: `تم سداد فاتورة ${outcome.invoice.invoiceNumber}`,
+    description: `تم استلام دفعة بمبلغ ${amount} د.ك عبر KNET`,
+    actor: "MyFatoorah / KNET",
+  });
+  if (guardian) await sendPaymentConfirmation(outcome.invoice, guardian);
+  logger.info({ invoiceId: attempt.invoiceId, paymentAttemptId: attempt.id, paymentId }, "Invoice marked paid via MyFatoorah");
 }
 
-async function markInvoicePaymentFailed(invoiceId: number, errorMessage: string) {
-  await db
-    .update(invoicesTable)
-    .set({ lastPaymentStatus: "failed", lastPaymentError: errorMessage.slice(0, 500) })
-    .where(and(eq(invoicesTable.id, invoiceId), ne(invoicesTable.status, "paid")));
-  logger.warn({ invoiceId, errorMessage }, "Stripe payment attempt failed for invoice");
+async function markNotPaid(
+  attempt: PaymentAttempt,
+  status: "failed" | "cancelled",
+  message: string,
+  paymentId?: string | null,
+): Promise<void> {
+  await db.update(paymentAttemptsTable).set({
+    status: status === "failed"
+      ? (attempt.paymentUrl ? "pending" : "creating")
+      : "cancelled",
+    providerPaymentId: paymentId ?? attempt.providerPaymentId,
+    errorMessage: message.slice(0, 500),
+    updatedAt: new Date(),
+  }).where(eq(paymentAttemptsTable.id, attempt.id));
+  await db.update(invoicesTable).set({
+    lastPaymentStatus: status,
+    lastPaymentError: message.slice(0, 500),
+  }).where(and(eq(invoicesTable.id, attempt.invoiceId), ne(invoicesTable.status, "paid")));
+  logger.warn({ invoiceId: attempt.invoiceId, paymentAttemptId: attempt.id, status }, "MyFatoorah KNET payment did not complete");
 }
 
-/**
- * Domain-specific webhook reconciliation, separate from StripeSync's own
- * `processWebhook` (which only mirrors Stripe objects into the `stripe.*`
- * schema). This is where we update our own `invoices` table and trigger
- * payment-confirmation notifications.
- *
- * Must only be called AFTER `WebhookHandlers.processWebhook` has successfully
- * verified the same payload's signature -- we intentionally don't re-verify
- * here, since Replit's managed-webhook flow keeps the signing secret internal
- * to StripeSync and doesn't expose it to application code.
- */
-export async function reconcileInvoicePayment(payload: Buffer): Promise<void> {
-  const event = JSON.parse(payload.toString("utf8")) as Stripe.Event;
-
-  switch (event.type) {
-    case "checkout.session.completed": {
-      const session = event.data.object as Stripe.Checkout.Session;
-      const invoiceId = extractInvoiceId(session);
-      if (invoiceId === null) return;
-      const paymentIntentId =
-        typeof session.payment_intent === "string" ? session.payment_intent : (session.payment_intent?.id ?? null);
-      const charged =
-        session.amount_total != null && session.currency
-          ? {
-              amount: session.amount_total / 100,
-              currency: session.currency,
-              exchangeRate: parseRate(session.metadata?.exchangeRateKwdToUsd),
-            }
-          : null;
-      await markInvoicePaid(invoiceId, paymentIntentId, charged, parseRate(session.metadata?.settlementAmountKwd));
-      return;
-    }
-    case "payment_intent.succeeded": {
-      const paymentIntent = event.data.object as Stripe.PaymentIntent;
-      const invoiceId = extractInvoiceId(paymentIntent);
-      if (invoiceId === null) return;
-      const charged = {
-        amount: (paymentIntent.amount_received || paymentIntent.amount) / 100,
-        currency: paymentIntent.currency,
-        exchangeRate: parseRate(paymentIntent.metadata?.exchangeRateKwdToUsd),
-      };
-      await markInvoicePaid(invoiceId, paymentIntent.id, charged, parseRate(paymentIntent.metadata?.settlementAmountKwd));
-      return;
-    }
-    case "payment_intent.payment_failed": {
-      const paymentIntent = event.data.object as Stripe.PaymentIntent;
-      const invoiceId = extractInvoiceId(paymentIntent);
-      if (invoiceId === null) return;
-      const message = paymentIntent.last_payment_error?.message ?? "فشلت عملية الدفع";
-      await markInvoicePaymentFailed(invoiceId, message);
-      return;
-    }
-    default:
-      return;
+export async function reconcilePaymentAttemptFromStatus(
+  attempt: PaymentAttempt,
+  status: MyFatoorahPaymentStatus,
+): Promise<void> {
+  if (!attempt.providerInvoiceId && status.InvoiceId) {
+    await db.update(paymentAttemptsTable).set({
+      providerInvoiceId: String(status.InvoiceId),
+      updatedAt: new Date(),
+    }).where(eq(paymentAttemptsTable.id, attempt.id));
+  }
+  const transactions = status.InvoiceTransactions ?? [];
+  const successful = [...transactions].reverse().find((transaction) => {
+    const value = transaction.TransactionStatus?.toUpperCase();
+    return value === "SUCCSS" || value === "SUCCESS";
+  });
+  if (status.InvoiceStatus?.toUpperCase() === "PAID" && successful) {
+    await markPaid(
+      attempt,
+      successful.PaymentId ?? null,
+      Number(successful.PaidCurrencyValue ?? status.InvoiceValue),
+      successful.PaidCurrency ?? "KWD",
+    );
+    return;
+  }
+  const invoiceStatus = status.InvoiceStatus?.toUpperCase();
+  const expirationTime = status.ExpiryDate ? Date.parse(status.ExpiryDate) : Number.NaN;
+  const expired = Number.isFinite(expirationTime) && expirationTime <= Date.now();
+  if (
+    invoiceStatus === "CANCELED" ||
+    invoiceStatus === "CANCELLED" ||
+    invoiceStatus === "EXPIRED" ||
+    expired
+  ) {
+    await markNotPaid(attempt, "cancelled", "تم إلغاء أو انتهاء صلاحية عملية الدفع عبر KNET");
+    return;
+  }
+  const failed = [...transactions].reverse().find((transaction) =>
+    transaction.TransactionStatus?.toUpperCase() === "FAILED");
+  if (failed) {
+    await markNotPaid(attempt, "failed", failed.Error || "فشلت عملية الدفع عبر KNET", failed.PaymentId);
   }
 }
+
+export async function reconcileInvoicePayment(payload: PaymentWebhook): Promise<void> {
+  if (payload.Event?.Code !== 1 || payload.Event?.Name !== "PAYMENT_STATUS_CHANGED") return;
+  const providerInvoiceId = payload.Data?.Invoice?.Id;
+  if (!providerInvoiceId) return;
+  const [attempt] = await db.select().from(paymentAttemptsTable)
+    .where(eq(paymentAttemptsTable.providerInvoiceId, providerInvoiceId)).limit(1);
+  if (!attempt) {
+    logger.warn({ providerInvoiceId }, "Ignored MyFatoorah webhook for an unknown payment attempt");
+    return;
+  }
+  const invoiceStatus = payload.Data?.Invoice?.Status?.toUpperCase();
+  const expirationTime = payload.Data?.Invoice?.ExpirationDate
+    ? Date.parse(payload.Data.Invoice.ExpirationDate)
+    : Number.NaN;
+  if (
+    invoiceStatus === "CANCELED" ||
+    invoiceStatus === "CANCELLED" ||
+    invoiceStatus === "EXPIRED" ||
+    (Number.isFinite(expirationTime) && expirationTime <= Date.now())
+  ) {
+    await markNotPaid(attempt, "cancelled", "تم إلغاء أو انتهاء صلاحية عملية الدفع عبر KNET");
+    return;
+  }
+  const status = payload.Data?.Transaction?.Status?.toUpperCase();
+  if (status === "SUCCESS") {
+    await markPaid(
+      attempt,
+      payload.Data?.Transaction?.PaymentId ?? null,
+      Number(payload.Data?.Amount?.ValueInPayCurrency),
+      payload.Data?.Amount?.PayCurrency ?? "",
+    );
+  } else if (status === "FAILED") {
+    await markNotPaid(attempt, "failed", payload.Data?.Transaction?.Error?.Message || "فشلت عملية الدفع عبر KNET");
+  } else if (status === "CANCELED" || status === "CANCELLED") {
+    await markNotPaid(attempt, "cancelled", "تم إلغاء عملية الدفع عبر KNET");
+  }
+}
+
+export type { PaymentWebhook };

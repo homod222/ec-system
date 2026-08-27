@@ -18,7 +18,6 @@ import {
   GetDashboardActivityResponse,
   GetDashboardSummaryResponse,
   GetFinanceSummaryResponse,
-  GetKwdUsdExchangeRateResponse,
   GetSessionContextResponse,
   GetTodayAttendanceResponse,
   GetParentOverviewResponse,
@@ -70,9 +69,13 @@ import {
   staffTable,
 } from "@workspace/db";
 import { checkClassroomCapacity } from "../lib/classroomCapacity";
-import { createInvoiceCheckoutSession, isAllowedReturnUrl } from "../lib/financePayments";
+import {
+  createInvoiceCheckoutSession,
+  isAllowedReturnUrl,
+  PaymentAttemptInProgressError,
+  PaymentProviderConfigurationError,
+} from "../lib/financePayments";
 import { InvoiceNotPayableError, requireCheckoutPayable } from "../lib/invoiceLedger";
-import { ExchangeRateUnavailableError, getCurrentKwdToUsdRate } from "../lib/exchangeRates";
 import { sendDueReminder } from "../lib/notifications";
 import {
   auditNurseryOperation,
@@ -271,25 +274,6 @@ router.get("/session/context", async (req, res, next): Promise<void> => {
 });
 router.use("/parent", requireParentGuardian);
 router.use(resolveNurseryContext);
-
-router.get("/exchange-rates/kwd-usd", async (req, res): Promise<void> => {
-  try {
-    const current = await getCurrentKwdToUsdRate();
-    res.json(GetKwdUsdExchangeRateResponse.parse({
-      baseCurrency: "KWD",
-      quoteCurrency: "USD",
-      rate: current.rate,
-      updatedAt: current.fetchedAt.toISOString(),
-    }));
-  } catch (err) {
-    if (err instanceof ExchangeRateUnavailableError) {
-      res.status(503).json({ error: err.message, code: "EXCHANGE_RATE_UNAVAILABLE" });
-      return;
-    }
-    req.log.error({ err }, "Failed to load KWD/USD exchange rate");
-    res.status(500).json({ error: "Failed to load exchange rate" });
-  }
-});
 
 router.use(async (req, res, next) => {
   if (req.path.startsWith("/parent/")) {
@@ -873,13 +857,17 @@ router.post("/invoices/:id/checkout-session", async (req, res): Promise<void> =>
     });
     res.json(CreateInvoiceCheckoutSessionResponse.parse({ url: session.url }));
   } catch (err) {
-    req.log.error({ err, invoiceId: invoice.id }, "Failed to create Stripe checkout session");
+    req.log.error({ err, invoiceId: invoice.id }, "Failed to create MyFatoorah KNET payment");
     if (err instanceof InvoiceNotPayableError) {
       res.status(409).json({ error: err.message });
       return;
     }
-    if (err instanceof ExchangeRateUnavailableError) {
-      res.status(503).json({ error: err.message, code: "EXCHANGE_RATE_UNAVAILABLE" });
+    if (err instanceof PaymentProviderConfigurationError) {
+      res.status(503).json({ error: err.message, code: "PAYMENT_PROVIDER_NOT_CONFIGURED" });
+      return;
+    }
+    if (err instanceof PaymentAttemptInProgressError) {
+      res.status(409).json({ error: err.message, code: "PAYMENT_ATTEMPT_IN_PROGRESS" });
       return;
     }
     res.status(502).json({ error: "Failed to create payment session" });
@@ -918,6 +906,7 @@ router.post("/invoices/:id/cash-payment", async (req, res): Promise<void> => {
   const paidAt = new Date();
   const reference = `CASH-${invoice.invoiceNumber}-${paidAt.getTime()}`;
   const updated = await db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(${invoice.id})`);
     const [paidInvoice] = await tx
       .update(invoicesTable)
       .set({
@@ -1288,13 +1277,17 @@ router.post("/parent/invoices/:id/checkout-session", async (req, res): Promise<v
     });
     res.json(CreateParentInvoiceCheckoutSessionResponse.parse({ url: session.url }));
   } catch (err) {
-    req.log.error({ err, invoiceId: invoice.id }, "Failed to create parent Stripe checkout session");
+    req.log.error({ err, invoiceId: invoice.id }, "Failed to create parent MyFatoorah KNET payment");
     if (err instanceof InvoiceNotPayableError) {
       res.status(409).json({ error: err.message });
       return;
     }
-    if (err instanceof ExchangeRateUnavailableError) {
-      res.status(503).json({ error: err.message, code: "EXCHANGE_RATE_UNAVAILABLE" });
+    if (err instanceof PaymentProviderConfigurationError) {
+      res.status(503).json({ error: err.message, code: "PAYMENT_PROVIDER_NOT_CONFIGURED" });
+      return;
+    }
+    if (err instanceof PaymentAttemptInProgressError) {
+      res.status(409).json({ error: err.message, code: "PAYMENT_ATTEMPT_IN_PROGRESS" });
       return;
     }
     res.status(502).json({ error: "Failed to create payment session" });

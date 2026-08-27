@@ -28,12 +28,18 @@ export async function runApplicationMigrations(): Promise<void> {
     ALTER TABLE invoices
       ADD COLUMN IF NOT EXISTS owner_id text NOT NULL DEFAULT '__legacy__',
       ADD COLUMN IF NOT EXISTS stripe_checkout_attempt integer NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS myfatoorah_invoice_id text,
+      ADD COLUMN IF NOT EXISTS myfatoorah_payment_id text,
+      ADD COLUMN IF NOT EXISTS myfatoorah_payment_url text,
+      ADD COLUMN IF NOT EXISTS myfatoorah_checkout_attempt integer NOT NULL DEFAULT 0,
       ADD COLUMN IF NOT EXISTS issued_at timestamptz,
       ADD COLUMN IF NOT EXISTS cancelled_at timestamptz,
       ADD COLUMN IF NOT EXISTS cancellation_reason text,
       ADD COLUMN IF NOT EXISTS payment_method text,
       ADD COLUMN IF NOT EXISTS payment_reference text,
-      ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now();
+      ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now(),
+      ALTER COLUMN amount TYPE numeric(12, 3),
+      ALTER COLUMN charged_amount TYPE numeric(12, 3);
     ALTER TABLE application_documents
       ADD COLUMN IF NOT EXISTS child_id integer,
       ADD COLUMN IF NOT EXISTS parent_visible boolean NOT NULL DEFAULT true;
@@ -179,6 +185,22 @@ export async function runApplicationMigrations(): Promise<void> {
       status text NOT NULL, reference text, note text, recorded_by text,
       created_at timestamptz NOT NULL DEFAULT now()
     );
+    CREATE TABLE IF NOT EXISTS payment_attempts (
+      id serial PRIMARY KEY,
+      invoice_id integer NOT NULL,
+      attempt_number integer NOT NULL,
+      customer_reference text NOT NULL UNIQUE,
+      provider_invoice_id text UNIQUE,
+      provider_payment_id text,
+      payment_url text,
+      status text NOT NULL,
+      amount numeric(12, 3) NOT NULL,
+      currency text NOT NULL DEFAULT 'KWD',
+      error_message text,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT payment_attempts_invoice_attempt_unique UNIQUE (invoice_id, attempt_number)
+    );
     CREATE TABLE IF NOT EXISTS invoice_refunds (
       id serial PRIMARY KEY, owner_id text NOT NULL, invoice_id integer NOT NULL,
       payment_id integer, amount numeric(12,3) NOT NULL, reason text NOT NULL,
@@ -294,6 +316,8 @@ export async function runApplicationMigrations(): Promise<void> {
     CREATE INDEX IF NOT EXISTS invoice_lines_owner_invoice_idx ON invoice_lines (owner_id, invoice_id);
     CREATE UNIQUE INDEX IF NOT EXISTS invoices_owner_number_unique ON invoices (owner_id, invoice_number);
     CREATE INDEX IF NOT EXISTS invoice_payments_owner_invoice_idx ON invoice_payments (owner_id, invoice_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS invoices_myfatoorah_invoice_id_unique
+      ON invoices (myfatoorah_invoice_id) WHERE myfatoorah_invoice_id IS NOT NULL;
     CREATE INDEX IF NOT EXISTS invoice_refunds_owner_invoice_idx ON invoice_refunds (owner_id, invoice_id);
     CREATE UNIQUE INDEX IF NOT EXISTS invoice_receipts_owner_payment_unique ON invoice_receipts (owner_id, payment_id);
     CREATE UNIQUE INDEX IF NOT EXISTS invoice_receipts_owner_number_unique ON invoice_receipts (owner_id, receipt_number);

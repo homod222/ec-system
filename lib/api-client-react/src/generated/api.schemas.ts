@@ -756,29 +756,6 @@ export interface InvoiceCheckoutSessionInput {
 export interface InvoiceCheckoutSession {
   url: string;
 }
-
-export type ExchangeRateBaseCurrency =
-  (typeof ExchangeRateBaseCurrency)[keyof typeof ExchangeRateBaseCurrency];
-
-export const ExchangeRateBaseCurrency = {
-  KWD: "KWD",
-} as const;
-
-export type ExchangeRateQuoteCurrency =
-  (typeof ExchangeRateQuoteCurrency)[keyof typeof ExchangeRateQuoteCurrency];
-
-export const ExchangeRateQuoteCurrency = {
-  USD: "USD",
-} as const;
-
-export interface ExchangeRate {
-  baseCurrency: ExchangeRateBaseCurrency;
-  quoteCurrency: ExchangeRateQuoteCurrency;
-  /** @exclusiveMinimum 0 */
-  rate: number;
-  updatedAt: string;
-}
-
 export type InvoiceReminderResultStatus =
   (typeof InvoiceReminderResultStatus)[keyof typeof InvoiceReminderResultStatus];
 

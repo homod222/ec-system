@@ -39,7 +39,6 @@ import type {
   Classroom,
   ClassroomInput,
   DashboardSummary,
-  ExchangeRate,
   FinanceSummary,
   GetNurseryReportParams,
   Guardian,
@@ -3020,87 +3019,12 @@ export function useListParentReceipts<
   return withQueryKey(query, queryOptions.queryKey);
 }
 
-export const getGetKwdUsdExchangeRateUrl = () => {
-  return `/api/exchange-rates/kwd-usd`;
-};
-
-/**
- * @summary Get the current fresh KWD to USD exchange rate
- */
-export const getKwdUsdExchangeRate = async (
-  options?: Parameters<typeof customFetch>[1],
-): Promise<ExchangeRate> => {
-  return customFetch<ExchangeRate>(getGetKwdUsdExchangeRateUrl(), {
-    ...options,
-    method: "GET",
-  });
-};
-
-export const getGetKwdUsdExchangeRateQueryKey = () => {
-  return [`/api/exchange-rates/kwd-usd`] as const;
-};
-
-export const getGetKwdUsdExchangeRateQueryOptions = <
-  TData = Awaited<ReturnType<typeof getKwdUsdExchangeRate>>,
-  TError = ErrorType<void>,
->(options?: {
-  query?: UseQueryOptions<
-    Awaited<ReturnType<typeof getKwdUsdExchangeRate>>,
-    TError,
-    TData
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}) => {
-  const { query: queryOptions, request: requestOptions } = options ?? {};
-
-  const queryKey = queryOptions?.queryKey ?? getGetKwdUsdExchangeRateQueryKey();
-
-  const queryFn: QueryFunction<
-    Awaited<ReturnType<typeof getKwdUsdExchangeRate>>
-  > = ({ signal }) => getKwdUsdExchangeRate({ signal, ...requestOptions });
-
-  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
-    Awaited<ReturnType<typeof getKwdUsdExchangeRate>>,
-    TError,
-    TData
-  > & { queryKey: QueryKey };
-};
-
-export type GetKwdUsdExchangeRateQueryResult = NonNullable<
-  Awaited<ReturnType<typeof getKwdUsdExchangeRate>>
->;
-export type GetKwdUsdExchangeRateQueryError = ErrorType<void>;
-
-/**
- * @summary Get the current fresh KWD to USD exchange rate
- */
-
-export function useGetKwdUsdExchangeRate<
-  TData = Awaited<ReturnType<typeof getKwdUsdExchangeRate>>,
-  TError = ErrorType<void>,
->(options?: {
-  query?: UseQueryOptions<
-    Awaited<ReturnType<typeof getKwdUsdExchangeRate>>,
-    TError,
-    TData
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions = getGetKwdUsdExchangeRateQueryOptions(options);
-
-  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
-    queryKey: QueryKey;
-  };
-
-  return withQueryKey(query, queryOptions.queryKey);
-}
-
 export const getCreateInvoiceCheckoutSessionUrl = (id: number) => {
   return `/api/invoices/${id}/checkout-session`;
 };
 
 /**
- * @summary Create a Stripe checkout session to pay an invoice
+ * @summary Create a MyFatoorah KNET payment for an invoice in KWD
  */
 export const createInvoiceCheckoutSession = async (
   id: number,
@@ -3164,7 +3088,7 @@ export type CreateInvoiceCheckoutSessionMutationBody =
 export type CreateInvoiceCheckoutSessionMutationError = ErrorType<void>;
 
 /**
- * @summary Create a Stripe checkout session to pay an invoice
+ * @summary Create a MyFatoorah KNET payment for an invoice in KWD
  */
 export const useCreateInvoiceCheckoutSession = <
   TError = ErrorType<void>,
@@ -3971,7 +3895,7 @@ export const getCreateParentInvoiceCheckoutSessionUrl = (id: number) => {
 };
 
 /**
- * @summary Create a Stripe checkout session for a guardian invoice
+ * @summary Create a MyFatoorah KNET payment for a guardian invoice in KWD
  */
 export const createParentInvoiceCheckoutSession = async (
   id: number,
@@ -4035,7 +3959,7 @@ export type CreateParentInvoiceCheckoutSessionMutationBody =
 export type CreateParentInvoiceCheckoutSessionMutationError = ErrorType<void>;
 
 /**
- * @summary Create a Stripe checkout session for a guardian invoice
+ * @summary Create a MyFatoorah KNET payment for a guardian invoice in KWD
  */
 export const useCreateParentInvoiceCheckoutSession = <
   TError = ErrorType<void>,

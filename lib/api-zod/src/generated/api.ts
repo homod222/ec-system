@@ -1044,17 +1044,7 @@ export const ListParentReceiptsResponse = zod.array(
   ListParentReceiptsResponseItem,
 );
 /**
- * @summary Get the current fresh KWD to USD exchange rate
- */
-export const getKwdUsdExchangeRateResponseRateExclusiveMin = 0;
-export const GetKwdUsdExchangeRateResponse = zod.object({
-  baseCurrency: zod.enum(["KWD"]),
-  quoteCurrency: zod.enum(["USD"]),
-  rate: zod.number().gt(getKwdUsdExchangeRateResponseRateExclusiveMin),
-  updatedAt: zod.coerce.date(),
-});
-/**
- * @summary Create a Stripe checkout session to pay an invoice
+ * @summary Create a MyFatoorah KNET payment for an invoice in KWD
  */
 export const CreateInvoiceCheckoutSessionParams = zod.object({
   id: zod.coerce.number(),
@@ -1263,7 +1253,7 @@ export const ListParentInvoicesResponse = zod.array(
   ListParentInvoicesResponseItem,
 );
 /**
- * @summary Create a Stripe checkout session for a guardian invoice
+ * @summary Create a MyFatoorah KNET payment for a guardian invoice in KWD
  */
 export const CreateParentInvoiceCheckoutSessionParams = zod.object({
   id: zod.coerce.number(),

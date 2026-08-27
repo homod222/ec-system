@@ -1,87 +1,170 @@
-import type Stripe from "stripe";
 import {
-  childrenTable,
   db,
-  guardiansTable,
-  invoicePaymentsTable,
-  invoiceRefundsTable,
   invoicesTable,
+  paymentAttemptsTable,
   type Guardian,
   type Invoice,
+  type PaymentAttempt,
 } from "@workspace/db";
-import { and, eq, inArray, sql } from "drizzle-orm";
-import { getUncachableStripeClient } from "./stripeClient";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { logger } from "./logger";
-import {
-  EXCHANGE_RATE_LOCK_ID,
-  getCurrentKwdToUsdRate,
-  getStoredFreshKwdToUsdRate,
-} from "./exchangeRates";
-import {
-  invoiceOutstandingBalance,
-  requireCheckoutPayable,
-  settledPaymentStatuses,
-} from "./invoiceLedger";
 
-const INVOICE_PRODUCT_NAME = "رسوم الحضانة";
+const SANDBOX_BASE_URL = "https://apitest.myfatoorah.com";
+const PRODUCTION_BASE_URL = "https://api.myfatoorah.com";
 
-/**
- * Nursery invoices carry an arbitrary, per-invoice amount, so there is no
- * fixed catalog of Stripe Prices to reuse. We keep a single Stripe Product
- * (created once, found by name afterwards) and attach a dynamic `price_data`
- * to each Checkout Session -- this keeps the product catalog itself living in
- * Stripe (per the platform convention) while still supporting one-off custom
- * amounts.
- */
-let cachedProductId: string | null = null;
-
-async function getOrCreateInvoiceProduct(stripe: Stripe): Promise<string> {
-  if (cachedProductId) return cachedProductId;
-
-  const existing = await stripe.products.search({
-    query: `name:'${INVOICE_PRODUCT_NAME}' AND active:'true'`,
-  });
-  if (existing.data.length > 0) {
-    cachedProductId = existing.data[0].id;
-    return cachedProductId;
+export class PaymentProviderConfigurationError extends Error {
+  constructor() {
+    super("خدمة الدفع عبر KNET غير مهيأة بعد. يرجى التواصل مع إدارة الحضانة.");
+    this.name = "PaymentProviderConfigurationError";
   }
+}
 
-  const product = await stripe.products.create({
-    name: INVOICE_PRODUCT_NAME,
-    description: "سداد فواتير رسوم الحضانة",
+export class PaymentAttemptInProgressError extends Error {
+  constructor() {
+    super("تجري الآن معالجة محاولة دفع سابقة. يرجى الانتظار قليلًا ثم تحديث الصفحة.");
+    this.name = "PaymentAttemptInProgressError";
+  }
+}
+
+class MyFatoorahApiError extends Error {
+  constructor(message: string, readonly mayHaveSucceeded: boolean) {
+    super(message);
+    this.name = "MyFatoorahApiError";
+  }
+}
+
+export function isAmbiguousProviderFailure(
+  operationCanCreateInvoice: boolean,
+  responseStatus?: number,
+  responseBodyMissing = false,
+): boolean {
+  if (!operationCanCreateInvoice) return false;
+  if (responseStatus === undefined) return true;
+  return responseStatus >= 500 || (responseStatus >= 200 && responseStatus < 300 && responseBodyMissing);
+}
+
+export function isIncompleteExecutePaymentResponse(
+  result: { InvoiceId?: number; PaymentURL?: string },
+): boolean {
+  return !result.InvoiceId || !result.PaymentURL;
+}
+
+type MyFatoorahResponse<T> = {
+  IsSuccess: boolean;
+  Message?: string;
+  Data?: T;
+  ValidationErrors?: Array<{ Name?: string; Error?: string }>;
+};
+
+type PaymentMethod = {
+  PaymentMethodId: number;
+  PaymentMethodAr?: string;
+  PaymentMethodEn?: string;
+  PaymentMethodCode?: string;
+};
+
+export type MyFatoorahPaymentStatus = {
+  InvoiceId: number;
+  InvoiceStatus: string;
+  CustomerReference?: string;
+  ExpiryDate?: string;
+  InvoiceValue?: number;
+  InvoiceTransactions?: Array<{
+    PaymentId?: string;
+    TransactionStatus?: string;
+    PaidCurrency?: string;
+    PaidCurrencyValue?: string;
+    Error?: string;
+  }>;
+};
+
+function getApiKey(): string {
+  const key = process.env.MYFATOORAH_API_KEY;
+  const webhookSecret = process.env.MYFATOORAH_WEBHOOK_SECRET;
+  const production = process.env.MYFATOORAH_ENVIRONMENT === "production";
+  const productionWebhookConfirmed = process.env.MYFATOORAH_WEBHOOK_CONFIGURED === "true";
+  if (!key || !webhookSecret || (production && !productionWebhookConfirmed)) {
+    throw new PaymentProviderConfigurationError();
+  }
+  return key;
+}
+
+export function isMyFatoorahConfigured(): boolean {
+  try {
+    getApiKey();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function getMyFatoorahBaseUrl(): string {
+  return process.env.MYFATOORAH_ENVIRONMENT === "production"
+    ? PRODUCTION_BASE_URL
+    : SANDBOX_BASE_URL;
+}
+
+async function myFatoorahRequest<T>(
+  path: string,
+  body: unknown,
+  ambiguousIfProviderFails = false,
+): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(`${getMyFatoorahBaseUrl()}${path}`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${getApiKey()}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch (error) {
+    throw new MyFatoorahApiError(
+      error instanceof Error ? error.message : "MyFatoorah network request failed",
+      isAmbiguousProviderFailure(ambiguousIfProviderFails),
+    );
+  }
+  const payload = (await response.json().catch(() => null)) as MyFatoorahResponse<T> | null;
+  if (!response.ok || !payload?.IsSuccess || payload.Data === undefined) {
+    const validation = payload?.ValidationErrors?.map((item) => item.Error).filter(Boolean).join("; ");
+    throw new MyFatoorahApiError(
+      validation || payload?.Message || `MyFatoorah request failed with HTTP ${response.status}`,
+      isAmbiguousProviderFailure(ambiguousIfProviderFails, response.status, payload === null),
+    );
+  }
+  return payload.Data;
+}
+
+export function getMyFatoorahPaymentStatus(
+  key: string,
+  keyType: "InvoiceId" | "PaymentId" | "CustomerReference",
+): Promise<MyFatoorahPaymentStatus> {
+  return myFatoorahRequest<MyFatoorahPaymentStatus>("/v2/GetPaymentStatus", {
+    Key: key,
+    KeyType: keyType,
   });
-  cachedProductId = product.id;
-  return cachedProductId;
 }
 
-/**
- * Invoices are denominated in Kuwaiti Dinar (KWD), but the connected Stripe
- * account rejects KWD as a presentment currency (confirmed via a live API
- * call: `Invalid currency: kwd ... Your account currently supports these
- * currencies: usd, aed, ...` -- KWD is not in that list at all, so this is an
- * account/region limitation, not something fixable by adding a bank account
- * from application code). The user chose to keep invoices in KWD and let the
- * integration pick a Stripe-supported charge currency, so we charge in USD
- * using a recently fetched market rate. Checkout is stopped if no sufficiently
- * fresh rate is available, rather than silently charging with stale data.
- */
-const CHARGE_CURRENCY = "usd";
-
-/**
- * KWD is a three-decimal currency; USD is a two-decimal currency. Convert the
- * KWD invoice amount to USD, then to the smallest unit (cents) Stripe expects.
- */
-function toStripeAmount(amountKwd: number, exchangeRate: number): number {
-  return Math.round(amountKwd * exchangeRate * 100);
+async function resolveKnetPaymentMethodId(amountKwd: number): Promise<number> {
+  const result = await myFatoorahRequest<PaymentMethod[] | { PaymentMethods: PaymentMethod[] }>("/v2/InitiatePayment", {
+    InvoiceAmount: amountKwd,
+    CurrencyIso: "KWD",
+  });
+  const methods = Array.isArray(result) ? result : result.PaymentMethods;
+  if (!Array.isArray(methods)) {
+    throw new MyFatoorahApiError("MyFatoorah returned an invalid payment-method response", false);
+  }
+  const knet = methods.find((method) => {
+    const label = `${method.PaymentMethodCode ?? ""} ${method.PaymentMethodEn ?? ""} ${method.PaymentMethodAr ?? ""}`.toLowerCase();
+    return label.includes("knet") || label.includes("كي نت") || label.includes("كي-نت");
+  });
+  if (!knet) throw new MyFatoorahApiError("KNET is not enabled on the MyFatoorah merchant account", false);
+  return knet.PaymentMethodId;
 }
 
-/**
- * Origins the app is allowed to redirect a guardian back to after Stripe
- * checkout. Built only from server-controlled deployment env vars, never
- * from client input -- accepting an arbitrary caller-supplied return URL
- * would let an authenticated caller point Stripe's post-payment redirect at
- * an attacker-controlled domain (open-redirect / phishing vector).
- */
 function getAllowedReturnOrigins(): string[] {
   const domains = new Set<string>();
   process.env.REPLIT_DOMAINS?.split(",").forEach((domain) => {
@@ -100,178 +183,162 @@ export function isAllowedReturnUrl(url: string): boolean {
   }
 }
 
+function normalizedKuwaitPhone(phone: string): { countryCode?: string; mobile?: string } {
+  const digits = phone.replace(/\D/g, "");
+  const local = digits.startsWith("965") ? digits.slice(3) : digits;
+  return local.length >= 8 ? { countryCode: "965", mobile: local.slice(-8) } : {};
+}
+
+type Reservation =
+  | { kind: "existing"; attempt: PaymentAttempt }
+  | { kind: "new"; attempt: PaymentAttempt; invoice: Invoice };
+
+type ExecutePaymentResult = { InvoiceId: number; PaymentURL: string };
+
+type CheckoutDependencies = {
+  persistExecutedPaymentResult?: (
+    attempt: PaymentAttempt,
+    invoice: Invoice,
+    result: ExecutePaymentResult,
+  ) => Promise<void>;
+};
+
+async function reserveAttempt(
+  invoiceId: number,
+  ownerId: string,
+  guardianId: number,
+): Promise<Reservation> {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(${invoiceId})`);
+    const [invoice] = await tx.select().from(invoicesTable)
+      .where(and(
+        eq(invoicesTable.id, invoiceId),
+        eq(invoicesTable.ownerId, ownerId),
+        eq(invoicesTable.guardianId, guardianId),
+      )).limit(1);
+    if (!invoice || invoice.status === "paid") throw new Error("Invoice is no longer payable");
+
+    const [latest] = await tx.select().from(paymentAttemptsTable)
+      .where(eq(paymentAttemptsTable.invoiceId, invoiceId))
+      .orderBy(desc(paymentAttemptsTable.attemptNumber))
+      .limit(1);
+    if (latest && (latest.status === "creating" || latest.status === "pending")) {
+      if (latest.paymentUrl) return { kind: "existing" as const, attempt: latest };
+      throw new PaymentAttemptInProgressError();
+    }
+
+    const attemptNumber = (latest?.attemptNumber ?? 0) + 1;
+    const [attempt] = await tx.insert(paymentAttemptsTable).values({
+      invoiceId,
+      attemptNumber,
+      customerReference: `invoice-${invoiceId}-attempt-${attemptNumber}`,
+      status: "creating",
+      amount: invoice.amount,
+      currency: "KWD",
+    }).returning();
+    return { kind: "new" as const, attempt, invoice };
+  });
+}
+
+async function persistExecutedPaymentResult(
+  attempt: PaymentAttempt,
+  invoice: Invoice,
+  result: ExecutePaymentResult,
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    const [updatedAttempt] = await tx.update(paymentAttemptsTable).set({
+      providerInvoiceId: String(result.InvoiceId),
+      paymentUrl: result.PaymentURL,
+      status: "pending",
+      updatedAt: new Date(),
+    }).where(eq(paymentAttemptsTable.id, attempt.id)).returning();
+    if (!updatedAttempt) throw new Error("Reserved payment attempt no longer exists");
+    await tx.update(invoicesTable).set({
+      myFatoorahInvoiceId: String(result.InvoiceId),
+      myFatoorahPaymentUrl: result.PaymentURL,
+      myFatoorahCheckoutAttempt: attempt.attemptNumber,
+      lastPaymentStatus: "pending",
+      lastPaymentError: null,
+    }).where(eq(invoicesTable.id, invoice.id));
+  });
+}
+
 export async function createInvoiceCheckoutSession(params: {
   invoice: Invoice;
   guardian: Guardian;
   successUrl: string;
   cancelUrl: string;
-}): Promise<{ url: string; sessionId: string }> {
-  // Refresh on demand before entering the shared publication lock. Attempting
-  // an exclusive refresh while holding the shared lock would self-deadlock.
-  // Do this before any Stripe work so an expired rate cannot even begin
-  // preparing a payment session.
-  await getCurrentKwdToUsdRate();
-  const stripe = await getUncachableStripeClient();
-  const productId = await getOrCreateInvoiceProduct(stripe);
+}, dependencies: CheckoutDependencies = {}): Promise<{ url: string; sessionId: string }> {
+  getApiKey();
+  if (params.guardian.ownerId !== params.invoice.ownerId) {
+    throw new Error("Invoice is no longer payable");
+  }
+  const reservation = await reserveAttempt(
+    params.invoice.id,
+    params.invoice.ownerId,
+    params.guardian.id,
+  );
+  if (reservation.kind === "existing") {
+    return {
+      url: reservation.attempt.paymentUrl!,
+      sessionId: reservation.attempt.providerInvoiceId ?? String(reservation.attempt.id),
+    };
+  }
 
-  return db.transaction(async (tx) => {
-    await tx.execute(sql`select pg_advisory_xact_lock_shared(${EXCHANGE_RATE_LOCK_ID})`);
-    // A database-backed advisory lock serializes checkout creation for the
-    // invoice across concurrent requests and API instances. The second caller
-    // sees and reuses the session stored by the first instead of minting
-    // another payable link.
-    await tx.execute(sql`select pg_advisory_xact_lock(${params.invoice.id})`);
-
-    const [currentInvoiceRow] = await tx
-      .select({ invoice: invoicesTable })
-      .from(invoicesTable)
-      .innerJoin(childrenTable, and(
-        eq(invoicesTable.childId, childrenTable.id),
-        eq(invoicesTable.ownerId, childrenTable.ownerId),
-      ))
-      .innerJoin(guardiansTable, and(
-        eq(invoicesTable.guardianId, guardiansTable.id),
-        eq(invoicesTable.ownerId, guardiansTable.ownerId),
-      ))
-      .where(and(
-        eq(invoicesTable.id, params.invoice.id),
-        eq(invoicesTable.ownerId, params.invoice.ownerId),
-        eq(invoicesTable.guardianId, params.guardian.id),
-      ))
-      .limit(1);
-    const currentInvoice = currentInvoiceRow?.invoice;
-    if (!currentInvoice) throw new Error("Invoice no longer exists");
-    const [payments, refunds] = await Promise.all([
-      tx.select({ amount: invoicePaymentsTable.amount }).from(invoicePaymentsTable).where(and(
-        eq(invoicePaymentsTable.ownerId, currentInvoice.ownerId),
-        eq(invoicePaymentsTable.invoiceId, currentInvoice.id),
-        inArray(invoicePaymentsTable.status, [...settledPaymentStatuses]),
-      )),
-      tx.select({ amount: invoiceRefundsTable.amount }).from(invoiceRefundsTable).where(and(
-        eq(invoiceRefundsTable.ownerId, currentInvoice.ownerId),
-        eq(invoiceRefundsTable.invoiceId, currentInvoice.id),
-      )),
-    ]);
-    const outstandingBalance = invoiceOutstandingBalance(currentInvoice.amount, payments, refunds);
-    requireCheckoutPayable(currentInvoice.status, outstandingBalance);
-
-    const {
-      rate: exchangeRate,
-      fetchedAt: exchangeRateFetchedAt,
-      sourceUpdatedAt: exchangeRateSourceUpdatedAt,
-    } = await getStoredFreshKwdToUsdRate();
-    const rateVersion = String(exchangeRateSourceUpdatedAt.getTime());
-
-    let replaceExistingSession = false;
-    if (currentInvoice.stripeCheckoutSessionId) {
-      try {
-        const existing = await stripe.checkout.sessions.retrieve(currentInvoice.stripeCheckoutSessionId);
-        if (
-          existing.status === "open" &&
-          existing.url &&
-          existing.metadata?.exchangeRateVersion === rateVersion &&
-          Number(existing.metadata?.settlementAmountKwd) === outstandingBalance
-        ) {
-          return { url: existing.url, sessionId: existing.id };
-        }
-        if (existing.status === "open") {
-          await stripe.checkout.sessions.expire(existing.id);
-          replaceExistingSession = true;
-        } else if (existing.status === "expired") {
-          replaceExistingSession = true;
-        } else {
-          throw new Error("Invoice payment is already processing");
-        }
-      } catch (err) {
-        if (
-          err &&
-          typeof err === "object" &&
-          "statusCode" in err &&
-          (err as { statusCode?: number }).statusCode === 404
-        ) {
-          replaceExistingSession = true;
-        } else {
-          throw err;
-        }
-      }
+  const { attempt, invoice } = reservation;
+  let providerMayHaveCreatedInvoice = false;
+  try {
+    const paymentMethodId = await resolveKnetPaymentMethodId(invoice.amount);
+    const phone = normalizedKuwaitPhone(params.guardian.phone);
+    const result = await myFatoorahRequest<ExecutePaymentResult>("/v2/ExecutePayment", {
+      PaymentMethodId: paymentMethodId,
+      InvoiceValue: invoice.amount,
+      DisplayCurrencyIso: "KWD",
+      CustomerName: params.guardian.name,
+      CustomerEmail: params.guardian.email ?? undefined,
+      MobileCountryCode: phone.countryCode,
+      CustomerMobile: phone.mobile,
+      Language: "AR",
+      CustomerReference: attempt.customerReference,
+      UserDefinedField: `invoice:${invoice.id};attempt:${attempt.id}`,
+      CallBackUrl: params.successUrl,
+      ErrorUrl: params.cancelUrl,
+      InvoiceItems: [{
+        ItemName: `رسوم الحضانة - ${invoice.invoiceNumber}`,
+        Quantity: 1,
+        UnitPrice: invoice.amount,
+      }],
+    }, true);
+    providerMayHaveCreatedInvoice = true;
+    if (isIncompleteExecutePaymentResponse(result)) {
+      throw new MyFatoorahApiError("MyFatoorah returned an incomplete payment response", true);
     }
 
-    const nextAttempt = currentInvoice.stripeCheckoutAttempt + 1;
-    await tx
-      .update(invoicesTable)
-      .set({ stripeCheckoutAttempt: nextAttempt })
-      .where(eq(invoicesTable.id, currentInvoice.id));
-
-    const session = await stripe.checkout.sessions.create(
-      {
-        mode: "payment",
-        payment_method_types: ["card"],
-        line_items: [
-          {
-            quantity: 1,
-            price_data: {
-              currency: CHARGE_CURRENCY,
-              unit_amount: toStripeAmount(outstandingBalance, exchangeRate),
-              product: productId,
-            },
-          },
-        ],
-        customer_email: params.guardian.email ?? undefined,
-        metadata: {
-          invoiceId: String(currentInvoice.id),
-          invoiceNumber: currentInvoice.invoiceNumber,
-          originalAmountKwd: String(currentInvoice.amount),
-          settlementAmountKwd: String(outstandingBalance),
-          exchangeRateKwdToUsd: String(exchangeRate),
-          exchangeRateFetchedAt: exchangeRateFetchedAt.toISOString(),
-          exchangeRateVersion: rateVersion,
-        },
-        payment_intent_data: {
-          metadata: {
-            invoiceId: String(currentInvoice.id),
-            originalAmountKwd: String(currentInvoice.amount),
-            settlementAmountKwd: String(outstandingBalance),
-            exchangeRateKwdToUsd: String(exchangeRate),
-            exchangeRateFetchedAt: exchangeRateFetchedAt.toISOString(),
-            exchangeRateVersion: rateVersion,
-          },
-        },
-        success_url: params.successUrl,
-        cancel_url: params.cancelUrl,
-        // Keep a payable link short-lived even if a provider update or
-        // scheduler failure prevents proactive revocation. Stripe requires at
-        // least 30 minutes, so allow a small clock-skew margin.
-        expires_at: Math.floor(Date.now() / 1_000) + 31 * 60,
-      },
-      {
-        // The persisted attempt increments only when replacing/creating under
-        // the invoice lock. If Stripe succeeds but the DB transaction fails,
-        // the increment rolls back and a retry reuses this same key/session.
-        idempotencyKey: `invoice-checkout-${currentInvoice.id}-${nextAttempt}-${rateVersion}`,
-      },
+    await (dependencies.persistExecutedPaymentResult ?? persistExecutedPaymentResult)(
+      attempt,
+      invoice,
+      result,
     );
 
-    if (session.status !== "open" || !session.url) {
-      throw new Error("Stripe did not return an open checkout session");
+    logger.info({
+      invoiceId: invoice.id,
+      paymentAttemptId: attempt.id,
+      providerInvoiceId: String(result.InvoiceId),
+      currency: "KWD",
+      method: "KNET",
+      environment: process.env.MYFATOORAH_ENVIRONMENT === "production" ? "production" : "sandbox",
+    }, "Created MyFatoorah KNET payment");
+    return { url: result.PaymentURL, sessionId: String(result.InvoiceId) };
+  } catch (error) {
+    const providerFailureMayHaveSucceeded =
+      error instanceof MyFatoorahApiError && error.mayHaveSucceeded;
+    if (!providerMayHaveCreatedInvoice && !providerFailureMayHaveSucceeded) {
+      await db.update(paymentAttemptsTable).set({
+        status: "failed",
+        errorMessage: error instanceof Error ? error.message.slice(0, 500) : "Payment creation failed",
+        updatedAt: new Date(),
+      }).where(eq(paymentAttemptsTable.id, attempt.id));
     }
-
-    await tx
-      .update(invoicesTable)
-      .set({ stripeCheckoutSessionId: session.id })
-      .where(eq(invoicesTable.id, currentInvoice.id));
-
-    logger.info(
-      {
-        invoiceId: currentInvoice.id,
-        sessionId: session.id,
-        exchangeRate,
-        rateVersion,
-        checkoutAttempt: nextAttempt,
-        replacedExistingSession: replaceExistingSession,
-      },
-      "Created Stripe checkout session for invoice",
-    );
-
-    return { url: session.url, sessionId: session.id };
-  });
+    throw error;
+  }
 }
