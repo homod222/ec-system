@@ -1,10 +1,143 @@
-import { Link } from 'wouter';
+import { Link, Redirect } from 'wouter';
 import { useAuth, useUser } from '@clerk/react';
-import { Redirect } from 'wouter';
-import { ArrowUpRight, Check, CalendarCheck, ShieldCheck, Sparkles, Star } from 'lucide-react';
+import { ArrowUpRight, Check, CalendarCheck, ShieldCheck, Sparkles, Star, ChevronRight, ChevronLeft } from 'lucide-react';
 import { getGetSessionContextQueryKey, useGetSessionContext } from '@workspace/api-client-react';
+import { useCallback, useEffect, useState } from 'react';
+import useEmblaCarousel from 'embla-carousel-react';
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
+
+const galleryImages = [
+  { src: `${basePath}/media/classroom-learning.webp`, alt: 'التعلم في الفصول الدراسية' },
+  { src: `${basePath}/media/cooking-activity.webp`, alt: 'نشاط الطهي' },
+  { src: `${basePath}/media/creative-play.webp`, alt: 'اللعب الإبداعي' },
+  { src: `${basePath}/media/hero-child.webp`, alt: 'طفل في الحضانة' },
+  { src: `${basePath}/media/outdoor-play.webp`, alt: 'اللعب في الخارج' },
+  { src: `${basePath}/media/space-day.webp`, alt: 'يوم الفضاء' },
+];
+
+function GalleryCarousel() {
+  const [emblaRef, emblaApi] = useEmblaCarousel({ loop: true, direction: 'rtl', align: 'center' });
+  const [selectedIndex, setSelectedIndex] = useState(0);
+
+  const scrollPrev = useCallback(() => emblaApi && emblaApi.scrollPrev(), [emblaApi]);
+  const scrollNext = useCallback(() => emblaApi && emblaApi.scrollNext(), [emblaApi]);
+  const scrollTo = useCallback((index: number) => emblaApi && emblaApi.scrollTo(index), [emblaApi]);
+
+  const onSelect = useCallback(() => {
+    if (!emblaApi) return;
+    setSelectedIndex(emblaApi.selectedScrollSnap());
+  }, [emblaApi]);
+
+  useEffect(() => {
+    if (!emblaApi) return;
+    onSelect();
+    emblaApi.on('select', onSelect);
+    emblaApi.on('reInit', onSelect);
+  }, [emblaApi, onSelect]);
+
+  useEffect(() => {
+    if (!emblaApi) return;
+    
+    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    if (mediaQuery.matches) return;
+
+    let intervalId: number;
+    let hovered = false;
+
+    const startAutoplay = () => {
+      stopAutoplay();
+      intervalId = window.setInterval(() => {
+        if (!hovered) {
+          emblaApi.scrollNext();
+        }
+      }, 3500);
+    };
+    
+    const stopAutoplay = () => {
+      window.clearInterval(intervalId);
+    };
+
+    const handleMouseEnter = () => { hovered = true; };
+    const handleMouseLeave = () => { hovered = false; };
+    
+    startAutoplay();
+    
+    const rootNode = emblaApi.rootNode();
+    rootNode.addEventListener('mouseenter', handleMouseEnter);
+    rootNode.addEventListener('mouseleave', handleMouseLeave);
+    rootNode.addEventListener('focusin', handleMouseEnter);
+    rootNode.addEventListener('focusout', handleMouseLeave);
+    
+    emblaApi.on('pointerDown', handleMouseEnter);
+    emblaApi.on('pointerUp', handleMouseLeave);
+    
+    return () => {
+      stopAutoplay();
+      rootNode.removeEventListener('mouseenter', handleMouseEnter);
+      rootNode.removeEventListener('mouseleave', handleMouseLeave);
+      rootNode.removeEventListener('focusin', handleMouseEnter);
+      rootNode.removeEventListener('focusout', handleMouseLeave);
+      emblaApi.off('pointerDown', handleMouseEnter);
+      emblaApi.off('pointerUp', handleMouseLeave);
+    };
+  }, [emblaApi]);
+
+  return (
+    <div className="relative group w-full" dir="rtl">
+      <div className="overflow-hidden px-4 sm:px-12" ref={emblaRef}>
+        <div className="flex touch-pan-y -mx-3">
+          {galleryImages.map((img, i) => (
+            <div className="flex-[0_0_100%] min-w-0 sm:flex-[0_0_50%] lg:flex-[0_0_33.333%] px-3" key={i}>
+              <div className="overflow-hidden rounded-[2.5rem] shadow-sm transition-all duration-500 hover:shadow-2xl relative group/card cursor-grab active:cursor-grabbing h-full">
+                <img 
+                  src={img.src} 
+                  alt={img.alt} 
+                  className="aspect-[4/5] w-full object-cover transition-transform duration-700 group-hover/card:scale-105" 
+                  loading="lazy"
+                  draggable={false}
+                />
+                <div className="absolute inset-0 rounded-[2.5rem] border-2 border-transparent transition-colors group-focus-within/card:border-primary pointer-events-none" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      
+      {/* Controls */}
+      <button 
+        onClick={scrollNext} 
+        className="absolute top-1/2 left-0 z-10 -translate-y-1/2 grid h-12 w-12 place-items-center rounded-full bg-white text-primary shadow-lg ring-1 ring-black/5 backdrop-blur transition-all hover:bg-primary hover:text-primary-foreground hover:scale-110 focus:outline-none focus:ring-4 focus:ring-primary/20 opacity-100 sm:h-14 sm:w-14 sm:left-4 sm:opacity-0 sm:group-hover:opacity-100 disabled:opacity-0"
+        aria-label="الصورة التالية"
+      >
+        <ChevronLeft size={24} className="-ml-1" />
+      </button>
+
+      <button 
+        onClick={scrollPrev} 
+        className="absolute top-1/2 right-0 z-10 -translate-y-1/2 grid h-12 w-12 place-items-center rounded-full bg-white text-primary shadow-lg ring-1 ring-black/5 backdrop-blur transition-all hover:bg-primary hover:text-primary-foreground hover:scale-110 focus:outline-none focus:ring-4 focus:ring-primary/20 opacity-100 sm:h-14 sm:w-14 sm:right-4 sm:opacity-0 sm:group-hover:opacity-100 disabled:opacity-0"
+        aria-label="الصورة السابقة"
+      >
+        <ChevronRight size={24} className="-mr-1" />
+      </button>
+
+      {/* Dots */}
+      <div className="mt-10 flex justify-center gap-3">
+        {galleryImages.map((_, i) => (
+          <button
+            key={i}
+            onClick={() => scrollTo(i)}
+            aria-label={`انتقل إلى الصورة ${i + 1}`}
+            aria-current={selectedIndex === i ? 'true' : undefined}
+            className={`h-2.5 rounded-full transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${
+              selectedIndex === i ? 'w-10 bg-primary' : 'w-2.5 bg-primary/20 hover:bg-primary/40'
+            }`}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function Pill({ children, tone = 'neutral' }: { children: React.ReactNode; tone?: 'green' | 'yellow' | 'red' | 'blue' | 'neutral' }) {
   const colors = { 
@@ -172,6 +305,26 @@ export function Landing() {
                 ))}
               </ul>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Photo Gallery Carousel */}
+      <section className="bg-white py-24 overflow-hidden relative">
+        <div className="absolute inset-0 bg-ec-pattern opacity-30 pointer-events-none" />
+        <div className="mx-auto max-w-[90rem] px-5 sm:px-8 relative z-10">
+          <div className="mb-16 text-center animate-rise">
+            <Pill tone="blue"><Sparkles size={14} className="ml-1.5 inline" /> يومياتنا</Pill>
+            <h2 className="mt-6 text-4xl font-bold text-primary sm:text-5xl">
+              لحظات لا تُنسى.
+            </h2>
+            <p className="mt-6 text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
+              نلتقط الفرح والاستكشاف والتعلم في كل زاوية من زوايا حضانة EC. تصفحي ألبوم الصور لتتعرفي على بيئتنا عن قرب وتشاهدين ابتسامات أطفالنا.
+            </p>
+          </div>
+          
+          <div className="animate-rise delay-200 max-w-7xl mx-auto">
+            <GalleryCarousel />
           </div>
         </div>
       </section>
