@@ -1,9 +1,12 @@
 import { defineConfig } from '@playwright/test';
+import { initializeGalleryRunIdentity } from './tests/e2e/clerk-test-user';
 
 const apiPort = 5180;
+const galleryRunIdentity = initializeGalleryRunIdentity();
 
 export default defineConfig({
   testDir: './tests/e2e',
+  outputDir: `test-results/${galleryRunIdentity.runId}`,
   fullyParallel: false,
   workers: 1,
   retries: 0,

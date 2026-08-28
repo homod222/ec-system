@@ -1,8 +1,8 @@
 import { clerk } from '@clerk/testing/playwright';
 import { expect, test, type Page } from '@playwright/test';
-import { galleryAdminEmail } from './clerk-test-user';
+import { getGalleryRunIdentity } from './clerk-test-user';
 
-const galleryPrefix = 'e2e-gallery-';
+const galleryIdentity = getGalleryRunIdentity();
 const png = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
   'base64',
@@ -10,7 +10,7 @@ const png = Buffer.from(
 
 async function signInAsGalleryAdmin(page: Page) {
   await page.goto('/');
-  await clerk.signIn({ page, emailAddress: galleryAdminEmail });
+  await clerk.signIn({ page, emailAddress: galleryIdentity.email });
   await page.goto('/site-gallery');
   await expect(page.getByRole('heading', { name: 'ألبوم الصور' })).toBeVisible();
 }
@@ -23,20 +23,20 @@ async function cleanGalleryItems(page: Page) {
     await Promise.all(items
       .filter((item) => item.title.startsWith(prefix))
       .map((item) => fetch(`/api/site-gallery/${item.id}`, { method: 'DELETE' })));
-  }, galleryPrefix);
+  }, galleryIdentity.dataPrefix);
 }
 
 test('يرفع المدير صورة وينشرها ثم يخفيها ويحذفها دون ترك بيانات', async ({ browser, page }, testInfo) => {
-  const runId = `${testInfo.project.name}-${Date.now()}`;
-  const title = `${galleryPrefix}${runId}`;
-  const altText = `صورة ألبوم اختبار ${runId}`;
+  const itemId = `${testInfo.project.name}-${Date.now()}`;
+  const title = `${galleryIdentity.dataPrefix}${itemId}`;
+  const altText = `صورة ألبوم اختبار ${galleryIdentity.runId}-${itemId}`;
 
   await signInAsGalleryAdmin(page);
   await cleanGalleryItems(page);
 
   try {
     await page.locator('input[type="file"]').setInputFiles({
-      name: `${runId}.png`,
+      name: `${itemId}.png`,
       mimeType: 'image/png',
       buffer: png,
     });
