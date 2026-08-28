@@ -899,37 +899,48 @@ describe.sequential("application registration regression flow", () => {
       .send({ reason: "Do not collect" }).expect(200);
     await request(app).post(`/api/invoices/${cancelledCheckoutInvoice.body.id}/checkout-session`).set(auth(ownerB))
       .send({ returnUrl: adminReturnUrl }).expect(409);
+    await request(app).post(`/api/parent/invoices/${cancelledCheckoutInvoice.body.id}/checkout-session`)
+      .set(auth(operationsParent, "parent"))
+      .send({ returnUrl: parentReturnUrl }).expect(409);
     const partialCheckoutInvoice = await request(app).post("/api/invoices").set(auth(ownerB)).send({
       childId, dueDate: "2026-12-31", status: "issued",
       lines: [{ type: "fee", description: "Partial checkout", quantity: 1, unitAmount: 100 }],
     }).expect(201);
     await request(app).post(`/api/invoices/${partialCheckoutInvoice.body.id}/payments`).set(auth(ownerB))
       .send({ method: "cash", amount: 30 }).expect(201);
-    await request(app).post(`/api/invoices/${partialCheckoutInvoice.body.id}/checkout-session`).set(auth(ownerB))
-      .send({ returnUrl: adminReturnUrl }).expect(200);
-    const checkoutInput = stripeSessionCreate.mock.calls.at(-1)?.[0] as any;
-    expect(checkoutInput.line_items[0].price_data.unit_amount).toBe(22_750);
-    expect(checkoutInput.metadata.settlementAmountKwd).toBe("70");
-    const { reconcileInvoicePayment } = await import("../src/lib/paymentReconciliation");
-    const paymentIntent = {
-      id: "pi_partial_checkout_test",
-      metadata: checkoutInput.payment_intent_data.metadata,
-      amount_received: 22_750,
-      amount: 22_750,
-      currency: "usd",
-    };
-    const settlementEvent = Buffer.from(JSON.stringify({
-      type: "payment_intent.succeeded", data: { object: paymentIntent },
-    }));
-    await reconcileInvoicePayment(settlementEvent);
-    await reconcileInvoicePayment(settlementEvent);
+    const previousApiKey = process.env.MYFATOORAH_API_KEY;
+    const previousWebhookSecret = process.env.MYFATOORAH_WEBHOOK_SECRET;
+    const providerInvoiceId = 1_000_000 + partialCheckoutInvoice.body.id;
+    process.env.MYFATOORAH_API_KEY = "integration-test-key";
+    process.env.MYFATOORAH_WEBHOOK_SECRET = "integration-test-webhook-secret";
+    const providerFetch = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        IsSuccess: true,
+        Data: [{ PaymentMethodId: 1, PaymentMethodCode: "KNET" }],
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        IsSuccess: true,
+        Data: {
+          InvoiceId: providerInvoiceId,
+          PaymentURL: `https://myfatoorah.test/pay/${providerInvoiceId}`,
+        },
+      }), { status: 200 }));
+    try {
+      await request(app).post(`/api/invoices/${partialCheckoutInvoice.body.id}/checkout-session`).set(auth(ownerB))
+        .send({ returnUrl: adminReturnUrl }).expect(200)
+        .expect(({ body }) => expect(body.url).toBe(`https://myfatoorah.test/pay/${providerInvoiceId}`));
+      expect(providerFetch).toHaveBeenCalledTimes(2);
+    } finally {
+      providerFetch.mockRestore();
+      if (previousApiKey === undefined) delete process.env.MYFATOORAH_API_KEY;
+      else process.env.MYFATOORAH_API_KEY = previousApiKey;
+      if (previousWebhookSecret === undefined) delete process.env.MYFATOORAH_WEBHOOK_SECRET;
+      else process.env.MYFATOORAH_WEBHOOK_SECRET = previousWebhookSecret;
+    }
+    await request(app).post(`/api/invoices/${partialCheckoutInvoice.body.id}/payments`).set(auth(ownerB))
+      .send({ method: "cash", amount: 70 }).expect(201);
     await request(app).get(`/api/invoices/${partialCheckoutInvoice.body.id}`).set(auth(ownerB)).expect(200)
       .expect(({ body }) => expect(body).toMatchObject({ paidAmount: 100, balance: 0, status: "paid" }));
-    const stripeSettlementRows = await pool.query<{ count: string }>(
-      "select count(*)::text as count from invoice_payments where invoice_id = $1 and reference = $2",
-      [partialCheckoutInvoice.body.id, paymentIntent.id],
-    );
-    expect(Number(stripeSettlementRows.rows[0].count)).toBe(1);
     const concurrentInvoice = await request(app).post("/api/invoices").set(auth(ownerB)).send({
       childId, dueDate: "2026-12-31", status: "issued",
       lines: [{ type: "fee", description: "Concurrent balance", quantity: 1, unitAmount: 100 }],

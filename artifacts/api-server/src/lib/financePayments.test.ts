@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  createInvoiceCheckoutSession,
   isAmbiguousProviderFailure,
   isIncompleteExecutePaymentResponse,
 } from "./financePayments";
+import { InvoiceNotPayableError } from "./invoiceLedger";
 
 describe("MyFatoorah invoice-creation uncertainty", () => {
   it("allows safe retry when InitiatePayment fails before invoice creation", () => {
@@ -21,5 +23,14 @@ describe("MyFatoorah invoice-creation uncertainty", () => {
       InvoiceId: 123,
       PaymentURL: "https://example.com/pay",
     })).toBe(false);
+  });
+
+  it.each(["draft", "cancelled"])("rejects a %s invoice before payment-provider configuration", async (status) => {
+    await expect(createInvoiceCheckoutSession({
+      invoice: { id: 1, ownerId: "owner", guardianId: 2, amount: 25, status } as any,
+      guardian: { id: 2, ownerId: "owner" } as any,
+      successUrl: "https://example.test/success",
+      cancelUrl: "https://example.test/cancel",
+    })).rejects.toBeInstanceOf(InvoiceNotPayableError);
   });
 });

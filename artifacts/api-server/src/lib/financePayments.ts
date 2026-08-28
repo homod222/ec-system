@@ -7,6 +7,7 @@ import {
   type PaymentAttempt,
 } from "@workspace/db";
 import { and, desc, eq, sql } from "drizzle-orm";
+import { requireCheckoutPayable } from "./invoiceLedger";
 import { logger } from "./logger";
 
 const SANDBOX_BASE_URL = "https://apitest.myfatoorah.com";
@@ -216,7 +217,8 @@ async function reserveAttempt(
         eq(invoicesTable.ownerId, ownerId),
         eq(invoicesTable.guardianId, guardianId),
       )).limit(1);
-    if (!invoice || invoice.status === "paid") throw new Error("Invoice is no longer payable");
+    if (!invoice) throw new Error("Invoice is no longer payable");
+    requireCheckoutPayable(invoice.status, invoice.amount);
 
     const [latest] = await tx.select().from(paymentAttemptsTable)
       .where(eq(paymentAttemptsTable.invoiceId, invoiceId))
@@ -269,10 +271,11 @@ export async function createInvoiceCheckoutSession(params: {
   successUrl: string;
   cancelUrl: string;
 }, dependencies: CheckoutDependencies = {}): Promise<{ url: string; sessionId: string }> {
-  getApiKey();
   if (params.guardian.ownerId !== params.invoice.ownerId) {
     throw new Error("Invoice is no longer payable");
   }
+  requireCheckoutPayable(params.invoice.status, params.invoice.amount);
+  getApiKey();
   const reservation = await reserveAttempt(
     params.invoice.id,
     params.invoice.ownerId,

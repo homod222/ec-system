@@ -1287,8 +1287,10 @@ router.post("/parent/invoices/:id/checkout-session", async (req, res): Promise<v
     return;
   }
   const invoice = invoiceRow.invoice;
-  if (invoice.status === "paid") {
-    res.status(400).json({ error: "Invoice already paid" });
+  try {
+    requireCheckoutPayable(invoice.status, invoice.amount);
+  } catch {
+    res.status(409).json({ error: "Invoice is not payable" });
     return;
   }
 
