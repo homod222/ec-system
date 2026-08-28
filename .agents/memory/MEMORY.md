@@ -6,3 +6,4 @@
 - [WhatsApp reminder delivery semantics](whatsapp-reminder-delivery-semantics.md) — use durable stage claims and leased recovery; Meta sends lack an idempotency key.
 - [Drizzle push false-positive truncation prompts](drizzle-push-constraint-name-prompts.md) — a matching unique index may not satisfy a differently named schema constraint.
 - [MyFatoorah KNET reliability](myfatoorah-knet-reliability.md) — v2 response and webhook quirks require immutable attempts, signed events, and status repair.
+- [pnpm override source of truth](pnpm-override-source-of-truth.md) — keep overrides in the workspace config; a root package override can replace them and cause broad lockfile churn.
