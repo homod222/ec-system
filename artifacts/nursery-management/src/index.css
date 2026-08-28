@@ -63,7 +63,7 @@
   
   --chart-1: 146 57% 20%; --chart-2: 42 60% 65%; --chart-3: 0 70% 55%; --chart-4: 190 40% 40%; --chart-5: 29 73% 58%;
   
-  --app-font-sans: 'IBM Plex Sans Arabic', 'DM Sans', sans-serif; 
+  --app-font-sans: 'IBM Plex Sans Arabic', sans-serif;
   --app-font-serif: Georgia, serif; 
   --app-font-mono: 'Space Mono', monospace;
   
@@ -90,6 +90,8 @@
   --accent-border: hsl(var(--accent)); 
   --destructive-border: hsl(var(--destructive));
 }
+html[data-lang='ar'] { --app-font-sans: 'IBM Plex Sans Arabic', sans-serif; }
+html[data-lang='en'] { --app-font-sans: 'DM Sans', sans-serif; }
 .dark {
   --background: 146 50% 8%; 
   --foreground: 42 33% 94%; 
@@ -153,3 +155,9 @@
 .delay-300 { animation-delay: 300ms; }
 
 button, a, input, select, textarea { transition: color .2s, background-color .2s, border-color .2s, transform .2s, opacity .2s, box-shadow .2s; }
+
+/* Clerk's development-only badge is not localized and is absent in production. */
+[data-clerk-dev-mode-notice],
+[data-clerk-dev-mode-overlay] {
+  display: none !important;
+}

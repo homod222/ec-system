@@ -4,8 +4,10 @@ import { useListParentAttendance, useListParentChildren } from '@workspace/api-c
 import { ParentShell } from '../../components/ParentShell';
 import { ParentPageHeader, ParentQueryState } from '../../components/ParentShared';
 import { Calendar, CheckCircle2, XCircle, Clock, Info } from 'lucide-react';
+import { useI18n } from '../../i18n';
 
 export function ParentAttendance() {
+  const { t, formatDate, dir } = useI18n();
   const search = useSearch();
   const searchParams = new URLSearchParams(search);
   const urlChildId = searchParams.get('childId') ? Number(searchParams.get('childId')) : undefined;
@@ -25,8 +27,8 @@ export function ParentAttendance() {
   return (
     <ParentShell>
       <ParentPageHeader 
-        title="سجل الحضور والانصراف" 
-        description="تابعي مواعيد وصول وانصراف أبنائك بدقة لضمان سلامتهم."
+        title={t('parent.attendanceTitle')}
+        description={t('parent.attendanceDesc')}
       />
 
       <div className="mb-8 flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
@@ -37,7 +39,7 @@ export function ParentAttendance() {
             !childId ? 'bg-[#165032] text-white shadow-md' : 'bg-white text-[#165032]/70 hover:bg-[#165032]/5 border border-[#165032]/10'
           }`}
         >
-          جميع الأبناء
+          {t('parent.allChildren')}
         </button>
         {children.map(child => (
           <button 
@@ -67,31 +69,31 @@ export function ParentAttendance() {
                     'bg-blue-100 text-blue-800'
                   }`}>
                     {record.status === 'present' ? <CheckCircle2 size={14}/> : record.status === 'absent' ? <XCircle size={14}/> : record.status === 'late' ? <Clock size={14}/> : <Info size={14}/>}
-                    {record.status === 'present' ? 'حاضر' : record.status === 'absent' ? 'غائب' : record.status === 'late' ? 'متأخر' : 'بعذر'}
+                    {record.status === 'present' ? t('parent.present') : record.status === 'absent' ? t('parent.absent') : record.status === 'late' ? t('parent.late') : t('parent.excused')}
                   </span>
                 </div>
                 
                 <div className="flex items-center gap-2 text-sm text-[#165032]/70 font-medium mb-5">
                   <Calendar size={16} />
-                  {new Date(record.date).toLocaleDateString('ar-SA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                  {formatDate(record.date, { weekday: 'long' })}
                 </div>
               </div>
 
               <div className="flex items-center gap-4 rounded-2xl bg-[#FDFBF7] p-4">
                 <div className="flex-1">
-                  <p className="text-xs font-bold text-[#165032]/50 mb-1">وقت الحضور</p>
+                  <p className="text-xs font-bold text-[#165032]/50 mb-1">{t('parent.checkIn')}</p>
                   <p className="text-sm font-bold text-[#0f2416]" dir="ltr">{record.checkIn || '--:--'}</p>
                 </div>
                 <div className="h-8 w-px bg-[#165032]/10" />
-                <div className="flex-1 text-right">
-                  <p className="text-xs font-bold text-[#165032]/50 mb-1">وقت الانصراف</p>
+                <div className={`flex-1 ${dir === 'rtl' ? 'text-left' : 'text-right'}`}>
+                  <p className="text-xs font-bold text-[#165032]/50 mb-1">{t('parent.checkOut')}</p>
                   <p className="text-sm font-bold text-[#0f2416]" dir="ltr">{record.checkOut || '--:--'}</p>
                 </div>
               </div>
               
               {record.note && (
                 <p className="mt-4 text-xs font-medium text-[#165032]/60 bg-blue-50/50 p-3 rounded-xl border border-blue-100/50">
-                  <span className="font-bold text-blue-700 block mb-0.5">ملاحظة:</span>
+                  <span className="font-bold text-blue-700 block mb-0.5">{t('parent.note')}</span>
                   {record.note}
                 </p>
               )}

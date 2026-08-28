@@ -1,4 +1,5 @@
 import React from 'react';
+import { useI18n } from '@/i18n';
 
 export function ParentPageHeader({ title, description, action }: { title: string; description?: string; action?: React.ReactNode }) {
   return (
@@ -13,10 +14,11 @@ export function ParentPageHeader({ title, description, action }: { title: string
 }
 
 export function ParentQueryState({ 
-  loading, error, empty, emptyMessage = "لا توجد بيانات بعد", children, onRetry 
+  loading, error, empty, emptyMessage, children, onRetry
 }: { 
   loading?: boolean; error?: boolean; empty?: boolean; emptyMessage?: string; children: React.ReactNode; onRetry?: () => void 
 }) {
+  const { t } = useI18n();
   if (loading) {
     return (
       <div className="space-y-4">
@@ -30,11 +32,11 @@ export function ParentQueryState({
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center rounded-[2rem] border border-dashed border-red-200 bg-red-50 p-12 text-center">
-        <p className="font-bold text-red-700 text-lg">تعذر تحميل البيانات</p>
-        <p className="mt-2 text-sm text-red-600/70">الرجاء التحقق من الاتصال والمحاولة مرة أخرى.</p>
+        <p className="font-bold text-red-700 text-lg">{t('query.errorTitle')}</p>
+        <p className="mt-2 text-sm text-red-600/70">{t('query.errorBody')}</p>
         {onRetry && (
           <button onClick={onRetry} className="mt-5 rounded-xl bg-red-100 px-6 py-2.5 text-sm font-bold text-red-700 hover:bg-red-200 transition-colors">
-            إعادة المحاولة
+            {t('common.retry')}
           </button>
         )}
       </div>
@@ -47,8 +49,8 @@ export function ParentQueryState({
         <div className="mb-5 h-16 w-16 rounded-full bg-[#FDFBF7] flex items-center justify-center border border-[#165032]/5">
           <span className="text-2xl opacity-50">✨</span>
         </div>
-        <p className="font-bold text-[#0f2416] text-lg">{emptyMessage}</p>
-        <p className="mt-2 text-sm text-[#165032]/50">ستظهر السجلات هنا فور توفرها من إدارة الحضانة.</p>
+        <p className="font-bold text-[#0f2416] text-lg">{emptyMessage || t('query.emptyTitle')}</p>
+        <p className="mt-2 text-sm text-[#165032]/50">{t('parent.emptyBody')}</p>
       </div>
     );
   }

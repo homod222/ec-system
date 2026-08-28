@@ -4,20 +4,14 @@ import { ArrowUpRight, Check, CalendarCheck, ShieldCheck, Sparkles, Star, Chevro
 import { getGetSessionContextQueryKey, getListPublicSiteGalleryQueryKey, useGetSessionContext, useListPublicSiteGallery } from '@workspace/api-client-react';
 import { useCallback, useEffect, useState } from 'react';
 import useEmblaCarousel from 'embla-carousel-react';
+import { useI18n } from '@/i18n';
+import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
 
-const galleryImages = [
-  { src: `${basePath}/media/classroom-learning.webp`, alt: 'التعلم في الفصول الدراسية' },
-  { src: `${basePath}/media/cooking-activity.webp`, alt: 'نشاط الطهي' },
-  { src: `${basePath}/media/creative-play.webp`, alt: 'اللعب الإبداعي' },
-  { src: `${basePath}/media/hero-child.webp`, alt: 'طفل في الحضانة' },
-  { src: `${basePath}/media/outdoor-play.webp`, alt: 'اللعب في الخارج' },
-  { src: `${basePath}/media/space-day.webp`, alt: 'يوم الفضاء' },
-];
-
 function GalleryCarousel({ images }: { images: Array<{ src: string; alt: string }> }) {
-  const [emblaRef, emblaApi] = useEmblaCarousel({ loop: true, direction: 'rtl', align: 'center' });
+  const { dir, t } = useI18n();
+  const [emblaRef, emblaApi] = useEmblaCarousel({ loop: true, direction: dir, align: 'center' });
   const [selectedIndex, setSelectedIndex] = useState(0);
 
   const scrollPrev = useCallback(() => emblaApi && emblaApi.scrollPrev(), [emblaApi]);
@@ -31,9 +25,18 @@ function GalleryCarousel({ images }: { images: Array<{ src: string; alt: string 
 
   useEffect(() => {
     if (!emblaApi) return;
+    emblaApi.reInit({ loop: true, direction: dir, align: 'center' });
+  }, [emblaApi, dir]);
+
+  useEffect(() => {
+    if (!emblaApi) return;
     onSelect();
     emblaApi.on('select', onSelect);
     emblaApi.on('reInit', onSelect);
+    return () => {
+      emblaApi.off('select', onSelect);
+      emblaApi.off('reInit', onSelect);
+    };
   }, [emblaApi, onSelect]);
 
   useEffect(() => {
@@ -84,7 +87,7 @@ function GalleryCarousel({ images }: { images: Array<{ src: string; alt: string 
   }, [emblaApi]);
 
   return (
-    <div className="relative group w-full" dir="rtl">
+    <div className="relative group w-full" dir={dir}>
       <div className="overflow-hidden px-4 sm:px-12" ref={emblaRef}>
         <div className="flex touch-pan-y -mx-3">
           {images.map((img, i) => (
@@ -108,7 +111,7 @@ function GalleryCarousel({ images }: { images: Array<{ src: string; alt: string 
       <button 
         onClick={scrollNext} 
         className="absolute top-1/2 left-0 z-10 -translate-y-1/2 grid h-12 w-12 place-items-center rounded-full bg-white text-primary shadow-lg ring-1 ring-black/5 backdrop-blur transition-all hover:bg-primary hover:text-primary-foreground hover:scale-110 focus:outline-none focus:ring-4 focus:ring-primary/20 opacity-100 sm:h-14 sm:w-14 sm:left-4 sm:opacity-0 sm:group-hover:opacity-100 disabled:opacity-0"
-        aria-label="الصورة التالية"
+        aria-label={t('landing.nextImage')}
       >
         <ChevronLeft size={24} className="-ml-1" />
       </button>
@@ -116,7 +119,7 @@ function GalleryCarousel({ images }: { images: Array<{ src: string; alt: string 
       <button 
         onClick={scrollPrev} 
         className="absolute top-1/2 right-0 z-10 -translate-y-1/2 grid h-12 w-12 place-items-center rounded-full bg-white text-primary shadow-lg ring-1 ring-black/5 backdrop-blur transition-all hover:bg-primary hover:text-primary-foreground hover:scale-110 focus:outline-none focus:ring-4 focus:ring-primary/20 opacity-100 sm:h-14 sm:w-14 sm:right-4 sm:opacity-0 sm:group-hover:opacity-100 disabled:opacity-0"
-        aria-label="الصورة السابقة"
+        aria-label={t('landing.previousImage')}
       >
         <ChevronRight size={24} className="-mr-1" />
       </button>
@@ -127,7 +130,7 @@ function GalleryCarousel({ images }: { images: Array<{ src: string; alt: string 
           <button
             key={i}
             onClick={() => scrollTo(i)}
-            aria-label={`انتقل إلى الصورة ${i + 1}`}
+            aria-label={t('landing.goToImage', { number: i + 1 })}
             aria-current={selectedIndex === i ? 'true' : undefined}
             className={`h-2.5 rounded-full transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${
               selectedIndex === i ? 'w-10 bg-primary' : 'w-2.5 bg-primary/20 hover:bg-primary/40'
@@ -151,6 +154,7 @@ function Pill({ children, tone = 'neutral' }: { children: React.ReactNode; tone?
 }
 
 export function Landing() {
+  const { dir, t } = useI18n();
   const { isSignedIn } = useAuth(); 
   const { user } = useUser();
   const session = useGetSessionContext({
@@ -163,6 +167,10 @@ export function Landing() {
   const publicGallery = useListPublicSiteGallery({
     query: { queryKey: getListPublicSiteGalleryQueryKey(), retry: false, staleTime: 60_000 },
   });
+  const galleryImages = [
+    'classroom-learning.webp', 'cooking-activity.webp', 'creative-play.webp',
+    'hero-child.webp', 'outdoor-play.webp', 'space-day.webp',
+  ].map((file) => ({ src: `${basePath}/media/${file}`, alt: t('landing.logoAlt') }));
   const displayedGallery = publicGallery.data?.length
     ? publicGallery.data.map((item) => ({ src: item.imageUrl, alt: item.altText }))
     : galleryImages;
@@ -179,23 +187,24 @@ export function Landing() {
   }
   
   return (
-    <div dir="rtl" className="min-h-[100dvh] bg-background text-foreground selection:bg-primary selection:text-primary-foreground">
+    <div dir={dir} className="min-h-[100dvh] bg-background text-foreground selection:bg-primary selection:text-primary-foreground">
       {/* Navbar */}
       <nav className="mx-auto flex max-w-7xl items-center justify-between px-5 py-6 sm:px-8">
         <div className="flex items-center gap-3">
-          <img src={`${basePath}/ec-official-logo.png`} alt="حضانة EC ثنائية اللغة" className="h-auto w-40 object-contain sm:w-48" />
+           <img src={`${basePath}/ec-official-logo.png`} alt={t('landing.logoAlt')} className="h-auto w-40 object-contain sm:w-48" />
         </div>
         <div className="hidden items-center gap-8 text-sm font-bold text-muted-foreground md:flex">
-          <a href="#about" className="hover:text-primary transition-colors">من نحن</a>
-          <a href="#programs" className="hover:text-primary transition-colors">البرامج التعليمية</a>
-          <a href="#facilities" className="hover:text-primary transition-colors">بيئتنا</a>
+           <a href="#about" className="hover:text-primary transition-colors">{t('landing.about')}</a>
+           <a href="#programs" className="hover:text-primary transition-colors">{t('landing.programs')}</a>
+           <a href="#facilities" className="hover:text-primary transition-colors">{t('landing.facilities')}</a>
         </div>
-        <div className="flex items-center gap-3">
+         <div className="flex flex-wrap items-center justify-end gap-2">
+           <LanguageSwitcher className="max-sm:w-full max-sm:justify-center" />
           <Link href="/sign-in" data-testid="link-landing-sign-in" className="hidden sm:inline-flex rounded-xl px-5 py-2.5 text-sm font-bold text-primary hover:bg-muted transition-colors">
-            دخول الإدارة
+            {t('landing.adminLogin')}
           </Link>
           <Link href="/sign-up" data-testid="link-landing-sign-up" className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-sm hover:-translate-y-0.5 hover:shadow-md transition-all">
-            إنشاء حساب الإدارة
+            {t('landing.createAccount')}
           </Link>
         </div>
       </nav>
@@ -206,20 +215,19 @@ export function Landing() {
         
         <div className="relative z-10 grid lg:grid-cols-[1fr_1fr] gap-12 items-center">
           <div className="max-w-2xl animate-rise">
-            <Pill tone="yellow"><Sparkles size={14} className="ml-1.5 inline" /> بيئة تعليمية محفزة للنمو</Pill>
+             <Pill tone="yellow"><Sparkles size={14} className="me-1.5 inline" /> {t('landing.badge')}</Pill>
             <h1 className="mt-8 text-5xl font-bold leading-[1.15] text-primary-foreground sm:text-7xl">
-              نزرع <span className="text-accent">المعرفة</span><br />
-              وننمي الإبداع.
+               {t('landing.hero')}
             </h1>
             <p className="mt-6 text-lg leading-relaxed text-primary-foreground/80">
-              في حضانة EC ثنائية اللغة، نجمع بين الجدية الأكاديمية والمرح. نقدم رعاية استثنائية وأنشطة ممتعة لبناء شخصية طفلك في بيئة آمنة وملهمة.
+               {t('landing.heroBody')}
             </p>
             <div className="mt-10 flex flex-wrap gap-4">
               <Link href="/sign-up" className="inline-flex items-center gap-2 rounded-2xl bg-accent px-6 py-4 text-base font-bold text-accent-foreground shadow-lg hover:-translate-y-1 hover:shadow-xl transition-all">
-                ابدئي إدارة الحضانة <ArrowUpRight size={18} />
+                 {t('landing.start')} <ArrowUpRight size={18} />
               </Link>
               <a href="#about" className="inline-flex items-center gap-2 rounded-2xl border-2 border-primary-foreground/20 px-6 py-4 text-base font-bold text-primary-foreground hover:bg-primary-foreground/10 transition-all">
-                اكتشفي برامجنا
+                 {t('landing.discover')}
               </a>
             </div>
             
@@ -229,19 +237,19 @@ export function Landing() {
                 <div className="h-10 w-10 rounded-full border-2 border-primary bg-secondary" />
                 <div className="h-10 w-10 rounded-full border-2 border-primary bg-white" />
               </div>
-              <p className="text-sm font-medium">ثقة مئات العائلات كل عام</p>
+               <p className="text-sm font-medium">{t('landing.trusted')}</p>
             </div>
           </div>
           
           <div className="relative hidden lg:block animate-rise delay-100">
             {/* Main Image */}
             <div className="relative z-10 overflow-hidden rounded-[2rem] border-8 border-white shadow-2xl rotate-2 hover:rotate-0 transition-transform duration-500">
-              <img src={`${basePath}/media/hero-child.webp`} alt="طفلة سعيدة في حضانة EC" className="aspect-[4/5] w-full object-cover" />
+               <img src={`${basePath}/media/hero-child.webp`} alt={t('landing.heroAlt')} className="aspect-[4/5] w-full object-cover" />
             </div>
             
             {/* Floating Image 1 */}
             <div className="absolute -bottom-10 -right-10 z-20 w-56 overflow-hidden rounded-[1.5rem] border-8 border-white shadow-xl -rotate-6 animate-float">
-              <img src={`${basePath}/media/creative-play.webp`} alt="نشاط إبداعي في حضانة EC" className="aspect-[4/5] w-full object-cover" />
+               <img src={`${basePath}/media/creative-play.webp`} alt={t('landing.creativeAlt')} className="aspect-[4/5] w-full object-cover" />
             </div>
             
             {/* Decor */}
@@ -254,15 +262,15 @@ export function Landing() {
       {/* Values / About */}
       <section id="about" className="mx-auto max-w-7xl px-5 py-24 sm:px-8">
         <div className="text-center max-w-3xl mx-auto mb-16 animate-rise delay-200">
-          <h2 className="text-4xl font-bold text-primary">لماذا تختارين حضانة EC؟</h2>
-          <p className="mt-4 text-lg text-muted-foreground">بيئة متكاملة تركز على بناء شخصية الطفل أكاديمياً واجتماعياً.</p>
+           <h2 className="text-4xl font-bold text-primary">{t('landing.why')}</h2>
+           <p className="mt-4 text-lg text-muted-foreground">{t('landing.whyBody')}</p>
         </div>
         
         <div className="grid gap-6 md:grid-cols-3">
           {[
-            { icon: ShieldCheck, title: 'رعاية آمنة وموثوقة', desc: 'نضع سلامة طفلك في مقدمة أولوياتنا من خلال بيئة مجهزة ومراقبة.' },
-            { icon: CalendarCheck, title: 'منهج ثنائي اللغة', desc: 'نؤسس مهارات اللغتين العربية والإنجليزية بأساليب تفاعلية حديثة.' },
-            { icon: Star, title: 'أنشطة لا منهجية', desc: 'رحلات، طهي، فنون، وتجارب علمية لاكتشاف مواهب الطفل المبكرة.' }
+             { icon: ShieldCheck, title: t('landing.safe'), desc: t('landing.safeBody') },
+             { icon: CalendarCheck, title: t('landing.bilingual'), desc: t('landing.bilingualBody') },
+             { icon: Star, title: t('landing.activities'), desc: t('landing.activitiesBody') }
           ].map((feature, i) => (
             <div key={i} className="group rounded-[2rem] border border-border bg-card p-8 shadow-sm transition-all hover:-translate-y-2 hover:shadow-xl animate-rise" style={{ animationDelay: `${(i+3)*100}ms` }}>
               <span className="grid h-14 w-14 place-items-center rounded-2xl bg-secondary text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
@@ -280,27 +288,24 @@ export function Landing() {
         <div className="mx-auto max-w-7xl px-5 sm:px-8">
           <div className="grid lg:grid-cols-2 gap-16 items-center">
             <div className="grid grid-cols-2 gap-4">
-               <img src={`${basePath}/media/classroom-learning.webp`} alt="أطفال يتعلمون في الفصل" className="rounded-3xl object-cover h-64 w-full shadow-md hover:shadow-xl transition-shadow" />
-               <img src={`${basePath}/media/cooking-activity.webp`} alt="نشاط الطهي التعليمي" className="rounded-3xl object-cover h-64 w-full shadow-md hover:shadow-xl transition-shadow translate-y-8" />
-               <img src={`${basePath}/media/space-day.webp`} alt="فعالية يوم الفضاء" className="rounded-3xl object-cover h-64 w-full shadow-md hover:shadow-xl transition-shadow" />
-               <img src={`${basePath}/media/outdoor-play.webp`} alt="اللعب في مرافق الحضانة" className="rounded-3xl object-cover h-64 w-full shadow-md hover:shadow-xl transition-shadow translate-y-8" />
+               <img src={`${basePath}/media/classroom-learning.webp`} alt={t('landing.logoAlt')} className="rounded-3xl object-cover h-64 w-full shadow-md hover:shadow-xl transition-shadow" />
+               <img src={`${basePath}/media/cooking-activity.webp`} alt={t('landing.logoAlt')} className="rounded-3xl object-cover h-64 w-full shadow-md hover:shadow-xl transition-shadow translate-y-8" />
+               <img src={`${basePath}/media/space-day.webp`} alt={t('landing.logoAlt')} className="rounded-3xl object-cover h-64 w-full shadow-md hover:shadow-xl transition-shadow" />
+               <img src={`${basePath}/media/outdoor-play.webp`} alt={t('landing.logoAlt')} className="rounded-3xl object-cover h-64 w-full shadow-md hover:shadow-xl transition-shadow translate-y-8" />
             </div>
             
             <div className="lg:pr-10">
-              <Pill tone="green">تجارب حية</Pill>
+               <Pill tone="green">{t('landing.live')}</Pill>
               <h2 className="mt-6 text-4xl font-bold leading-tight text-primary">
-                نتعلم من خلال <br />اللعب والتجربة.
+                 {t('landing.learn')}
               </h2>
               <p className="mt-6 text-lg leading-relaxed text-muted-foreground">
-                في حضانة EC، لا نقتصر على التلقين. نؤمن بأن الطفل يتعلم أسرع عندما يتفاعل بحواسه. من يوم الفضاء إلى ورش الطهي الصغيرة، كل يوم هو مغامرة جديدة.
+                 {t('landing.learnBody')}
               </p>
               
               <ul className="mt-8 space-y-4">
                 {[
-                  'تنمية مهارات التواصل الاجتماعي',
-                  'بناء الاستقلالية والثقة بالنفس',
-                  'التعلم العملي (Hands-on Learning)',
-                  'متابعة دورية مع أولياء الأمور'
+                   t('landing.skill1'), t('landing.skill2'), t('landing.skill3'), t('landing.skill4')
                 ].map((item, i) => (
                   <li key={i} className="flex items-center gap-3 font-semibold text-foreground">
                     <span className="grid h-6 w-6 place-items-center rounded-full bg-accent text-primary">
@@ -320,12 +325,12 @@ export function Landing() {
         <div className="absolute inset-0 bg-ec-pattern opacity-30 pointer-events-none" />
         <div className="mx-auto max-w-[90rem] px-5 sm:px-8 relative z-10">
           <div className="mb-16 text-center animate-rise">
-            <Pill tone="blue"><Sparkles size={14} className="ml-1.5 inline" /> يومياتنا</Pill>
+             <Pill tone="blue"><Sparkles size={14} className="me-1.5 inline" /> {t('landing.diaries')}</Pill>
             <h2 className="mt-6 text-4xl font-bold text-primary sm:text-5xl">
-              لحظات لا تُنسى.
+               {t('landing.memories')}
             </h2>
             <p className="mt-6 text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-              نلتقط الفرح والاستكشاف والتعلم في كل زاوية من زوايا حضانة EC. تصفحي ألبوم الصور لتتعرفي على بيئتنا عن قرب وتشاهدين ابتسامات أطفالنا.
+               {t('landing.galleryBody')}
             </p>
           </div>
           
@@ -337,8 +342,8 @@ export function Landing() {
 
       {/* Footer */}
       <footer className="border-t border-border bg-white px-5 py-12 sm:px-8 text-center text-sm font-medium text-muted-foreground">
-        <img src={`${basePath}/ec-official-logo.png`} alt="حضانة EC" className="mx-auto mb-6 h-auto w-48 object-contain sm:w-56" />
-        <p>جميع الحقوق محفوظة © {new Date().getFullYear()} حضانة EC ثنائية اللغة - Education Group</p>
+         <img src={`${basePath}/ec-official-logo.png`} alt={t('landing.logoAlt')} className="mx-auto mb-6 h-auto w-48 object-contain sm:w-56" />
+         <p>{t('landing.copyright', { year: new Date().getFullYear() })}</p>
       </footer>
     </div>
   );

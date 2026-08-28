@@ -2,6 +2,7 @@ import { createRoot } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ParentInvoices } from '../pages/parent/ParentInvoices';
 import { Toaster } from '../components/ui/toaster';
+import { LanguageProvider } from '../i18n';
 import '../index.css';
 
 const queryClient = new QueryClient({
@@ -12,8 +13,10 @@ const queryClient = new QueryClient({
 });
 
 createRoot(document.getElementById('root')!).render(
-  <QueryClientProvider client={queryClient}>
-    <ParentInvoices withShell={false} />
-    <Toaster />
-  </QueryClientProvider>,
+  <LanguageProvider>
+    <QueryClientProvider client={queryClient}>
+      <ParentInvoices withShell={false} />
+      <Toaster />
+    </QueryClientProvider>
+  </LanguageProvider>,
 );

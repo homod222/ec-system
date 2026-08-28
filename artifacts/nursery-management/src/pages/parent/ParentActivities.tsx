@@ -4,8 +4,10 @@ import { useListParentActivities, useListParentChildren } from '@workspace/api-c
 import { ParentShell } from '../../components/ParentShell';
 import { ParentPageHeader, ParentQueryState } from '../../components/ParentShared';
 import { ImageIcon, Clock, BookOpen, Utensils, Music, Trophy } from 'lucide-react';
+import { useI18n } from '../../i18n';
 
 export function ParentActivities() {
+  const { t, formatDateTime, dir } = useI18n();
   const search = useSearch();
   const searchParams = new URLSearchParams(search);
   const urlChildId = searchParams.get('childId') ? Number(searchParams.get('childId')) : undefined;
@@ -45,8 +47,8 @@ export function ParentActivities() {
   return (
     <ParentShell>
       <ParentPageHeader 
-        title="يوميات الأبناء" 
-        description="لحظات لا تُنسى ونشاطات يومية، تشارككم إياها المعلمات مباشرة من الحضانة."
+        title={t('parent.activitiesTitle')}
+        description={t('parent.activitiesDesc')}
       />
 
       <div className="mb-8 flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
@@ -57,7 +59,7 @@ export function ParentActivities() {
             !childId ? 'bg-[#165032] text-white shadow-md' : 'bg-white text-[#165032]/70 hover:bg-[#165032]/5 border border-[#165032]/10'
           }`}
         >
-          جميع الأبناء
+          {t('parent.allChildren')}
         </button>
         {children.map(child => (
           <button 
@@ -76,12 +78,12 @@ export function ParentActivities() {
       <ParentQueryState loading={activitiesQuery.isLoading} error={activitiesQuery.isError} empty={!activities.length} onRetry={() => activitiesQuery.refetch()}>
         <div className="mx-auto max-w-2xl space-y-8">
           {activities.map((activity, index) => (
-            <div key={activity.id} data-testid={`card-activity-${activity.id}`} className="relative pl-8 md:pl-0 md:pr-12 animate-rise" style={{ animationDelay: `${index * 100}ms` }}>
+            <div key={activity.id} data-testid={`card-activity-${activity.id}`} className={`relative animate-rise ${dir === 'rtl' ? 'pl-8 md:pl-0 md:pr-12' : 'pr-8 md:pr-0 md:pl-12'}`} style={{ animationDelay: `${index * 100}ms` }}>
               {/* Timeline Line */}
-              <div className="absolute top-0 bottom-[-2rem] right-4 md:right-[2.25rem] w-px bg-[#165032]/10 last:bottom-0" />
+              <div className={`absolute top-0 bottom-[-2rem] ${dir === 'rtl' ? 'right-4 md:right-[2.25rem]' : 'left-4 md:left-[2.25rem]'} w-px bg-[#165032]/10 last:bottom-0`} />
               
               {/* Timeline Dot */}
-              <div className={`absolute top-6 right-0 md:right-4 z-10 flex h-10 w-10 items-center justify-center rounded-full border-4 border-[#FDFBF7] shadow-sm ${getCategoryColor(activity.category)}`}>
+              <div className={`absolute top-6 ${dir === 'rtl' ? 'right-0 md:right-4' : 'left-0 md:left-4'} z-10 flex h-10 w-10 items-center justify-center rounded-full border-4 border-[#FDFBF7] shadow-sm ${getCategoryColor(activity.category)}`}>
                 {getCategoryIcon(activity.category)}
               </div>
 
@@ -94,7 +96,7 @@ export function ParentActivities() {
                 <div className="p-6 sm:p-8">
                   <div className="flex items-center justify-between mb-4">
                     <span className="inline-flex items-center gap-1.5 rounded-full bg-[#165032]/5 px-3 py-1 text-xs font-bold text-[#165032]">
-                      <Clock size={12} /> {new Date(activity.occurredAt).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}
+                      <Clock size={12} /> <span dir="ltr">{formatDateTime(activity.occurredAt, { year: undefined, month: undefined, day: undefined, hour: '2-digit', minute: '2-digit' })}</span>
                     </span>
                     <span className="text-xs font-bold text-[#165032]/50">{activity.childName}</span>
                   </div>
@@ -106,7 +108,7 @@ export function ParentActivities() {
                     <div className="h-6 w-6 rounded-full bg-[#FDFBF7] border border-[#165032]/10 flex items-center justify-center text-[#165032]">
                       {activity.educatorName[0]}
                     </div>
-                    المعلمة: {activity.educatorName}
+                    {t('parent.educator', { name: activity.educatorName })}
                   </div>
                 </div>
               </div>

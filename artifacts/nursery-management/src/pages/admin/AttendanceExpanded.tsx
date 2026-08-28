@@ -4,8 +4,10 @@ import type { AttendanceRecord } from '@workspace/api-client-react';
 import { Shell, Button, Pill, Avatar, Skeleton, QueryState, PageHeader } from '../../App';
 import { CalendarCheck, Users, Search, Activity, UserCheck, Plus, X } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useI18n } from '../../i18n';
 
 export function AttendanceExpanded() {
+  const { t, formatDateTime, dir } = useI18n();
   const [tab, setTab] = useState<'children' | 'staff'>('children');
   const today = new Date().toISOString().slice(0, 10);
   const [selectedDate, setSelectedDate] = useState(today);
@@ -51,7 +53,7 @@ export function AttendanceExpanded() {
         departureType: earlyDeparture ? 'early' : record.departureType,
         source: 'manual',
         note: record.note || null,
-        correctionReason: selectedDate !== today ? 'تصحيح سجل تاريخي من لوحة الحضور' : null,
+        correctionReason: selectedDate !== today ? t('expanded.historicalCorrection') : null,
       },
     }, {
       onSuccess: () => { qc.invalidateQueries({ queryKey: getGetTodayAttendanceQueryKey() }); qc.invalidateQueries({ queryKey: getListAttendanceHistoryQueryKey() }); },
@@ -61,24 +63,24 @@ export function AttendanceExpanded() {
   return (
     <Shell>
       <PageHeader 
-        eyebrow="السجلات اليومية" 
-        title="الحضور والانصراف" 
-        description="متابعة الحضور للأطفال والكادر الوظيفي وتسجيل الغياب والتأخير."
+        eyebrow={t('expanded.dailyRecords')}
+        title={t('expanded.attendanceTitle')}
+        description={t('expanded.attendanceDesc')}
       />
       
       <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex gap-4">
           <Button data-testid="tab-children" variant={tab === 'children' ? 'primary' : 'soft'} onClick={() => setTab('children')}>
-            <Users size={18} /> سجل الأطفال
+            <Users size={18} /> {t('expanded.childrenRegister')}
           </Button>
           <Button data-testid="tab-staff" variant={tab === 'staff' ? 'primary' : 'soft'} onClick={() => setTab('staff')}>
-            <UserCheck size={18} /> سجل الكادر
+            <UserCheck size={18} /> {t('expanded.staffRegister')}
           </Button>
         </div>
-        {tab === 'children' && <label className="text-sm font-bold">تاريخ السجل<input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} className="mr-3 rounded-xl border border-input bg-card px-3 py-2" /></label>}
+        {tab === 'children' && <label className="text-sm font-bold">{t('expanded.registerDate')}<input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} className="ms-3 rounded-xl border border-input bg-card px-3 py-2" /></label>}
         {tab === 'staff' && (
           <Button data-testid="button-add-staff-attendance" onClick={() => setShowStaffForm(true)}>
-            <Plus size={18} />تسجيل حضور يدوي
+            <Plus size={18} />{t('expanded.manualAttendance')}
           </Button>
         )}
       </div>
@@ -87,7 +89,7 @@ export function AttendanceExpanded() {
         <QueryState loading={historyQuery.isLoading || (selectedDate === today && rosterQuery.isLoading)} error={historyQuery.isError || (selectedDate === today && rosterQuery.isError)} empty={!displayedChildren.length} onRetry={() => { historyQuery.refetch(); if (selectedDate === today) rosterQuery.refetch(); }}>
           <div className="overflow-hidden rounded-[1.5rem] border border-border bg-card shadow-sm">
             <div className="hidden grid-cols-[1.3fr_.7fr_.8fr_2fr] gap-4 border-b border-border bg-secondary/30 px-6 py-4 text-xs font-bold text-muted-foreground md:grid">
-              <span>الطفل</span><span>الحالة</span><span>وقت الدخول</span><span>التسجيل اليدوي</span>
+               <span>{t('expanded.child')}</span><span>{t('expanded.status')}</span><span>{t('expanded.checkIn')}</span><span>{t('expanded.manualEntry')}</span>
             </div>
             {displayedChildren.map((record) => (
               <div key={record.childId} data-testid={`row-attendance-child-${record.childId}`} className="grid gap-3 border-b border-border px-6 py-5 last:border-0 hover:bg-muted/50 transition-colors md:grid-cols-[1.3fr_.7fr_.8fr_2fr] md:items-center md:gap-4">
@@ -97,17 +99,17 @@ export function AttendanceExpanded() {
                 </div>
                 <div>
                   <Pill tone={record.status === 'present' ? 'green' : record.status === 'absent' ? 'red' : record.status === 'late' ? 'yellow' : 'neutral'}>
-                    {record.status === 'present' ? 'حاضر' : record.status === 'absent' ? 'غائب' : record.status === 'late' ? 'متأخر' : 'عذر'}
+                    {attendanceStatus(record.status, t)}
                   </Pill>
                 </div>
-                <div className="text-sm font-medium text-muted-foreground">{record.checkIn ? new Date(record.checkIn).toLocaleTimeString('ar-SA') : '-'}</div>
+                <div className="text-sm font-medium text-muted-foreground">{record.checkIn ? formatDateTime(record.checkIn, { year: undefined, month: undefined, day: undefined, hour: 'numeric', minute: '2-digit' }) : '-'}</div>
                 <div className="flex flex-wrap gap-1.5">
-                   <button data-testid={`button-child-present-${record.childId}`} onClick={() => setChildStatus(record, 'present')} disabled={recordChild.isPending} className="rounded-lg bg-emerald-100 px-2.5 py-1.5 text-xs font-bold text-emerald-800">حاضر</button>
-                  <button data-testid={`button-child-late-${record.childId}`} onClick={() => setChildStatus(record, 'late')} disabled={recordChild.isPending} className="rounded-lg bg-amber-100 px-2.5 py-1.5 text-xs font-bold text-amber-800">متأخر</button>
-                  <button data-testid={`button-child-absent-${record.childId}`} onClick={() => setChildStatus(record, 'absent')} disabled={recordChild.isPending} className="rounded-lg bg-red-100 px-2.5 py-1.5 text-xs font-bold text-red-800">غائب</button>
-                  <button data-testid={`button-child-excused-${record.childId}`} onClick={() => setChildStatus(record, 'excused')} disabled={recordChild.isPending} className="rounded-lg bg-sky-100 px-2.5 py-1.5 text-xs font-bold text-sky-800">بعذر</button>
-                  <button data-testid={`button-child-early-${record.childId}`} onClick={() => setChildStatus(record, record.status, true)} disabled={recordChild.isPending || !record.checkIn} className="rounded-lg bg-orange-100 px-2.5 py-1.5 text-xs font-bold text-orange-800 disabled:opacity-40">انصراف مبكر</button>
-                   <button onClick={() => { const pickupName=window.prompt('اسم المستلم'); if (pickupName) { const pickupIdentity=window.prompt('الرقم المدني (اختياري)'); const pickupOverride=window.confirm('استخدمي التجاوز فقط عند عدم تطابق المستلم مع قائمة المصرح لهم. هل يلزم التجاوز؟'); const pickupOverrideReason=pickupOverride ? window.prompt('سبب التجاوز (مطلوب)') : null; if (pickupOverride && !pickupOverrideReason) return; const correctionReason=selectedDate !== today ? window.prompt('سبب التعديل للسجل التاريخي') : null; recordChild.mutate({data:{childId:record.childId,date:selectedDate,status:record.status,checkIn:record.checkIn,checkOut:new Date().toISOString(),departureType:'normal',source:'manual',note:record.note||null,pickupName,pickupIdentity:pickupIdentity||null,correctionReason:correctionReason||null,pickupOverride,pickupOverrideReason}},{onSuccess:()=>{qc.invalidateQueries({queryKey:getGetTodayAttendanceQueryKey()});qc.invalidateQueries({queryKey:getListAttendanceHistoryQueryKey()})}}) }}} disabled={recordChild.isPending || !record.checkIn} className="rounded-lg bg-primary/10 px-2.5 py-1.5 text-xs font-bold text-primary disabled:opacity-40">تسجيل المستلم</button>
+                   <button data-testid={`button-child-present-${record.childId}`} onClick={() => setChildStatus(record, 'present')} disabled={recordChild.isPending} className="rounded-lg bg-emerald-100 px-2.5 py-1.5 text-xs font-bold text-emerald-800">{t('expanded.present')}</button>
+                  <button data-testid={`button-child-late-${record.childId}`} onClick={() => setChildStatus(record, 'late')} disabled={recordChild.isPending} className="rounded-lg bg-amber-100 px-2.5 py-1.5 text-xs font-bold text-amber-800">{t('expanded.late')}</button>
+                  <button data-testid={`button-child-absent-${record.childId}`} onClick={() => setChildStatus(record, 'absent')} disabled={recordChild.isPending} className="rounded-lg bg-red-100 px-2.5 py-1.5 text-xs font-bold text-red-800">{t('expanded.absent')}</button>
+                  <button data-testid={`button-child-excused-${record.childId}`} onClick={() => setChildStatus(record, 'excused')} disabled={recordChild.isPending} className="rounded-lg bg-sky-100 px-2.5 py-1.5 text-xs font-bold text-sky-800">{t('expanded.excused')}</button>
+                  <button data-testid={`button-child-early-${record.childId}`} onClick={() => setChildStatus(record, record.status, true)} disabled={recordChild.isPending || !record.checkIn} className="rounded-lg bg-orange-100 px-2.5 py-1.5 text-xs font-bold text-orange-800 disabled:opacity-40">{t('expanded.earlyDeparture')}</button>
+                   <button onClick={() => { const pickupName=window.prompt(t('expanded.pickupName')); if (pickupName) { const pickupIdentity=window.prompt(t('expanded.civilIdOptional')); const pickupOverride=window.confirm(t('expanded.overrideConfirm')); const pickupOverrideReason=pickupOverride ? window.prompt(t('expanded.overrideReason')) : null; if (pickupOverride && !pickupOverrideReason) return; const correctionReason=selectedDate !== today ? window.prompt(t('expanded.correctionReason')) : null; recordChild.mutate({data:{childId:record.childId,date:selectedDate,status:record.status,checkIn:record.checkIn,checkOut:new Date().toISOString(),departureType:'normal',source:'manual',note:record.note||null,pickupName,pickupIdentity:pickupIdentity||null,correctionReason:correctionReason||null,pickupOverride,pickupOverrideReason}},{onSuccess:()=>{qc.invalidateQueries({queryKey:getGetTodayAttendanceQueryKey()});qc.invalidateQueries({queryKey:getListAttendanceHistoryQueryKey()})}}) }}} disabled={recordChild.isPending || !record.checkIn} className="rounded-lg bg-primary/10 px-2.5 py-1.5 text-xs font-bold text-primary disabled:opacity-40">{t('expanded.recordPickup')}</button>
                 </div>
               </div>
             ))}
@@ -119,25 +121,25 @@ export function AttendanceExpanded() {
         <QueryState loading={staffQuery.isLoading} error={staffQuery.isError} empty={!staffData.length} onRetry={() => staffQuery.refetch()}>
           <div className="overflow-hidden rounded-[1.5rem] border border-border bg-card shadow-sm">
              <div className="hidden grid-cols-[1.5fr_1fr_1.5fr_1fr] gap-4 border-b border-border bg-secondary/30 px-6 py-4 text-xs font-bold text-muted-foreground md:grid">
-              <span>الموظف</span><span>الحالة</span><span>الدخول / الخروج</span><span>المسجل</span>
+              <span>{t('expanded.employee')}</span><span>{t('expanded.status')}</span><span>{t('expanded.inOut')}</span><span>{t('expanded.recordedBy')}</span>
             </div>
             {staffData.map((record) => (
               <div key={record.id} data-testid={`row-attendance-staff-${record.id}`} className="grid gap-3 border-b border-border px-6 py-5 last:border-0 hover:bg-muted/50 transition-colors md:grid-cols-[1.5fr_1fr_1.5fr_1fr] md:items-center md:gap-4">
                 <div className="flex items-center gap-4">
                   <Avatar name={staffMap.get(record.staffId) || `ID: ${record.staffId}`} className="h-10 w-10" />
-                  <span className="font-bold text-foreground">{staffMap.get(record.staffId) || `الموظف ${record.staffId}`}</span>
+                   <span className="font-bold text-foreground">{staffMap.get(record.staffId) || t('expanded.staffFallback', { id: record.staffId })}</span>
                 </div>
                 <div>
                   <Pill tone={record.status === 'present' ? 'green' : record.status === 'absent' ? 'red' : record.status === 'late' ? 'yellow' : 'blue'}>
-                    {record.status === 'present' ? 'حاضر' : record.status === 'absent' ? 'غائب' : record.status === 'late' ? 'تأخير' : 'إجازة'}
+                     {attendanceStatus(record.status, t)}
                   </Pill>
-                  {record.departureType === 'early' && <span className="mr-2 text-xs font-bold text-orange-600">انصراف مبكر</span>}
+                   {record.departureType === 'early' && <span className="ms-2 text-xs font-bold text-orange-600">{t('expanded.earlyDeparture')}</span>}
                 </div>
                 <div className="text-sm font-medium text-muted-foreground">
-                  <div dir="ltr" className="text-right">
-                    <span className="text-primary">{record.checkIn ? new Date(record.checkIn).toLocaleTimeString('en-US', {hour: '2-digit', minute: '2-digit'}) : '-'}</span>
+                   <div dir="ltr" className={dir === 'rtl' ? 'text-right' : 'text-left'}>
+                     <span className="text-primary">{record.checkIn ? formatDateTime(record.checkIn, { year: undefined, month: undefined, day: undefined, hour: '2-digit', minute: '2-digit' }) : '-'}</span>
                     <span className="mx-2">→</span>
-                    <span>{record.checkOut ? new Date(record.checkOut).toLocaleTimeString('en-US', {hour: '2-digit', minute: '2-digit'}) : '-'}</span>
+                     <span>{record.checkOut ? formatDateTime(record.checkOut, { year: undefined, month: undefined, day: undefined, hour: '2-digit', minute: '2-digit' }) : '-'}</span>
                   </div>
                 </div>
                 <div className="text-sm font-medium text-muted-foreground">{record.recordedBy}</div>
@@ -153,6 +155,7 @@ export function AttendanceExpanded() {
 }
 
 function StaffAttendanceForm({ staff, onClose }: { staff: any[], onClose: () => void }) {
+  const { t } = useI18n();
   const [form, setForm] = useState({ 
     staffId: '', 
     status: 'present', 
@@ -167,7 +170,7 @@ function StaffAttendanceForm({ staff, onClose }: { staff: any[], onClose: () => 
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.staffId) return alert('الرجاء اختيار الموظف');
+    if (!form.staffId) return alert(t('expanded.selectEmployeeAlert'));
     
     const today = new Date().toISOString().slice(0, 10);
     const checkIn = form.checkInTime ? new Date(`${today}T${form.checkInTime}:00`).toISOString() : null;
@@ -196,54 +199,62 @@ function StaffAttendanceForm({ staff, onClose }: { staff: any[], onClose: () => 
     <div className="fixed inset-0 z-50 grid place-items-center bg-primary/40 p-4 backdrop-blur-md animate-in fade-in">
       <form onSubmit={submit} className="w-full max-w-md rounded-[2rem] border border-border bg-card p-8 shadow-2xl animate-rise">
         <div className="mb-6 flex justify-between items-center">
-          <h2 className="text-xl font-bold">تسجيل حضور / انصراف كادر</h2>
-          <Button data-testid="button-close-staff-attendance" type="button" variant="ghost" onClick={onClose} className="!p-2"><X size={20} /></Button>
+          <h2 className="text-xl font-bold">{t('expanded.staffAttendanceTitle')}</h2>
+           <Button data-testid="button-close-staff-attendance" aria-label={t('common.close')} title={t('common.close')} type="button" variant="ghost" onClick={onClose} className="!p-2"><X size={20} /></Button>
         </div>
         <div className="space-y-4">
-          <label className="block text-sm font-bold">الموظف
+          <label className="block text-sm font-bold">{t('expanded.employee')}
             <select required data-testid="select-staff-id" value={form.staffId} onChange={(e) => setForm({...form, staffId: e.target.value})} className="mt-2 w-full rounded-xl border border-input bg-background px-4 py-3 outline-none">
-              <option value="">اختر الموظف...</option>
+               <option value="">{t('expanded.selectEmployee')}</option>
               {staff.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </label>
-          <label className="block text-sm font-bold">الحالة
+          <label className="block text-sm font-bold">{t('expanded.status')}
             <select data-testid="select-staff-status" value={form.status} onChange={(e) => setForm({...form, status: e.target.value})} className="mt-2 w-full rounded-xl border border-input bg-background px-4 py-3 outline-none">
-              <option value="present">حاضر</option>
-              <option value="late">تأخير</option>
-              <option value="absent">غائب</option>
-              <option value="leave">إجازة</option>
+              <option value="present">{t('expanded.present')}</option>
+              <option value="late">{t('expanded.late')}</option>
+              <option value="absent">{t('expanded.absent')}</option>
+              <option value="leave">{t('expanded.leave')}</option>
             </select>
           </label>
           
           {(form.status === 'present' || form.status === 'late') && (
             <div className="grid grid-cols-2 gap-4">
-              <label className="block text-sm font-bold">وقت الدخول
+              <label className="block text-sm font-bold">{t('expanded.checkIn')}
                 <input type="time" data-testid="input-staff-checkin" value={form.checkInTime} onChange={(e) => setForm({...form, checkInTime: e.target.value})} className="mt-2 w-full rounded-xl border border-input bg-background px-4 py-3 outline-none" />
               </label>
-              <label className="block text-sm font-bold">وقت الخروج (اختياري)
+              <label className="block text-sm font-bold">{t('expanded.checkOutOptional')}
                 <input type="time" data-testid="input-staff-checkout" value={form.checkOutTime} onChange={(e) => setForm({...form, checkOutTime: e.target.value})} className="mt-2 w-full rounded-xl border border-input bg-background px-4 py-3 outline-none" />
               </label>
             </div>
           )}
           
           {form.checkOutTime && (
-            <label className="block text-sm font-bold">نوع الانصراف
+            <label className="block text-sm font-bold">{t('expanded.departureType')}
               <select data-testid="select-staff-departure" value={form.departureType} onChange={(e) => setForm({...form, departureType: e.target.value})} className="mt-2 w-full rounded-xl border border-input bg-background px-4 py-3 outline-none">
-                <option value="normal">طبيعي</option>
-                <option value="early">مبكر (استئذان)</option>
+                <option value="normal">{t('expanded.normal')}</option>
+                <option value="early">{t('expanded.earlyPermission')}</option>
               </select>
             </label>
           )}
           
-          <label className="block text-sm font-bold">ملاحظات
+          <label className="block text-sm font-bold">{t('expanded.notes')}
             <textarea data-testid="input-staff-note" rows={2} value={form.note} onChange={(e) => setForm({...form, note: e.target.value})} className="mt-2 w-full resize-none rounded-xl border border-input bg-background px-4 py-3 outline-none" />
           </label>
         </div>
         <div className="mt-8 flex justify-end gap-3">
-          <Button data-testid="button-cancel-staff-attendance" type="button" variant="ghost" onClick={onClose}>إلغاء</Button>
-          <Button type="submit" disabled={create.isPending} data-testid="button-submit-staff-attendance">{create.isPending ? 'جارٍ التسجيل...' : 'تسجيل السجل'}</Button>
+          <Button data-testid="button-cancel-staff-attendance" type="button" variant="ghost" onClick={onClose}>{t('common.cancel')}</Button>
+          <Button type="submit" disabled={create.isPending} data-testid="button-submit-staff-attendance">{create.isPending ? t('expanded.recording') : t('expanded.saveRecord')}</Button>
         </div>
       </form>
     </div>
   );
+}
+
+function attendanceStatus(status: string, t: ReturnType<typeof useI18n>['t']) {
+  const labels: Record<string, string> = {
+    present: t('expanded.present'), absent: t('expanded.absent'), late: t('expanded.late'),
+    excused: t('expanded.excused'), leave: t('expanded.leave'),
+  };
+  return labels[status] || status;
 }

@@ -10,6 +10,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Button, Pill, QueryState } from '../App';
 import { Plus, Edit3, Trash2, X } from 'lucide-react';
 import type { OperationalRecord } from '@workspace/api-client-react';
+import { useI18n } from '../i18n';
 
 type ResourceType = 'branch' | 'stage' | 'teacher-assignment' | 'classroom-schedule' | 'staff-profile' | 'staff-job' | 'staff-leave' | 'payroll' | 'evaluation' | 'curriculum' | 'lesson-plan' | 'skill' | 'assessment' | 'progress-report' | 'event' | 'media' | 'fee-plan' | 'discount' | 'refund' | 'expense' | 'revenue' | 'setting' | 'holiday' | 'notification' | 'integration';
 
@@ -20,6 +21,7 @@ export function OperationalManager({ resource, title, description, icon: Icon, e
   icon?: any;
   extraFields?: { name: string; label: string; type: string }[];
 }) {
+  const { t, formatDate, formatNumber } = useI18n();
   const query = useListOperationalRecords(resource);
   const records = query.data || [];
   const qc = useQueryClient();
@@ -28,7 +30,7 @@ export function OperationalManager({ resource, title, description, icon: Icon, e
   const del = useDeleteOperationalRecord();
 
   const handleDelete = (id: number) => {
-    if (confirm('هل أنت متأكد من الحذف؟')) {
+    if (confirm(t('expanded.deleteConfirm'))) {
       del.mutate({ resource, id }, {
         onSuccess: () => qc.invalidateQueries({ queryKey: getListOperationalRecordsQueryKey(resource) })
       });
@@ -44,7 +46,7 @@ export function OperationalManager({ resource, title, description, icon: Icon, e
           </h2>
           {description && <p className="mt-1.5 text-sm text-muted-foreground">{description}</p>}
         </div>
-        <Button data-testid={`button-add-${resource}`} onClick={() => setModal('new')}><Plus size={18} />إضافة</Button>
+        <Button data-testid={`button-add-${resource}`} onClick={() => setModal('new')}><Plus size={18} />{t('expanded.add')}</Button>
       </div>
 
       <QueryState loading={query.isLoading} error={query.isError} empty={!records.length} onRetry={() => query.refetch()}>
@@ -54,14 +56,14 @@ export function OperationalManager({ resource, title, description, icon: Icon, e
               <div>
                 <p className="font-bold text-foreground">{record.title}</p>
                 <div className="flex gap-2 mt-1">
-                  <Pill tone={record.status === 'active' || record.status === 'approved' || record.status === 'published' ? 'green' : 'neutral'}>{record.status || 'نشط'}</Pill>
-                  {record.amount != null && <Pill tone="blue">{record.amount}</Pill>}
-                  {record.occurredOn && <span className="text-xs text-muted-foreground">{new Date(record.occurredOn).toLocaleDateString('ar-SA')}</span>}
+                  <Pill tone={record.status === 'active' || record.status === 'approved' || record.status === 'published' ? 'green' : 'neutral'}>{statusLabel(record.status || 'active', t)}</Pill>
+                  {record.amount != null && <Pill tone="blue">{formatNumber(record.amount)}</Pill>}
+                  {record.occurredOn && <span className="text-xs text-muted-foreground">{formatDate(record.occurredOn)}</span>}
                 </div>
               </div>
               <div className="flex gap-2">
-                <Button data-testid={`button-edit-${resource}-${record.id}`} variant="ghost" className="h-8 w-8 !p-0" onClick={() => setModal(record)}><Edit3 size={16} /></Button>
-                <Button data-testid={`button-delete-${resource}-${record.id}`} variant="ghost" className="h-8 w-8 !p-0 text-destructive hover:bg-destructive hover:text-white" onClick={() => handleDelete(record.id)} disabled={del.isPending}><Trash2 size={16} /></Button>
+                 <Button data-testid={`button-edit-${resource}-${record.id}`} aria-label={t('common.edit')} title={t('common.edit')} variant="ghost" className="h-8 w-8 !p-0" onClick={() => setModal(record)}><Edit3 size={16} /></Button>
+                 <Button data-testid={`button-delete-${resource}-${record.id}`} aria-label={t('common.delete')} title={t('common.delete')} variant="ghost" className="h-8 w-8 !p-0 text-destructive hover:bg-destructive hover:text-white" onClick={() => handleDelete(record.id)} disabled={del.isPending}><Trash2 size={16} /></Button>
               </div>
             </div>
           ))}
@@ -81,6 +83,7 @@ export function OperationalManager({ resource, title, description, icon: Icon, e
 }
 
 function OperationalForm({ resource, record, onClose, extraFields }: { resource: ResourceType, record?: OperationalRecord, onClose: () => void, extraFields: { name: string; label: string; type: string }[] }) {
+  const { t } = useI18n();
   const [form, setForm] = useState({
     title: record?.title || '',
     status: record?.status || 'active',
@@ -124,32 +127,32 @@ function OperationalForm({ resource, record, onClose, extraFields }: { resource:
     <div className="fixed inset-0 z-50 grid place-items-center bg-primary/40 p-4 backdrop-blur-md animate-in fade-in">
       <form onSubmit={submit} className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-[2rem] border border-border bg-card p-8 shadow-2xl animate-rise">
         <div className="mb-6 flex justify-between items-center">
-          <h2 className="text-xl font-bold">{record ? 'تعديل السجل' : 'إضافة سجل'}</h2>
-          <Button data-testid={`button-close-${resource}-form`} type="button" variant="ghost" onClick={onClose} className="!p-2"><X size={20} /></Button>
+          <h2 className="text-xl font-bold">{record ? t('expanded.editEntry') : t('expanded.addEntry')}</h2>
+           <Button data-testid={`button-close-${resource}-form`} aria-label={t('common.close')} title={t('common.close')} type="button" variant="ghost" onClick={onClose} className="!p-2"><X size={20} /></Button>
         </div>
         
         <div className="space-y-4">
           <label className="block text-sm font-bold text-foreground">
-            العنوان / الوصف
+            {t('expanded.titleDescription')}
             <input required data-testid={`input-${resource}-title`} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="mt-2 w-full rounded-xl border border-input bg-background px-4 py-3 outline-none focus:ring-2 focus:ring-primary/20" />
           </label>
           <label className="block text-sm font-bold text-foreground">
-            الحالة
+            {t('expanded.status')}
             <select data-testid={`select-${resource}-status`} value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })} className="mt-2 w-full rounded-xl border border-input bg-background px-4 py-3 outline-none">
-              <option value="active">نشط / معتمد</option>
-              <option value="draft">مسودة</option>
-              <option value="archived">مؤرشف</option>
-              <option value="pending">قيد الانتظار</option>
-              <option value="approved">موافق عليه</option>
-              <option value="published">منشور</option>
+              <option value="active">{t('expanded.activeApproved')}</option>
+              <option value="draft">{t('expanded.draft')}</option>
+              <option value="archived">{t('expanded.archived')}</option>
+              <option value="pending">{t('expanded.waiting')}</option>
+              <option value="approved">{t('expanded.approved')}</option>
+              <option value="published">{t('expanded.published')}</option>
             </select>
           </label>
           <label className="block text-sm font-bold text-foreground">
-            التاريخ (اختياري)
+            {t('expanded.optionalDate')}
             <input type="date" data-testid={`input-${resource}-date`} value={form.occurredOn} onChange={(e) => setForm({ ...form, occurredOn: e.target.value })} className="mt-2 w-full rounded-xl border border-input bg-background px-4 py-3 outline-none focus:ring-2 focus:ring-primary/20" />
           </label>
           <label className="block text-sm font-bold text-foreground">
-            المبلغ / القيمة (إن وجد)
+            {t('expanded.amountValue')}
             <input type="number" step="0.001" data-testid={`input-${resource}-amount`} value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} className="mt-2 w-full rounded-xl border border-input bg-background px-4 py-3 outline-none focus:ring-2 focus:ring-primary/20" />
           </label>
           
@@ -162,12 +165,20 @@ function OperationalForm({ resource, record, onClose, extraFields }: { resource:
         </div>
         
         <div className="mt-8 flex justify-end gap-3 pt-6 border-t border-border">
-          <Button data-testid={`button-cancel-${resource}`} type="button" variant="ghost" onClick={onClose}>إلغاء</Button>
+          <Button data-testid={`button-cancel-${resource}`} type="button" variant="ghost" onClick={onClose}>{t('common.cancel')}</Button>
           <Button data-testid={`button-submit-${resource}`} type="submit" disabled={create.isPending || update.isPending}>
-            {create.isPending || update.isPending ? 'جارٍ الحفظ...' : 'حفظ'}
+            {create.isPending || update.isPending ? t('expanded.saving') : t('common.save')}
           </Button>
         </div>
       </form>
     </div>
   );
+}
+
+function statusLabel(status: string, t: ReturnType<typeof useI18n>['t']) {
+  const labels: Record<string, ReturnType<typeof t>> = {
+    active: t('expanded.active'), approved: t('expanded.approved'), published: t('expanded.published'),
+    draft: t('expanded.draft'), archived: t('expanded.archived'), pending: t('expanded.waiting'),
+  };
+  return labels[status] || status;
 }

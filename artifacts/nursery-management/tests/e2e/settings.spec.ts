@@ -38,12 +38,12 @@ test('يتحقق من الساعات ويحفظ اليوم المعطل والع
   await expect(page.getByRole('heading', { name: 'ساعات العمل الأسبوعية' })).toBeVisible();
   await expect(page.getByRole('checkbox')).toHaveCount(7);
 
-  await page.getByLabel('وقت فتح الأحد').fill('15:00');
+  await page.getByLabel('وقت الفتح الأحد').fill('15:00');
   await page.getByRole('button', { name: 'حفظ الإعدادات' }).click();
   await expect(page.getByRole('alert')).toContainText('يجب أن يسبق وقت الفتح وقت الإغلاق ليوم الأحد');
   expect(requests).toHaveLength(0);
 
-  await page.getByLabel('وقت فتح الأحد').fill('08:00');
+  await page.getByLabel('وقت الفتح الأحد').fill('08:00');
   await page.getByRole('checkbox').nth(4).uncheck();
   await page.getByLabel('تاريخ العطلة').fill('2026-12-17');
   await page.getByRole('button', { name: 'إضافة عطلة' }).click();
@@ -62,5 +62,11 @@ test('يتحقق من الساعات ويحفظ اليوم المعطل والع
 
   await page.reload();
   await expect(page.getByRole('checkbox').nth(4)).not.toBeChecked();
-  await expect(page.getByText('2026-12-17')).toBeVisible();
+  const formattedHoliday = new Intl.DateTimeFormat('ar-KW', {
+    timeZone: 'Asia/Kuwait',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  }).format(new Date('2026-12-17'));
+  await expect(page.getByText(formattedHoliday, { exact: true })).toBeVisible();
 });

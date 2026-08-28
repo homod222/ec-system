@@ -4,8 +4,10 @@ import { useListParentProgressReports, useListParentChildren } from '@workspace/
 import { ParentShell } from '../../components/ParentShell';
 import { ParentPageHeader, ParentQueryState } from '../../components/ParentShared';
 import { FileText, GraduationCap, Download } from 'lucide-react';
+import { useI18n } from '../../i18n';
 
 export function ParentReports() {
+  const { t } = useI18n();
   const search = useSearch();
   const searchParams = new URLSearchParams(search);
   const urlChildId = searchParams.get('childId') ? Number(searchParams.get('childId')) : undefined;
@@ -25,8 +27,8 @@ export function ParentReports() {
   return (
     <ParentShell>
       <ParentPageHeader 
-        title="التقارير الأكاديمية" 
-        description="تابعي تطور مهارات طفلك الأكاديمية والاجتماعية من خلال تقارير دورية."
+        title={t('parent.reportsTitle')}
+        description={t('parent.reportsDesc')}
       />
 
       <div className="mb-8 flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
@@ -37,7 +39,7 @@ export function ParentReports() {
             !childId ? 'bg-[#165032] text-white shadow-md' : 'bg-white text-[#165032]/70 hover:bg-[#165032]/5 border border-[#165032]/10'
           }`}
         >
-          جميع الأبناء
+          {t('parent.allChildren')}
         </button>
         {children.map(child => (
           <button 
@@ -78,10 +80,10 @@ export function ParentReports() {
               <div className="mt-6 flex items-center justify-between pt-6 border-t border-[#165032]/5">
                 <div className="flex items-center gap-2 text-sm font-bold text-[#165032]/60">
                   <GraduationCap size={16} />
-                  المعلمة: {report.educatorName}
+                  {t('parent.educator', { name: report.educatorName })}
                 </div>
                 <button data-testid={`button-download-report-${report.id}`} className="flex items-center gap-2 rounded-xl bg-[#165032]/5 px-4 py-2 text-sm font-bold text-[#165032] transition-colors hover:bg-[#165032]/10">
-                  <Download size={16} /> تحميل
+                  <Download size={16} /> {t('parent.download')}
                 </button>
               </div>
             </div>

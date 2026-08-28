@@ -4,15 +4,17 @@ import { useQueryClient } from '@tanstack/react-query';
 import { ParentShell } from '../../components/ParentShell';
 import { ParentPageHeader, ParentQueryState } from '../../components/ParentShared';
 import { Send, Megaphone, MessageCircle } from 'lucide-react';
+import { useI18n } from '../../i18n';
 
 export function ParentMessages() {
+  const { t } = useI18n();
   const [tab, setTab] = useState<'messages' | 'announcements'>('messages');
   
   return (
     <ParentShell>
       <ParentPageHeader 
-        title="التواصل المباشر" 
-        description="تواصل مع إدارة الحضانة والمعلمات، وتابع أحدث الإعلانات والتعاميم."
+        title={t('parent.messagesTitle')}
+        description={t('parent.messagesDesc')}
       />
 
       <div className="mb-8 flex rounded-2xl bg-white p-1 border border-[#165032]/10 w-fit shadow-sm">
@@ -24,7 +26,7 @@ export function ParentMessages() {
           }`}
         >
           <MessageCircle size={18} />
-          المراسلات
+          {t('parent.conversations')}
         </button>
         <button 
           data-testid="button-tab-announcements"
@@ -34,7 +36,7 @@ export function ParentMessages() {
           }`}
         >
           <Megaphone size={18} />
-          الإعلانات
+          {t('parent.announcements')}
         </button>
       </div>
 
@@ -44,6 +46,7 @@ export function ParentMessages() {
 }
 
 function MessagesTab() {
+  const { t, formatDateTime, dir } = useI18n();
   const query = useListParentMessages();
   const messages = query.data || [];
   const send = useSendParentMessage();
@@ -80,8 +83,8 @@ function MessagesTab() {
         ) : messages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center text-center">
             <MessageCircle size={48} className="mb-4 text-[#165032]/20" />
-            <p className="font-bold text-[#165032]/60">لا توجد رسائل سابقة</p>
-            <p className="text-sm text-[#165032]/40 mt-2">ابدأ محادثة جديدة مع إدارة الحضانة</p>
+            <p className="font-bold text-[#165032]/60">{t('parent.noMessages')}</p>
+            <p className="text-sm text-[#165032]/40 mt-2">{t('parent.startConversation')}</p>
           </div>
         ) : (
           messages.slice().reverse().map((msg) => {
@@ -90,8 +93,8 @@ function MessagesTab() {
               <div key={msg.id} data-testid={`message-${msg.id}`} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
                 <div className={`max-w-[85%] sm:max-w-[70%] rounded-2xl p-5 ${
                   isMe 
-                    ? 'bg-[#165032] text-white rounded-bl-sm' 
-                    : 'bg-white border border-[#165032]/10 text-[#0f2416] rounded-br-sm shadow-sm'
+                    ? `bg-[#165032] text-white ${dir === 'rtl' ? 'rounded-bl-sm' : 'rounded-br-sm'}`
+                    : `bg-white border border-[#165032]/10 text-[#0f2416] shadow-sm ${dir === 'rtl' ? 'rounded-br-sm' : 'rounded-bl-sm'}`
                 }`}>
                   <p className={`text-xs font-bold mb-2 ${isMe ? 'text-white/70' : 'text-[#165032]/60'}`}>
                     {msg.subject}
@@ -99,7 +102,7 @@ function MessagesTab() {
                   <p className="text-sm font-medium leading-relaxed whitespace-pre-wrap">{msg.content}</p>
                 </div>
                 <p className="text-[10px] font-bold text-[#165032]/40 mt-2 px-2">
-                  {new Date(msg.createdAt).toLocaleString('ar-SA', { hour: '2-digit', minute: '2-digit', month: 'short', day: 'numeric' })}
+                  {formatDateTime(msg.createdAt)}
                 </p>
               </div>
             );
@@ -114,7 +117,8 @@ function MessagesTab() {
             data-testid="input-message-subject"
             value={subject} 
             onChange={e => setSubject(e.target.value)} 
-            placeholder="موضوع الرسالة" 
+            placeholder={t('parent.messageSubject')}
+            aria-label={t('parent.messageSubject')}
             className="w-full rounded-xl border border-[#165032]/10 bg-[#FDFBF7] px-4 py-3 text-sm font-bold outline-none focus:border-[#165032] focus:ring-2 focus:ring-[#165032]/10 transition-all"
             required
             maxLength={160}
@@ -124,7 +128,8 @@ function MessagesTab() {
               data-testid="input-message-content"
               value={content} 
               onChange={e => setContent(e.target.value)} 
-              placeholder="اكتب رسالتك هنا..." 
+               placeholder={t('parent.writeMessage')}
+               aria-label={t('parent.writeMessage')}
               className="w-full resize-none rounded-xl border border-[#165032]/10 bg-[#FDFBF7] px-4 py-3 text-sm font-medium outline-none focus:border-[#165032] focus:ring-2 focus:ring-[#165032]/10 transition-all min-h-[50px] max-h-32"
               rows={2}
               required
@@ -136,7 +141,8 @@ function MessagesTab() {
               disabled={send.isPending || !subject.trim() || !content.trim()}
               className="shrink-0 flex h-[50px] w-[50px] items-center justify-center rounded-xl bg-[#165032] text-white hover:bg-[#165032]/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
             >
-              <Send size={20} className="rtl:rotate-180" />
+              <Send size={20} className={dir === 'rtl' ? 'rotate-180' : ''} />
+              <span className="sr-only">{t('parent.sendMessage')}</span>
             </button>
           </div>
         </form>
@@ -146,6 +152,7 @@ function MessagesTab() {
 }
 
 function AnnouncementsTab() {
+  const { formatDate } = useI18n();
   const query = useListParentAnnouncements();
   const announcements = query.data || [];
 
@@ -159,7 +166,7 @@ function AnnouncementsTab() {
                 <Megaphone size={20} />
               </div>
               <span className="text-xs font-bold text-[#165032]/50 bg-[#FDFBF7] px-3 py-1.5 rounded-full border border-[#165032]/5">
-                {new Date(item.publishedAt).toLocaleDateString('ar-SA', { year: 'numeric', month: 'long', day: 'numeric' })}
+                {formatDate(item.publishedAt)}
               </span>
             </div>
             <h3 className="text-xl font-bold text-[#0f2416] mb-3">{item.title}</h3>

@@ -5,14 +5,10 @@ import { CreditCard, FileText, CheckCircle2, AlertCircle, Clock, CalendarClock }
 import { useToast } from '../../hooks/use-toast';
 import { useEffect } from 'react';
 import type { BillingPlan } from '@workspace/api-client-react';
-
-const money = (n: number) => new Intl.NumberFormat('ar-KW', {
-  style: 'currency',
-  currency: 'KWD',
-  minimumFractionDigits: 0,
-}).format(n || 0);
+import { useI18n } from '../../i18n';
 
 function ParentBillingPlanCard({ plan }: { plan: BillingPlan }) {
+  const { t, formatCurrency, formatDate, dir } = useI18n();
   const progress = Math.min(100, (plan.collectedAmount / Math.max(1, plan.netAmount)) * 100);
   
   return (
@@ -33,14 +29,14 @@ function ParentBillingPlanCard({ plan }: { plan: BillingPlan }) {
             plan.status === 'completed' ? 'bg-blue-100 text-blue-800' :
             'bg-orange-100 text-orange-800'
           }`}>
-            {plan.status === 'active' ? 'نشطة' : plan.status === 'completed' ? 'مكتملة' : 'موقوفة'}
+             {plan.status === 'active' ? t('parent.active') : plan.status === 'completed' ? t('parent.completed') : t('parent.suspended')}
         </span>
       </div>
       
       <div className="bg-[#FDFBF7] rounded-xl p-4 mb-5 border border-[#165032]/5">
          <div className="flex justify-between text-xs font-bold mb-2">
-           <span className="text-[#165032]/70">تم سداد {money(plan.collectedAmount)}</span>
-           <span className="text-[#0f2416]">من أصل {money(plan.netAmount)}</span>
+           <span className="text-[#165032]/70">{t('parent.paidAmount', { amount: formatCurrency(plan.collectedAmount) })}</span>
+           <span className="text-[#0f2416]">{t('parent.outOf', { amount: formatCurrency(plan.netAmount) })}</span>
          </div>
          <div className="h-2 w-full bg-[#165032]/10 rounded-full overflow-hidden">
            <div className="h-full bg-[#165032]" style={{ width: `${progress}%` }} />
@@ -48,8 +44,8 @@ function ParentBillingPlanCard({ plan }: { plan: BillingPlan }) {
       </div>
       
       <div className="space-y-3">
-        <h4 className="text-xs font-bold text-[#165032]/50 uppercase tracking-wider">الجدول الزمني</h4>
-        <div className="max-h-[160px] overflow-y-auto pr-2 space-y-2">
+         <h4 className="text-xs font-bold text-[#165032]/50 uppercase tracking-wider">{t('parent.schedule')}</h4>
+         <div className={`max-h-[160px] overflow-y-auto space-y-2 ${dir === 'rtl' ? 'pr-2' : 'pl-2'}`}>
           {plan.installments?.map(inst => (
             <div key={inst.id} className="flex items-center justify-between text-sm p-2 rounded-lg border border-transparent hover:border-[#165032]/5 bg-white transition-colors">
                <div className="flex items-center gap-3">
@@ -61,11 +57,11 @@ function ParentBillingPlanCard({ plan }: { plan: BillingPlan }) {
                    {inst.sequence}
                  </span>
                  <span className={`font-bold ${inst.status === 'paid' ? 'text-[#165032]/40 line-through' : 'text-[#0f2416]'}`}>
-                   {money(inst.amount)}
+                    {formatCurrency(inst.amount)}
                  </span>
                </div>
-               <div className="text-left flex items-center gap-2">
-                 <span className="text-xs font-medium text-[#165032]/60" dir="ltr">{new Date(inst.dueDate).toLocaleDateString('en-GB')}</span>
+                <div className={`flex items-center gap-2 ${dir === 'rtl' ? 'text-left' : 'text-right'}`}>
+                  <span className="text-xs font-medium text-[#165032]/60" dir="ltr">{formatDate(inst.dueDate, { year: 'numeric', month: '2-digit', day: '2-digit' })}</span>
                  {inst.status === 'paid' && <CheckCircle2 size={14} className="text-emerald-500" />}
                  {inst.status === 'overdue' && <AlertCircle size={14} className="text-red-500" />}
                  {(inst.status === 'scheduled' || inst.status === 'issued') && <Clock size={14} className="text-orange-400" />}
@@ -79,6 +75,7 @@ function ParentBillingPlanCard({ plan }: { plan: BillingPlan }) {
 }
 
 export function ParentInvoices({ withShell = true }: { withShell?: boolean } = {}) {
+  const { t, formatCurrency, formatDate, dir } = useI18n();
   const query = useListParentInvoices();
   const plansQuery = useListParentBillingPlans();
   const checkout = useCreateParentInvoiceCheckoutSession();
@@ -93,14 +90,14 @@ export function ParentInvoices({ withShell = true }: { withShell?: boolean } = {
     if (!payment) return;
     if (payment === 'success') {
       toast({
-        title: 'جارٍ تأكيد الدفع…',
-        description: 'سيتم تحديث حالة الفاتورة بعد استلام تأكيد MyFatoorah.',
+        title: t('parent.paymentConfirming'),
+        description: t('parent.paymentConfirmingDesc'),
       });
       window.setTimeout(() => { query.refetch(); plansQuery.refetch(); }, 2500);
     } else {
       toast({
-        title: 'لم تكتمل عملية الدفع',
-        description: invoiceId ? `لم تُسدّد الفاتورة رقم ${invoiceId}. يمكنك المحاولة مرة أخرى.` : 'يمكنك المحاولة مرة أخرى.',
+        title: t('parent.paymentIncomplete'),
+        description: invoiceId ? t('parent.paymentInvoiceFailed', { id: invoiceId }) : t('parent.payRetry'),
         variant: 'destructive',
       });
     }
@@ -117,8 +114,8 @@ export function ParentInvoices({ withShell = true }: { withShell?: boolean } = {
       onError: (error) => {
         const description = error instanceof Error
           ? error.message.replace(/^HTTP \d+ [^:]*:\s*/, '')
-          : 'حاول مرة أخرى أو تواصل مع إدارة الحضانة.';
-        toast({ title: 'تعذّر بدء عملية الدفع', description, variant: 'destructive' });
+          : t('parent.checkoutErrorDesc');
+        toast({ title: t('parent.checkoutError'), description, variant: 'destructive' });
       },
     });
   };
@@ -126,13 +123,13 @@ export function ParentInvoices({ withShell = true }: { withShell?: boolean } = {
   const content = (
     <>
       <ParentPageHeader 
-        title="الفواتير والرسوم" 
-        description="سجل شفاف لجميع المدفوعات والرسوم المستحقة لضمان استمرارية الخدمات."
+        title={t('parent.invoicesTitle')}
+        description={t('parent.invoicesDesc')}
       />
 
       {plans.length > 0 && (
         <section className="mb-10">
-          <h2 className="text-xl font-bold text-[#0f2416] mb-5 flex items-center gap-2"><CalendarClock size={20} className="text-[#165032]"/> خطط التقسيط والرسوم المجدولة</h2>
+          <h2 className="text-xl font-bold text-[#0f2416] mb-5 flex items-center gap-2"><CalendarClock size={20} className="text-[#165032]"/> {t('parent.billingPlans')}</h2>
           <div className="grid gap-5 lg:grid-cols-2">
             {plans.map(plan => (
                <ParentBillingPlanCard key={plan.id} plan={plan} />
@@ -141,12 +138,12 @@ export function ParentInvoices({ withShell = true }: { withShell?: boolean } = {
         </section>
       )}
 
-      <h2 className="text-xl font-bold text-[#0f2416] mb-5 flex items-center gap-2"><FileText size={20} className="text-[#165032]"/> الفواتير والمطالبات</h2>
+      <h2 className="text-xl font-bold text-[#0f2416] mb-5 flex items-center gap-2"><FileText size={20} className="text-[#165032]"/> {t('parent.invoicesClaims')}</h2>
 
       <section data-testid="parent-knet-summary" className="mb-6 rounded-2xl border border-[#165032]/10 bg-white px-5 py-4 shadow-sm">
         <div>
-          <p className="text-sm font-bold text-[#0f2416]">الدفع الآمن عبر KNET</p>
-          <p className="mt-1 text-sm text-[#165032]/70">سيتم خصم مبلغ الفاتورة نفسه بالدينار الكويتي عبر بوابة MyFatoorah، دون تحويل عملة.</p>
+          <p className="text-sm font-bold text-[#0f2416]"> {t('parent.knetSecure')}</p>
+          <p className="mt-1 text-sm text-[#165032]/70">{t('parent.knetSecureDesc')}</p>
         </div>
       </section>
 
@@ -162,7 +159,7 @@ export function ParentInvoices({ withShell = true }: { withShell?: boolean } = {
               
               <div className="flex items-start justify-between mb-6">
                 <div>
-                  <p className="text-xs font-bold text-[#165032]/50 mb-1">فاتورة رقم #{invoice.invoiceNumber}</p>
+                  <p className="text-xs font-bold text-[#165032]/50 mb-1">{t('parent.invoiceNumber', { number: invoice.invoiceNumber })}</p>
                   <h3 className="text-xl font-bold text-[#0f2416]">{invoice.childName}</h3>
                 </div>
                 
@@ -172,25 +169,25 @@ export function ParentInvoices({ withShell = true }: { withShell?: boolean } = {
                   'bg-orange-100 text-orange-800'
                 }`}>
                   {invoice.status === 'paid' ? <CheckCircle2 size={14}/> : invoice.status === 'overdue' ? <AlertCircle size={14}/> : <Clock size={14}/>}
-                  {invoice.status === 'paid' ? 'تم السداد' : invoice.status === 'overdue' ? 'متأخرة' : 'مستحقة'}
+                  {invoice.status === 'paid' ? t('parent.paid') : invoice.status === 'overdue' ? t('parent.overdue') : t('parent.due')}
                 </span>
               </div>
               
               <div className="flex items-end justify-between bg-[#FDFBF7] p-5 rounded-2xl border border-[#165032]/5 mb-6">
                 <div>
-                  <p className="text-xs font-bold text-[#165032]/60 mb-1">المبلغ الإجمالي</p>
-                  <p className="text-3xl font-bold text-[#165032]">{money(invoice.amount)}</p>
+                  <p className="text-xs font-bold text-[#165032]/60 mb-1">{t('parent.totalAmount')}</p>
+                  <p className="text-3xl font-bold text-[#165032]">{formatCurrency(invoice.amount)}</p>
                 </div>
-                <div className="text-left">
-                  <p className="text-xs font-bold text-[#165032]/60 mb-1">تاريخ الاستحقاق</p>
-                  <p className="text-sm font-bold text-[#0f2416]" dir="ltr">{new Date(invoice.dueDate).toLocaleDateString('en-GB')}</p>
+                <div className={dir === 'rtl' ? 'text-left' : 'text-right'}>
+                  <p className="text-xs font-bold text-[#165032]/60 mb-1">{t('parent.dueDate')}</p>
+                  <p className="text-sm font-bold text-[#0f2416]" dir="ltr">{formatDate(invoice.dueDate, { year: 'numeric', month: '2-digit', day: '2-digit' })}</p>
                 </div>
               </div>
               
               {invoice.status !== 'paid' ? (
                 <div>
                   <div data-testid={`text-parent-knet-amount-${invoice.id}`} className="mb-3 rounded-xl bg-[#FDFBF7] px-4 py-3 text-center text-xs leading-5 text-[#165032]/70">
-                    المبلغ المطلوب عبر KNET: <strong className="text-[#165032]">{money(invoice.amount)}</strong>
+                     {t('parent.knetAmount', { amount: formatCurrency(invoice.amount) })}
                   </div>
                   <button
                     data-testid={`button-pay-invoice-${invoice.id}`}
@@ -198,12 +195,12 @@ export function ParentInvoices({ withShell = true }: { withShell?: boolean } = {
                     disabled={checkout.isPending}
                     className="w-full flex items-center justify-center gap-2 rounded-xl bg-[#165032] py-3.5 text-sm font-bold text-white hover:-translate-y-0.5 hover:shadow-md transition-all disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
                   >
-                    <CreditCard size={18} /> {checkout.isPending ? 'جارٍ التحويل…' : 'الدفع عبر KNET'}
+                    <CreditCard size={18} /> {checkout.isPending ? t('parent.redirecting') : t('parent.payKnet')}
                   </button>
                 </div>
               ) : (
                 <button data-testid={`button-receipt-invoice-${invoice.id}`} className="w-full flex items-center justify-center gap-2 rounded-xl bg-white border border-[#165032]/10 py-3.5 text-sm font-bold text-[#165032] hover:bg-[#165032]/5 transition-colors">
-                  <FileText size={18} /> تحميل الإيصال
+                  <FileText size={18} /> {t('parent.downloadReceipt')}
                 </button>
               )}
             </div>
