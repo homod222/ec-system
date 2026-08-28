@@ -27,3 +27,6 @@ packages = ["freetype", "gumbo", "harfbuzz", "jbig2dec", "libjpeg_turbo", "mupdf
 
 [userenv.shared]
 PUBLIC_SITE_OWNER_ID = "user_3ISyAkZvLgsqjn66QTWkCZFMMHb"
+
+[objectStorage]
+defaultBucketID = "replit-objstore-498fa24e-1bb2-4339-a9e1-92bec0654e03"
