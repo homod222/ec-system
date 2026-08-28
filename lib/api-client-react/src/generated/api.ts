@@ -65,6 +65,7 @@ import type {
   ListParentAttendanceParams,
   ListParentProgressReportsParams,
   ListStaffAttendanceParams,
+  ListUserPermissionsParams,
   NurseryReport,
   NurserySettings,
   NurserySettingsInput,
@@ -78,18 +79,26 @@ import type {
   ParentMessage,
   ParentMessageInput,
   ParentOverview,
+  PermissionPrincipal,
   ProgressReport,
+  PublicSiteGalleryItem,
   Receipt,
   RefundInput,
   RolePermission,
   RolePermissionInput,
   SessionContext,
+  SiteGalleryAttachInput,
+  SiteGalleryItem,
+  SiteGalleryUpdate,
+  SiteGalleryUploadRequest,
   StaffAttendance,
   StaffAttendanceInput,
   StaffInput,
   StaffMember,
   UploadUrlRequest,
   UploadUrlResponse,
+  UserPermission,
+  UserPermissionInput,
 } from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
@@ -6895,6 +6904,255 @@ export const useSetRolePermission = <
   return useMutation(getSetRolePermissionMutationOptions(options));
 };
 
+export const getListUserPermissionsUrl = (
+  params: ListUserPermissionsParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : String(value));
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/user-permissions?${stringifiedParams}`
+    : `/api/user-permissions`;
+};
+
+export const listUserPermissions = async (
+  params: ListUserPermissionsParams,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<UserPermission[]> => {
+  return customFetch<UserPermission[]>(getListUserPermissionsUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListUserPermissionsQueryKey = (
+  params?: ListUserPermissionsParams,
+) => {
+  return [`/api/user-permissions`, ...(params ? [params] : [])] as const;
+};
+
+export const getListUserPermissionsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listUserPermissions>>,
+  TError = ErrorType<unknown>,
+>(
+  params: ListUserPermissionsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listUserPermissions>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListUserPermissionsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listUserPermissions>>
+  > = ({ signal }) =>
+    listUserPermissions(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listUserPermissions>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListUserPermissionsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listUserPermissions>>
+>;
+export type ListUserPermissionsQueryError = ErrorType<unknown>;
+
+export function useListUserPermissions<
+  TData = Awaited<ReturnType<typeof listUserPermissions>>,
+  TError = ErrorType<unknown>,
+>(
+  params: ListUserPermissionsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listUserPermissions>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListUserPermissionsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getSetUserPermissionUrl = () => {
+  return `/api/user-permissions`;
+};
+
+export const setUserPermission = async (
+  userPermissionInput: UserPermissionInput,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<UserPermission> => {
+  return customFetch<UserPermission>(getSetUserPermissionUrl(), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(userPermissionInput),
+  });
+};
+
+export const getSetUserPermissionMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof setUserPermission>>,
+    TError,
+    { data: BodyType<UserPermissionInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof setUserPermission>>,
+  TError,
+  { data: BodyType<UserPermissionInput> },
+  TContext
+> => {
+  const mutationKey = ["setUserPermission"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof setUserPermission>>,
+    { data: BodyType<UserPermissionInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return setUserPermission(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SetUserPermissionMutationResult = NonNullable<
+  Awaited<ReturnType<typeof setUserPermission>>
+>;
+export type SetUserPermissionMutationBody = BodyType<UserPermissionInput>;
+export type SetUserPermissionMutationError = ErrorType<unknown>;
+
+export const useSetUserPermission = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof setUserPermission>>,
+    TError,
+    { data: BodyType<UserPermissionInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof setUserPermission>>,
+  TError,
+  { data: BodyType<UserPermissionInput> },
+  TContext
+> => {
+  return useMutation(getSetUserPermissionMutationOptions(options));
+};
+
+export const getListPermissionPrincipalsUrl = () => {
+  return `/api/permission-principals`;
+};
+
+/**
+ * @summary List trustworthy owner-scoped permission principals
+ */
+export const listPermissionPrincipals = async (
+  options?: Parameters<typeof customFetch>[1],
+): Promise<PermissionPrincipal[]> => {
+  return customFetch<PermissionPrincipal[]>(getListPermissionPrincipalsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListPermissionPrincipalsQueryKey = () => {
+  return [`/api/permission-principals`] as const;
+};
+
+export const getListPermissionPrincipalsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listPermissionPrincipals>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listPermissionPrincipals>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListPermissionPrincipalsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listPermissionPrincipals>>
+  > = ({ signal }) => listPermissionPrincipals({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listPermissionPrincipals>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListPermissionPrincipalsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listPermissionPrincipals>>
+>;
+export type ListPermissionPrincipalsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List trustworthy owner-scoped permission principals
+ */
+
+export function useListPermissionPrincipals<
+  TData = Awaited<ReturnType<typeof listPermissionPrincipals>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listPermissionPrincipals>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListPermissionPrincipalsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
 export const getListAuditLogsUrl = (params?: ListAuditLogsParams) => {
   const normalizedParams = new URLSearchParams();
 
@@ -6981,6 +7239,677 @@ export function useListAuditLogs<
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getListAuditLogsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getListSiteGalleryUrl = () => {
+  return `/api/site-gallery`;
+};
+
+/**
+ * @summary List the authenticated owner's gallery
+ */
+export const listSiteGallery = async (
+  options?: Parameters<typeof customFetch>[1],
+): Promise<SiteGalleryItem[]> => {
+  return customFetch<SiteGalleryItem[]>(getListSiteGalleryUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListSiteGalleryQueryKey = () => {
+  return [`/api/site-gallery`] as const;
+};
+
+export const getListSiteGalleryQueryOptions = <
+  TData = Awaited<ReturnType<typeof listSiteGallery>>,
+  TError = ErrorType<void>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listSiteGallery>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListSiteGalleryQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listSiteGallery>>> = ({
+    signal,
+  }) => listSiteGallery({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listSiteGallery>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListSiteGalleryQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listSiteGallery>>
+>;
+export type ListSiteGalleryQueryError = ErrorType<void>;
+
+/**
+ * @summary List the authenticated owner's gallery
+ */
+
+export function useListSiteGallery<
+  TData = Awaited<ReturnType<typeof listSiteGallery>>,
+  TError = ErrorType<void>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listSiteGallery>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListSiteGalleryQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getAttachSiteGalleryItemUrl = () => {
+  return `/api/site-gallery`;
+};
+
+/**
+ * @summary Consume a completed gallery upload grant and create its metadata
+ */
+export const attachSiteGalleryItem = async (
+  siteGalleryAttachInput: SiteGalleryAttachInput,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<SiteGalleryItem> => {
+  return customFetch<SiteGalleryItem>(getAttachSiteGalleryItemUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(siteGalleryAttachInput),
+  });
+};
+
+export const getAttachSiteGalleryItemMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof attachSiteGalleryItem>>,
+    TError,
+    { data: BodyType<SiteGalleryAttachInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof attachSiteGalleryItem>>,
+  TError,
+  { data: BodyType<SiteGalleryAttachInput> },
+  TContext
+> => {
+  const mutationKey = ["attachSiteGalleryItem"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof attachSiteGalleryItem>>,
+    { data: BodyType<SiteGalleryAttachInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return attachSiteGalleryItem(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type AttachSiteGalleryItemMutationResult = NonNullable<
+  Awaited<ReturnType<typeof attachSiteGalleryItem>>
+>;
+export type AttachSiteGalleryItemMutationBody =
+  BodyType<SiteGalleryAttachInput>;
+export type AttachSiteGalleryItemMutationError = ErrorType<void>;
+
+/**
+ * @summary Consume a completed gallery upload grant and create its metadata
+ */
+export const useAttachSiteGalleryItem = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof attachSiteGalleryItem>>,
+    TError,
+    { data: BodyType<SiteGalleryAttachInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof attachSiteGalleryItem>>,
+  TError,
+  { data: BodyType<SiteGalleryAttachInput> },
+  TContext
+> => {
+  return useMutation(getAttachSiteGalleryItemMutationOptions(options));
+};
+
+export const getRequestSiteGalleryUploadUrlUrl = () => {
+  return `/api/site-gallery/uploads/request-url`;
+};
+
+/**
+ * @summary Request a private gallery image upload grant
+ */
+export const requestSiteGalleryUploadUrl = async (
+  siteGalleryUploadRequest: SiteGalleryUploadRequest,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<UploadUrlResponse> => {
+  return customFetch<UploadUrlResponse>(getRequestSiteGalleryUploadUrlUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(siteGalleryUploadRequest),
+  });
+};
+
+export const getRequestSiteGalleryUploadUrlMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof requestSiteGalleryUploadUrl>>,
+    TError,
+    { data: BodyType<SiteGalleryUploadRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof requestSiteGalleryUploadUrl>>,
+  TError,
+  { data: BodyType<SiteGalleryUploadRequest> },
+  TContext
+> => {
+  const mutationKey = ["requestSiteGalleryUploadUrl"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof requestSiteGalleryUploadUrl>>,
+    { data: BodyType<SiteGalleryUploadRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return requestSiteGalleryUploadUrl(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RequestSiteGalleryUploadUrlMutationResult = NonNullable<
+  Awaited<ReturnType<typeof requestSiteGalleryUploadUrl>>
+>;
+export type RequestSiteGalleryUploadUrlMutationBody =
+  BodyType<SiteGalleryUploadRequest>;
+export type RequestSiteGalleryUploadUrlMutationError = ErrorType<void>;
+
+/**
+ * @summary Request a private gallery image upload grant
+ */
+export const useRequestSiteGalleryUploadUrl = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof requestSiteGalleryUploadUrl>>,
+    TError,
+    { data: BodyType<SiteGalleryUploadRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof requestSiteGalleryUploadUrl>>,
+  TError,
+  { data: BodyType<SiteGalleryUploadRequest> },
+  TContext
+> => {
+  return useMutation(getRequestSiteGalleryUploadUrlMutationOptions(options));
+};
+
+export const getUpdateSiteGalleryItemUrl = (id: number) => {
+  return `/api/site-gallery/${id}`;
+};
+
+/**
+ * @summary Update gallery metadata, ordering, or publication status
+ */
+export const updateSiteGalleryItem = async (
+  id: number,
+  siteGalleryUpdate: SiteGalleryUpdate,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<SiteGalleryItem> => {
+  return customFetch<SiteGalleryItem>(getUpdateSiteGalleryItemUrl(id), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(siteGalleryUpdate),
+  });
+};
+
+export const getUpdateSiteGalleryItemMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateSiteGalleryItem>>,
+    TError,
+    { id: number; data: BodyType<SiteGalleryUpdate> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateSiteGalleryItem>>,
+  TError,
+  { id: number; data: BodyType<SiteGalleryUpdate> },
+  TContext
+> => {
+  const mutationKey = ["updateSiteGalleryItem"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateSiteGalleryItem>>,
+    { id: number; data: BodyType<SiteGalleryUpdate> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateSiteGalleryItem(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateSiteGalleryItemMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateSiteGalleryItem>>
+>;
+export type UpdateSiteGalleryItemMutationBody = BodyType<SiteGalleryUpdate>;
+export type UpdateSiteGalleryItemMutationError = ErrorType<void>;
+
+/**
+ * @summary Update gallery metadata, ordering, or publication status
+ */
+export const useUpdateSiteGalleryItem = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateSiteGalleryItem>>,
+    TError,
+    { id: number; data: BodyType<SiteGalleryUpdate> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateSiteGalleryItem>>,
+  TError,
+  { id: number; data: BodyType<SiteGalleryUpdate> },
+  TContext
+> => {
+  return useMutation(getUpdateSiteGalleryItemMutationOptions(options));
+};
+
+export const getDeleteSiteGalleryItemUrl = (id: number) => {
+  return `/api/site-gallery/${id}`;
+};
+
+/**
+ * @summary Delete gallery metadata and its stored object
+ */
+export const deleteSiteGalleryItem = async (
+  id: number,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<void> => {
+  return customFetch<void>(getDeleteSiteGalleryItemUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteSiteGalleryItemMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteSiteGalleryItem>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteSiteGalleryItem>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["deleteSiteGalleryItem"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteSiteGalleryItem>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return deleteSiteGalleryItem(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteSiteGalleryItemMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteSiteGalleryItem>>
+>;
+
+export type DeleteSiteGalleryItemMutationError = ErrorType<void>;
+
+/**
+ * @summary Delete gallery metadata and its stored object
+ */
+export const useDeleteSiteGalleryItem = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteSiteGalleryItem>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteSiteGalleryItem>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getDeleteSiteGalleryItemMutationOptions(options));
+};
+
+export const getGetSiteGalleryImageUrl = (id: number) => {
+  return `/api/site-gallery/${id}/image`;
+};
+
+/**
+ * @summary Stream an owner-scoped gallery image for administration
+ */
+export const getSiteGalleryImage = async (
+  id: number,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<Blob> => {
+  return customFetch<Blob>(getGetSiteGalleryImageUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetSiteGalleryImageQueryKey = (id: number) => {
+  return [`/api/site-gallery/${id}/image`] as const;
+};
+
+export const getGetSiteGalleryImageQueryOptions = <
+  TData = Awaited<ReturnType<typeof getSiteGalleryImage>>,
+  TError = ErrorType<void>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getSiteGalleryImage>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetSiteGalleryImageQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getSiteGalleryImage>>
+  > = ({ signal }) => getSiteGalleryImage(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: id !== null && id !== undefined,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getSiteGalleryImage>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetSiteGalleryImageQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getSiteGalleryImage>>
+>;
+export type GetSiteGalleryImageQueryError = ErrorType<void>;
+
+/**
+ * @summary Stream an owner-scoped gallery image for administration
+ */
+
+export function useGetSiteGalleryImage<
+  TData = Awaited<ReturnType<typeof getSiteGalleryImage>>,
+  TError = ErrorType<void>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getSiteGalleryImage>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetSiteGalleryImageQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getListPublicSiteGalleryUrl = () => {
+  return `/api/public/site-gallery`;
+};
+
+/**
+ * @summary List published items for the explicitly configured public site owner
+ */
+export const listPublicSiteGallery = async (
+  options?: Parameters<typeof customFetch>[1],
+): Promise<PublicSiteGalleryItem[]> => {
+  return customFetch<PublicSiteGalleryItem[]>(getListPublicSiteGalleryUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListPublicSiteGalleryQueryKey = () => {
+  return [`/api/public/site-gallery`] as const;
+};
+
+export const getListPublicSiteGalleryQueryOptions = <
+  TData = Awaited<ReturnType<typeof listPublicSiteGallery>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listPublicSiteGallery>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListPublicSiteGalleryQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listPublicSiteGallery>>
+  > = ({ signal }) => listPublicSiteGallery({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listPublicSiteGallery>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListPublicSiteGalleryQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listPublicSiteGallery>>
+>;
+export type ListPublicSiteGalleryQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List published items for the explicitly configured public site owner
+ */
+
+export function useListPublicSiteGallery<
+  TData = Awaited<ReturnType<typeof listPublicSiteGallery>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listPublicSiteGallery>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListPublicSiteGalleryQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getGetPublicSiteGalleryImageUrl = (id: number) => {
+  return `/api/public/site-gallery/${id}/image`;
+};
+
+/**
+ * @summary Stream one published gallery image
+ */
+export const getPublicSiteGalleryImage = async (
+  id: number,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<Blob> => {
+  return customFetch<Blob>(getGetPublicSiteGalleryImageUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetPublicSiteGalleryImageQueryKey = (id: number) => {
+  return [`/api/public/site-gallery/${id}/image`] as const;
+};
+
+export const getGetPublicSiteGalleryImageQueryOptions = <
+  TData = Awaited<ReturnType<typeof getPublicSiteGalleryImage>>,
+  TError = ErrorType<void>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getPublicSiteGalleryImage>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetPublicSiteGalleryImageQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getPublicSiteGalleryImage>>
+  > = ({ signal }) =>
+    getPublicSiteGalleryImage(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: id !== null && id !== undefined,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getPublicSiteGalleryImage>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetPublicSiteGalleryImageQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getPublicSiteGalleryImage>>
+>;
+export type GetPublicSiteGalleryImageQueryError = ErrorType<void>;
+
+/**
+ * @summary Stream one published gallery image
+ */
+
+export function useGetPublicSiteGalleryImage<
+  TData = Awaited<ReturnType<typeof getPublicSiteGalleryImage>>,
+  TError = ErrorType<void>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getPublicSiteGalleryImage>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetPublicSiteGalleryImageQueryOptions(id, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

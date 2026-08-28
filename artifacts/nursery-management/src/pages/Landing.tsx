@@ -1,7 +1,7 @@
 import { Link, Redirect } from 'wouter';
 import { useAuth, useUser } from '@clerk/react';
 import { ArrowUpRight, Check, CalendarCheck, ShieldCheck, Sparkles, Star, ChevronRight, ChevronLeft } from 'lucide-react';
-import { getGetSessionContextQueryKey, useGetSessionContext } from '@workspace/api-client-react';
+import { getGetSessionContextQueryKey, getListPublicSiteGalleryQueryKey, useGetSessionContext, useListPublicSiteGallery } from '@workspace/api-client-react';
 import { useCallback, useEffect, useState } from 'react';
 import useEmblaCarousel from 'embla-carousel-react';
 
@@ -16,7 +16,7 @@ const galleryImages = [
   { src: `${basePath}/media/space-day.webp`, alt: 'يوم الفضاء' },
 ];
 
-function GalleryCarousel() {
+function GalleryCarousel({ images }: { images: Array<{ src: string; alt: string }> }) {
   const [emblaRef, emblaApi] = useEmblaCarousel({ loop: true, direction: 'rtl', align: 'center' });
   const [selectedIndex, setSelectedIndex] = useState(0);
 
@@ -87,7 +87,7 @@ function GalleryCarousel() {
     <div className="relative group w-full" dir="rtl">
       <div className="overflow-hidden px-4 sm:px-12" ref={emblaRef}>
         <div className="flex touch-pan-y -mx-3">
-          {galleryImages.map((img, i) => (
+          {images.map((img, i) => (
             <div className="flex-[0_0_100%] min-w-0 sm:flex-[0_0_50%] lg:flex-[0_0_33.333%] px-3" key={i}>
               <div className="overflow-hidden rounded-[2.5rem] shadow-sm transition-all duration-500 hover:shadow-2xl relative group/card cursor-grab active:cursor-grabbing h-full">
                 <img 
@@ -123,7 +123,7 @@ function GalleryCarousel() {
 
       {/* Dots */}
       <div className="mt-10 flex justify-center gap-3">
-        {galleryImages.map((_, i) => (
+        {images.map((_, i) => (
           <button
             key={i}
             onClick={() => scrollTo(i)}
@@ -160,6 +160,12 @@ export function Landing() {
       retry: false,
     },
   });
+  const publicGallery = useListPublicSiteGallery({
+    query: { queryKey: getListPublicSiteGalleryQueryKey(), retry: false, staleTime: 60_000 },
+  });
+  const displayedGallery = publicGallery.data?.length
+    ? publicGallery.data.map((item) => ({ src: item.imageUrl, alt: item.altText }))
+    : galleryImages;
 
   if (isSignedIn && user) {
     if (session.isLoading) return <div className="grid min-h-[100dvh] place-items-center bg-background"><div className="h-12 w-12 animate-pulse rounded-2xl bg-primary/20" /></div>;
@@ -324,7 +330,7 @@ export function Landing() {
           </div>
           
           <div className="animate-rise delay-200 max-w-7xl mx-auto">
-            <GalleryCarousel />
+            <GalleryCarousel images={displayedGallery} />
           </div>
         </div>
       </section>

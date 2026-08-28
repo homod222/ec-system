@@ -9,4 +9,5 @@ import type { SessionContextRole } from './sessionContextRole';
 
 export interface SessionContext {
   role: SessionContextRole;
+  effectivePermissions: string[];
 }

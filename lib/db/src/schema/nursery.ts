@@ -238,7 +238,9 @@ export const uploadGrantsTable = pgTable("upload_grants", {
   id: serial("id").primaryKey(),
   objectPath: text("object_path").notNull().unique(),
   ownerId: text("owner_id").notNull(),
-  applicationId: integer("application_id").notNull(),
+  applicationId: integer("application_id"),
+  targetType: text("target_type").notNull().default("application-document"),
+  targetId: integer("target_id"),
   originalName: text("original_name").notNull(),
   contentType: text("content_type").notNull(),
   size: integer("size").notNull(),
@@ -246,6 +248,21 @@ export const uploadGrantsTable = pgTable("upload_grants", {
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   consumedAt: timestamp("consumed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const siteGalleryItemsTable = pgTable("site_gallery_items", {
+  id: serial("id").primaryKey(),
+  ownerId: text("owner_id").notNull(),
+  title: text("title").notNull(),
+  altText: text("alt_text").notNull(),
+  objectPath: text("object_path").notNull().unique(),
+  contentType: text("content_type").notNull(),
+  size: integer("size").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  status: text("status").notNull().default("draft"),
+  createdBy: text("created_by").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
 
 export const insertGuardianSchema = createInsertSchema(guardiansTable).omit({ id: true, ownerId: true });
@@ -262,6 +279,7 @@ export const insertPaymentNotificationSchema = createInsertSchema(paymentNotific
 export const insertApplicationSchema = createInsertSchema(applicationsTable).omit({ id: true, ownerId: true, createdAt: true, updatedAt: true });
 export const insertApplicationDocumentSchema = createInsertSchema(applicationDocumentsTable).omit({ id: true, createdAt: true });
 export const insertUploadGrantSchema = createInsertSchema(uploadGrantsTable).omit({ id: true, createdAt: true, consumedAt: true });
+export const insertSiteGalleryItemSchema = createInsertSchema(siteGalleryItemsTable).omit({ id: true, ownerId: true, createdBy: true, createdAt: true, updatedAt: true });
 
 export type Guardian = typeof guardiansTable.$inferSelect;
 export type Classroom = typeof classroomsTable.$inferSelect;
@@ -279,6 +297,7 @@ export type PaymentNotification = typeof paymentNotificationsTable.$inferSelect;
 export type Application = typeof applicationsTable.$inferSelect;
 export type ApplicationDocument = typeof applicationDocumentsTable.$inferSelect;
 export type UploadGrant = typeof uploadGrantsTable.$inferSelect;
+export type SiteGalleryItem = typeof siteGalleryItemsTable.$inferSelect;
 export type InsertChild = z.infer<typeof insertChildSchema>;
 export type InsertAttendance = z.infer<typeof insertAttendanceSchema>;
 export type InsertApplication = z.infer<typeof insertApplicationSchema>;
@@ -412,6 +431,14 @@ export const rolePermissionsTable = pgTable("role_permissions", {
   allowed: boolean("allowed").notNull().default(false),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
+export const userPermissionsTable = pgTable("user_permissions", {
+  id: serial("id").primaryKey(),
+  ownerId: text("owner_id").notNull(),
+  userId: text("user_id").notNull(),
+  operation: text("operation").notNull(),
+  allowed: boolean("allowed").notNull().default(false),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+}, (table) => [uniqueIndex("user_permissions_owner_user_operation_unique").on(table.ownerId, table.userId, table.operation)]);
 
 export const insertRolePermissionSchema = createInsertSchema(rolePermissionsTable).omit({ id: true, ownerId: true, updatedAt: true });
 
@@ -422,6 +449,7 @@ export type AuditLog = typeof auditLogsTable.$inferSelect;
 export const insertStageSchema = createInsertSchema(stagesTable).omit({ id: true, ownerId: true, createdAt: true });
 
 export type RolePermission = typeof rolePermissionsTable.$inferSelect;
+export type UserPermission = typeof userPermissionsTable.$inferSelect;
 
 export type Stage = typeof stagesTable.$inferSelect;
 

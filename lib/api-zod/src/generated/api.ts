@@ -1354,6 +1354,7 @@ export const GetParentOverviewResponse = zod.object({
  */
 export const GetSessionContextResponse = zod.object({
   role: zod.enum(["parent", "admin", "pending"]),
+  effectivePermissions: zod.array(zod.string()),
 });
 /**
  * @summary List children belonging to the authenticated guardian
@@ -2206,6 +2207,42 @@ export const SetRolePermissionResponse = zod.object({
   allowed: zod.boolean(),
   updatedAt: zod.string(),
 });
+export const ListUserPermissionsQueryParams = zod.object({
+  userId: zod.coerce.string().min(1),
+});
+export const ListUserPermissionsResponseItem = zod.object({
+  id: zod.number(),
+  userId: zod.string(),
+  operation: zod.string(),
+  allowed: zod.boolean(),
+  updatedAt: zod.string(),
+});
+export const ListUserPermissionsResponse = zod.array(
+  ListUserPermissionsResponseItem,
+);
+export const SetUserPermissionBody = zod.object({
+  userId: zod.string().min(1),
+  operation: zod.string().min(1),
+  allowed: zod.boolean(),
+});
+export const SetUserPermissionResponse = zod.object({
+  id: zod.number(),
+  userId: zod.string(),
+  operation: zod.string(),
+  allowed: zod.boolean(),
+  updatedAt: zod.string(),
+});
+/**
+ * @summary List trustworthy owner-scoped permission principals
+ */
+export const ListPermissionPrincipalsResponseItem = zod.object({
+  userId: zod.string(),
+  label: zod.string(),
+  role: zod.string(),
+});
+export const ListPermissionPrincipalsResponse = zod.array(
+  ListPermissionPrincipalsResponseItem,
+);
 /**
  * @summary List owner-scoped sensitive-operation audit events
  */
@@ -2225,3 +2262,131 @@ export const ListAuditLogsResponseItem = zod.object({
   createdAt: zod.string(),
 });
 export const ListAuditLogsResponse = zod.array(ListAuditLogsResponseItem);
+/**
+ * @summary List the authenticated owner's gallery
+ */
+export const ListSiteGalleryResponseItem = zod.object({
+  id: zod.number(),
+  title: zod.string(),
+  altText: zod.string(),
+  objectPath: zod.string(),
+  contentType: zod.enum(["image/jpeg", "image/png", "image/webp"]),
+  size: zod.number(),
+  sortOrder: zod.number(),
+  status: zod.enum(["draft", "published", "hidden", "deleting"]),
+  createdBy: zod.string(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+export const ListSiteGalleryResponse = zod.array(ListSiteGalleryResponseItem);
+/**
+ * @summary Consume a completed gallery upload grant and create its metadata
+ */
+export const attachSiteGalleryItemBodyTitleMax = 200;
+export const attachSiteGalleryItemBodyAltTextMax = 500;
+export const attachSiteGalleryItemBodySizeMax = 10485760;
+export const attachSiteGalleryItemBodySortOrderDefault = 0;
+export const AttachSiteGalleryItemBody = zod.object({
+  title: zod.string().min(1).max(attachSiteGalleryItemBodyTitleMax),
+  altText: zod.string().min(1).max(attachSiteGalleryItemBodyAltTextMax),
+  objectPath: zod.string().min(1),
+  contentType: zod.enum(["image/jpeg", "image/png", "image/webp"]),
+  size: zod.number().min(1).max(attachSiteGalleryItemBodySizeMax),
+  sortOrder: zod.number().default(attachSiteGalleryItemBodySortOrderDefault),
+});
+export const AttachSiteGalleryItemResponse = zod.object({
+  id: zod.number(),
+  title: zod.string(),
+  altText: zod.string(),
+  objectPath: zod.string(),
+  contentType: zod.enum(["image/jpeg", "image/png", "image/webp"]),
+  size: zod.number(),
+  sortOrder: zod.number(),
+  status: zod.enum(["draft", "published", "hidden", "deleting"]),
+  createdBy: zod.string(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+/**
+ * @summary Request a private gallery image upload grant
+ */
+export const requestSiteGalleryUploadUrlBodyNameMax = 255;
+export const requestSiteGalleryUploadUrlBodySizeMax = 10485760;
+export const RequestSiteGalleryUploadUrlBody = zod.object({
+  name: zod.string().min(1).max(requestSiteGalleryUploadUrlBodyNameMax),
+  size: zod.number().min(1).max(requestSiteGalleryUploadUrlBodySizeMax),
+  contentType: zod.enum(["image/jpeg", "image/png", "image/webp"]),
+});
+export const requestSiteGalleryUploadUrlResponseObjectPathRegExp = new RegExp(
+  "^/objects/uploads/[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$",
+);
+export const RequestSiteGalleryUploadUrlResponse = zod.object({
+  uploadUrl: zod.string(),
+  objectPath: zod
+    .string()
+    .regex(requestSiteGalleryUploadUrlResponseObjectPathRegExp),
+});
+/**
+ * @summary Update gallery metadata, ordering, or publication status
+ */
+export const UpdateSiteGalleryItemParams = zod.object({
+  id: zod.coerce.number(),
+});
+export const updateSiteGalleryItemBodyTitleMax = 200;
+export const updateSiteGalleryItemBodyAltTextMax = 500;
+export const UpdateSiteGalleryItemBody = zod.object({
+  title: zod.string().min(1).max(updateSiteGalleryItemBodyTitleMax).optional(),
+  altText: zod
+    .string()
+    .min(1)
+    .max(updateSiteGalleryItemBodyAltTextMax)
+    .optional(),
+  sortOrder: zod.number().optional(),
+  status: zod.enum(["draft", "published", "hidden", "deleting"]).optional(),
+});
+export const UpdateSiteGalleryItemResponse = zod.object({
+  id: zod.number(),
+  title: zod.string(),
+  altText: zod.string(),
+  objectPath: zod.string(),
+  contentType: zod.enum(["image/jpeg", "image/png", "image/webp"]),
+  size: zod.number(),
+  sortOrder: zod.number(),
+  status: zod.enum(["draft", "published", "hidden", "deleting"]),
+  createdBy: zod.string(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+/**
+ * @summary Delete gallery metadata and its stored object
+ */
+export const DeleteSiteGalleryItemParams = zod.object({
+  id: zod.coerce.number(),
+});
+export const DeleteSiteGalleryItemResponse = zod.void();
+/**
+ * @summary Stream an owner-scoped gallery image for administration
+ */
+export const GetSiteGalleryImageParams = zod.object({
+  id: zod.coerce.number(),
+});
+export const GetSiteGalleryImageResponse = zod.unknown();
+/**
+ * @summary List published items for the explicitly configured public site owner
+ */
+export const ListPublicSiteGalleryResponseItem = zod.object({
+  id: zod.number(),
+  title: zod.string(),
+  altText: zod.string(),
+  imageUrl: zod.string(),
+});
+export const ListPublicSiteGalleryResponse = zod.array(
+  ListPublicSiteGalleryResponseItem,
+);
+/**
+ * @summary Stream one published gallery image
+ */
+export const GetPublicSiteGalleryImageParams = zod.object({
+  id: zod.coerce.number(),
+});
+export const GetPublicSiteGalleryImageResponse = zod.unknown();

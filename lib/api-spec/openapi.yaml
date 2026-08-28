@@ -36,6 +36,8 @@ tags:
     description: Operational, academic, and financial reporting
   - name: permissions
     description: Role permissions and security audit
+  - name: site-gallery
+    description: Public website gallery management
 paths:
   /healthz:
     get:
@@ -1200,6 +1202,35 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/RolePermission" }
         "403": { description: Owner access required }
+  /user-permissions:
+    get:
+      operationId: listUserPermissions
+      tags: [permissions]
+      parameters:
+        - { name: userId, in: query, required: true, schema: { type: string, minLength: 1 } }
+      responses:
+        "200":
+          description: Permissions explicitly configured for an owner-scoped user
+          content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/UserPermission" } } } }
+    put:
+      operationId: setUserPermission
+      tags: [permissions]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/UserPermissionInput" } } }
+      responses:
+        "200":
+          description: Updated user permission
+          content: { application/json: { schema: { $ref: "#/components/schemas/UserPermission" } } }
+  /permission-principals:
+    get:
+      operationId: listPermissionPrincipals
+      tags: [permissions]
+      summary: List trustworthy owner-scoped permission principals
+      responses:
+        "200":
+          description: Known tenant principals
+          content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/PermissionPrincipal" } } } }
   /audit-logs:
     get:
       operationId: listAuditLogs
@@ -1216,6 +1247,118 @@ paths:
               schema:
                 type: array
                 items: { $ref: "#/components/schemas/AuditLog" }
+  /site-gallery:
+    get:
+      operationId: listSiteGallery
+      tags: [site-gallery]
+      summary: List the authenticated owner's gallery
+      responses:
+        "200":
+          description: Gallery items
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/SiteGalleryItem" } }
+        "403": { description: Operation not permitted }
+    post:
+      operationId: attachSiteGalleryItem
+      tags: [site-gallery]
+      summary: Consume a completed gallery upload grant and create its metadata
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SiteGalleryAttachInput" }
+      responses:
+        "201":
+          description: Gallery item
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SiteGalleryItem" }
+        "400": { description: Invalid metadata }
+        "404": { description: Completed upload not found }
+  /site-gallery/uploads/request-url:
+    post:
+      operationId: requestSiteGalleryUploadUrl
+      tags: [site-gallery]
+      summary: Request a private gallery image upload grant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SiteGalleryUploadRequest" }
+      responses:
+        "200":
+          description: Upload endpoint and private object path
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UploadUrlResponse" }
+        "400": { description: Invalid image metadata }
+        "415": { description: Unsupported image type }
+  /site-gallery/{id}:
+    patch:
+      operationId: updateSiteGalleryItem
+      tags: [site-gallery]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      summary: Update gallery metadata, ordering, or publication status
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SiteGalleryUpdate" }
+      responses:
+        "200":
+          description: Updated gallery item
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SiteGalleryItem" }
+        "404": { description: Gallery item not found }
+    delete:
+      operationId: deleteSiteGalleryItem
+      tags: [site-gallery]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      summary: Delete gallery metadata and its stored object
+      responses:
+        "204": { description: Deleted }
+        "404": { description: Gallery item not found }
+  /site-gallery/{id}/image:
+    get:
+      operationId: getSiteGalleryImage
+      tags: [site-gallery]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      summary: Stream an owner-scoped gallery image for administration
+      responses:
+        "200":
+          description: Gallery image bytes
+          content:
+            image/jpeg: { schema: { type: string, format: binary } }
+            image/png: { schema: { type: string, format: binary } }
+            image/webp: { schema: { type: string, format: binary } }
+        "404": { description: Gallery image not found }
+  /public/site-gallery:
+    get:
+      operationId: listPublicSiteGallery
+      tags: [site-gallery]
+      summary: List published items for the explicitly configured public site owner
+      responses:
+        "200":
+          description: Public gallery items, or an empty list when no owner is configured
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/PublicSiteGalleryItem" } }
+  /public/site-gallery/{id}/image:
+    get:
+      operationId: getPublicSiteGalleryImage
+      tags: [site-gallery]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      summary: Stream one published gallery image
+      responses:
+        "200":
+          description: Gallery image bytes
+          content:
+            image/jpeg: { schema: { type: string, format: binary } }
+            image/png: { schema: { type: string, format: binary } }
+            image/webp: { schema: { type: string, format: binary } }
+        "404": { description: Published image not found }
 components:
   parameters:
     Id:
@@ -1810,11 +1953,14 @@ components:
         announcementsCount: { type: number }
     SessionContext:
       type: object
-      required: [role]
+      required: [role, effectivePermissions]
       properties:
         role:
           type: string
           enum: [parent, admin, pending]
+        effectivePermissions:
+          type: array
+          items: { type: string }
     ProgressReport:
       type: object
       required: [id, childId, childName, title, summary, period, educatorName, publishedAt]
@@ -2042,6 +2188,77 @@ components:
         role: { type: string, minLength: 1 }
         operation: { type: string, minLength: 1 }
         allowed: { type: boolean }
+    UserPermission:
+      type: object
+      required: [id, userId, operation, allowed, updatedAt]
+      properties:
+        id: { type: number }
+        userId: { type: string }
+        operation: { type: string }
+        allowed: { type: boolean }
+        updatedAt: { type: string }
+    UserPermissionInput:
+      type: object
+      required: [userId, operation, allowed]
+      properties:
+        userId: { type: string, minLength: 1 }
+        operation: { type: string, minLength: 1 }
+        allowed: { type: boolean }
+    PermissionPrincipal:
+      type: object
+      required: [userId, label, role]
+      properties:
+        userId: { type: string }
+        label: { type: string }
+        role: { type: string }
+    SiteGalleryItem:
+      type: object
+      required: [id, title, altText, objectPath, contentType, size, sortOrder, status, createdBy, createdAt, updatedAt]
+      properties:
+        id: { type: number }
+        title: { type: string }
+        altText: { type: string }
+        objectPath: { type: string }
+        contentType: { type: string, enum: [image/jpeg, image/png, image/webp] }
+        size: { type: number }
+        sortOrder: { type: number }
+        status: { type: string, enum: [draft, published, hidden, deleting] }
+        createdBy: { type: string }
+        createdAt: { type: string }
+        updatedAt: { type: string }
+    PublicSiteGalleryItem:
+      type: object
+      required: [id, title, altText, imageUrl]
+      properties:
+        id: { type: number }
+        title: { type: string }
+        altText: { type: string }
+        imageUrl: { type: string }
+    SiteGalleryUploadRequest:
+      type: object
+      required: [name, size, contentType]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 255 }
+        size: { type: number, minimum: 1, maximum: 10485760 }
+        contentType: { type: string, enum: [image/jpeg, image/png, image/webp] }
+    SiteGalleryAttachInput:
+      type: object
+      required: [title, altText, objectPath, contentType, size]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 200 }
+        altText: { type: string, minLength: 1, maxLength: 500 }
+        objectPath: { type: string, minLength: 1 }
+        contentType: { type: string, enum: [image/jpeg, image/png, image/webp] }
+        size: { type: number, minimum: 1, maximum: 10485760 }
+        sortOrder: { type: number, default: 0 }
+    SiteGalleryUpdate:
+      type: object
+      minProperties: 1
+      properties:
+        title: { type: string, minLength: 1, maxLength: 200 }
+        altText: { type: string, minLength: 1, maxLength: 500 }
+        sortOrder: { type: number }
+        status: { type: string, enum: [draft, published, hidden, deleting] }
     AuditLog:
       type: object
       required: [id, actorId, operation, entityType, createdAt]

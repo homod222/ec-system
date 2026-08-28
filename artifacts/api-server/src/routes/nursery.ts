@@ -80,6 +80,7 @@ import { InvoiceNotPayableError, requireCheckoutPayable } from "../lib/invoiceLe
 import { sendDueReminder } from "../lib/notifications";
 import {
   auditNurseryOperation,
+  configurableOperations,
   nurseryContext,
   permitted,
   resolveNurseryContext,
@@ -249,25 +250,28 @@ async function childRows(ownerId: string) {
 }
 
 router.use(requireAuth);
-router.get("/session/context", async (req, res, next): Promise<void> => {
+router.get("/session/context", resolveNurseryContext, async (req, res, next): Promise<void> => {
   try {
     const identity = await clerkIdentity(req);
+    const effectivePermissions = await Promise.all(configurableOperations.map(async (operation) =>
+      await permitted(req, operation) ? operation : null,
+    )).then((operations) => operations.filter((operation): operation is string => operation !== null));
     const administrativeRoles = new Set([
       "admin", "nursery_admin", "manager", "supervisor", "teacher", "accountant",
       "receptionist", "owner", "superadmin",
     ]);
     if (identity.role && administrativeRoles.has(identity.role)) {
-      res.json(GetSessionContextResponse.parse({ role: "admin" }));
+      res.json(GetSessionContextResponse.parse({ role: "admin", effectivePermissions }));
       return;
     }
     if (!identity.role || identity.role === "parent" || identity.role === "guardian") {
       const guardian = await resolveGuardian(req, identity.verifiedEmails);
       if (guardian) {
-        res.json(GetSessionContextResponse.parse({ role: "parent" }));
+        res.json(GetSessionContextResponse.parse({ role: "parent", effectivePermissions }));
         return;
       }
     }
-    res.json(GetSessionContextResponse.parse({ role: "pending" }));
+    res.json(GetSessionContextResponse.parse({ role: "pending", effectivePermissions }));
   } catch (error) {
     req.log.error({ err: error }, "Failed to resolve application session context");
     next(error);

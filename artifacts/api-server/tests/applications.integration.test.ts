@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 
-const storageObjects = vi.hoisted(() => new Map<string, { size: number; contentType: string }>());
+const storageObjects = vi.hoisted(() => new Map<string, { size: number; contentType: string; bytes: Uint8Array }>());
+const failDeleteOnce = vi.hoisted(() => new Set<string>());
 const stripeSessions = vi.hoisted(() => new Map<string, Record<string, any>>());
 const stripeSessionCreate = vi.hoisted(() => vi.fn(async (input: Record<string, any>) => {
   const id = `cs_test_${stripeSessions.size + 1}`;
@@ -79,23 +80,25 @@ vi.mock("../src/lib/objectStorage", () => {
   class ObjectStorageService {
     createObjectEntityPath() {
       const objectPath = `/objects/uploads/${randomUUID()}`;
-      storageObjects.set(objectPath, { size: 12, contentType: "application/pdf" });
+      storageObjects.set(objectPath, { size: 12, contentType: "application/pdf", bytes: new Uint8Array() });
       return objectPath;
     }
 
     async uploadObjectEntity(
       objectPath: string,
-      _source: unknown,
+      source: AsyncIterable<Uint8Array>,
       contentType: string,
       expectedSize: number,
     ) {
-      storageObjects.set(objectPath, { size: expectedSize, contentType });
+      const chunks: Uint8Array[] = [];
+      for await (const chunk of source) chunks.push(chunk);
+      storageObjects.set(objectPath, { size: expectedSize, contentType, bytes: Buffer.concat(chunks) });
     }
 
     async getObjectEntityUploadURL() {
       const id = randomUUID();
       const objectPath = `/objects/uploads/${id}`;
-      storageObjects.set(objectPath, { size: 12, contentType: "application/pdf" });
+      storageObjects.set(objectPath, { size: 12, contentType: "application/pdf", bytes: new Uint8Array() });
       return `https://storage.test/private/uploads/${id}`;
     }
 
@@ -116,12 +119,14 @@ vi.mock("../src/lib/objectStorage", () => {
 
     async downloadObject(file: { objectPath: string }) {
       if (!storageObjects.has(file.objectPath)) throw new ObjectNotFoundError();
-      return new Response("test document", {
-        headers: { "Content-Type": "application/pdf" },
+      const metadata = storageObjects.get(file.objectPath)!;
+      return new Response(metadata.bytes, {
+        headers: { "Content-Type": metadata.contentType },
       });
     }
 
     async deleteObject(file: { objectPath: string }) {
+      if (failDeleteOnce.delete(file.objectPath)) throw new Error("temporary storage failure");
       storageObjects.delete(file.objectPath);
     }
   }
@@ -224,6 +229,7 @@ afterAll(async () => {
     "delete from child_contacts where owner_id = any($1::text[])",
     "delete from nursery_settings where owner_id = any($1::text[])",
     "delete from audit_logs where owner_id = any($1::text[])",
+    "delete from site_gallery_items where owner_id = any($1::text[])",
     "delete from role_permissions where owner_id = any($1::text[])",
     "delete from operational_records where owner_id = any($1::text[])",
     "delete from upload_grants where owner_id = any($1::text[])",
@@ -708,6 +714,91 @@ describe.sequential("application registration regression flow", () => {
       childId,
       sourceChildId: childId,
     });
+  });
+
+  it("manages gallery uploads with permissions, isolation, and published-only public output", async () => {
+    const upload = await request(app).post("/api/site-gallery/uploads/request-url").set(auth(ownerA)).send({
+      name: "gallery.jpg", size: 12, contentType: "image/jpeg",
+    }).expect(200);
+    await request(app).put(upload.body.uploadUrl).set(auth(ownerA))
+      .set("content-type", "image/jpeg").set("content-length", "12")
+      .send(Buffer.from([0xff, 0xd8, 0xff, 0, 0, 0, 0, 0, 0, 0, 0, 0])).expect(204);
+    const attached = await request(app).post("/api/site-gallery").set(auth(ownerA)).send({
+      title: "صورة اختبار", altText: "وصف الصورة", objectPath: upload.body.objectPath,
+      contentType: "image/jpeg", size: 12, sortOrder: 2,
+    }).expect(201);
+    expect(attached.body.status).toBe("draft");
+    const invalidUpload = await request(app).post("/api/site-gallery/uploads/request-url").set(auth(ownerA)).send({
+      name: "not-an-image.jpg", size: 12, contentType: "image/jpeg",
+    }).expect(200);
+    await request(app).put(invalidUpload.body.uploadUrl).set(auth(ownerA))
+      .set("content-type", "image/jpeg").set("content-length", "12").send(Buffer.from("not an image")).expect(204);
+    await request(app).post("/api/site-gallery").set(auth(ownerA)).send({
+      title: "مرفوضة", altText: "مرفوضة", objectPath: invalidUpload.body.objectPath,
+      contentType: "image/jpeg", size: 12, sortOrder: 0,
+    }).expect(415);
+    const raceUpload = await request(app).post("/api/site-gallery/uploads/request-url").set(auth(ownerA)).send({
+      name: "race.jpg", size: 12, contentType: "image/jpeg",
+    }).expect(200);
+    await request(app).put(raceUpload.body.uploadUrl).set(auth(ownerA))
+      .set("content-type", "image/jpeg").set("content-length", "12")
+      .send(Buffer.from([0xff, 0xd8, 0xff, 0, 0, 0, 0, 0, 0, 0, 0, 0])).expect(204);
+    const racePayload = { title: "سباق", altText: "سباق", objectPath: raceUpload.body.objectPath, contentType: "image/jpeg", size: 12, sortOrder: 0 };
+    const raceAttach = await Promise.all([
+      request(app).post("/api/site-gallery").set(auth(ownerA)).send(racePayload),
+      request(app).post("/api/site-gallery").set(auth(ownerA)).send(racePayload),
+    ]);
+    expect(raceAttach.map((response) => response.status).sort()).toEqual([201, 404]);
+    await request(app).post("/api/site-gallery").set(auth(ownerA)).send({
+      title: "إعادة", altText: "إعادة", objectPath: upload.body.objectPath,
+      contentType: "image/jpeg", size: 12, sortOrder: 2,
+    }).expect(404);
+    await request(app).get("/api/site-gallery").set(auth(ownerB)).expect(200)
+      .expect(({ body }) => expect(body).toEqual([]));
+
+    process.env.PUBLIC_SITE_OWNER_ID = ownerA;
+    await request(app).get("/api/public/site-gallery").expect(200)
+      .expect(({ body }) => expect(body).toEqual([]));
+    await request(app).patch(`/api/site-gallery/${attached.body.id}`).set(auth(ownerA))
+      .send({ status: "published" }).expect(200);
+    await request(app).get("/api/public/site-gallery").expect(200).expect(({ body }) => {
+      expect(body).toEqual([expect.objectContaining({
+        id: attached.body.id, title: "صورة اختبار",
+        imageUrl: `/api/public/site-gallery/${attached.body.id}/image`,
+      })]);
+      expect(body[0].objectPath).toBeUndefined();
+    });
+    await request(app).get(`/api/public/site-gallery/${attached.body.id}/image`).expect(200)
+      .expect("Content-Type", /image\/jpeg/);
+    await request(app).patch(`/api/site-gallery/${attached.body.id}`).set(auth(ownerA))
+      .send({ status: "hidden" }).expect(200);
+    await request(app).get(`/api/public/site-gallery/${attached.body.id}/image`).expect(404);
+
+    await request(app).put("/api/permissions").set(auth(ownerA)).send({
+      role: "manager", operation: "create:site-gallery", allowed: false,
+    }).expect(200);
+    await request(app).post("/api/site-gallery/uploads/request-url").set(auth(ownerA, "manager")).send({
+      name: "denied.png", size: 12, contentType: "image/png",
+    }).expect(403);
+    await request(app).put("/api/user-permissions").set(auth(ownerA)).send({
+      userId: ownerA, operation: "create:site-gallery", allowed: true,
+    }).expect(200);
+    await request(app).post("/api/site-gallery/uploads/request-url").set(auth(ownerA, "manager")).send({
+      name: "override.png", size: 12, contentType: "image/png",
+    }).expect(200);
+    await request(app).put("/api/user-permissions").set(auth(ownerA)).send({
+      userId: ownerA, operation: "reorder:site-gallery", allowed: false,
+    }).expect(200);
+    await request(app).patch(`/api/site-gallery/${attached.body.id}`).set(auth(ownerA, "manager"))
+      .send({ sortOrder: 5 }).expect(403);
+    failDeleteOnce.add(upload.body.objectPath);
+    await request(app).delete(`/api/site-gallery/${attached.body.id}`).set(auth(ownerA)).expect(503);
+    await request(app).get("/api/site-gallery").set(auth(ownerA)).expect(200)
+      .expect(({ body }) => expect(body).toEqual(expect.arrayContaining([expect.objectContaining({ id: attached.body.id, status: "deleting" })])));
+    await request(app).delete(`/api/site-gallery/${attached.body.id}`).set(auth(ownerA)).expect(204);
+    await request(app).get("/api/site-gallery").set(auth(ownerA)).expect(200)
+      .expect(({ body }) => expect(body.some((item: { id: number }) => item.id === attached.body.id)).toBe(false));
+    delete process.env.PUBLIC_SITE_OWNER_ID;
   });
 
   it("isolates applications, children and documents and returns 404/409 for invalid operations", async () => {

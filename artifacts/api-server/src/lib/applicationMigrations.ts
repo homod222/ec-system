@@ -45,6 +45,13 @@ export async function runApplicationMigrations(): Promise<void> {
     ALTER TABLE application_documents
       ADD COLUMN IF NOT EXISTS child_id integer,
       ADD COLUMN IF NOT EXISTS parent_visible boolean NOT NULL DEFAULT true;
+    ALTER TABLE upload_grants
+      ADD COLUMN IF NOT EXISTS target_type text NOT NULL DEFAULT 'application-document',
+      ADD COLUMN IF NOT EXISTS target_id integer;
+    UPDATE upload_grants
+      SET target_type = 'application-document', target_id = application_id
+      WHERE application_id IS NOT NULL AND target_id IS NULL;
+    ALTER TABLE upload_grants ALTER COLUMN application_id DROP NOT NULL;
     ALTER TABLE IF EXISTS progress_reports ADD COLUMN IF NOT EXISTS owner_id text NOT NULL DEFAULT '__legacy__';
     ALTER TABLE IF EXISTS child_activities ADD COLUMN IF NOT EXISTS owner_id text NOT NULL DEFAULT '__legacy__';
     ALTER TABLE IF EXISTS parent_messages ADD COLUMN IF NOT EXISTS owner_id text NOT NULL DEFAULT '__legacy__';
@@ -144,6 +151,15 @@ export async function runApplicationMigrations(): Promise<void> {
       operation text NOT NULL,
       allowed boolean NOT NULL DEFAULT false,
       updated_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS user_permissions (
+      id serial PRIMARY KEY,
+      owner_id text NOT NULL,
+      user_id text NOT NULL,
+      operation text NOT NULL,
+      allowed boolean NOT NULL DEFAULT false,
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT user_permissions_owner_user_operation_unique UNIQUE (owner_id, user_id, operation)
     );
     CREATE TABLE IF NOT EXISTS operational_records (
       id serial PRIMARY KEY,
@@ -270,6 +286,26 @@ export async function runApplicationMigrations(): Promise<void> {
       content text NOT NULL, audience text NOT NULL DEFAULT 'all',
       published_at timestamptz NOT NULL DEFAULT now()
     );
+    CREATE TABLE IF NOT EXISTS site_gallery_items (
+      id serial PRIMARY KEY,
+      owner_id text NOT NULL,
+      title text NOT NULL,
+      alt_text text NOT NULL,
+      object_path text NOT NULL UNIQUE,
+      content_type text NOT NULL,
+      size integer NOT NULL,
+      sort_order integer NOT NULL DEFAULT 0,
+      status text NOT NULL DEFAULT 'draft',
+      created_by text NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT site_gallery_items_status_check CHECK (status IN ('draft', 'published', 'hidden')),
+      CONSTRAINT site_gallery_items_content_type_check CHECK (content_type IN ('image/jpeg', 'image/png', 'image/webp')),
+      CONSTRAINT site_gallery_items_size_check CHECK (size > 0 AND size <= 10485760)
+    );
+    ALTER TABLE site_gallery_items DROP CONSTRAINT IF EXISTS site_gallery_items_status_check;
+    ALTER TABLE site_gallery_items ADD CONSTRAINT site_gallery_items_status_check
+      CHECK (status IN ('draft', 'published', 'hidden', 'deleting'));
 
     CREATE INDEX IF NOT EXISTS classrooms_branch_idx ON classrooms (branch_id);
     CREATE INDEX IF NOT EXISTS classrooms_stage_idx ON classrooms (stage_id);
@@ -284,6 +320,8 @@ export async function runApplicationMigrations(): Promise<void> {
       ON operational_records (owner_id, branch_id, status, occurred_on DESC);
     CREATE UNIQUE INDEX IF NOT EXISTS role_permissions_owner_role_operation_unique
       ON role_permissions (owner_id, role, operation);
+    CREATE UNIQUE INDEX IF NOT EXISTS user_permissions_owner_user_operation_unique
+      ON user_permissions (owner_id, user_id, operation);
     CREATE INDEX IF NOT EXISTS audit_logs_owner_created_idx
       ON audit_logs (owner_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS audit_logs_owner_operation_idx
@@ -360,6 +398,10 @@ export async function runApplicationMigrations(): Promise<void> {
     CREATE INDEX IF NOT EXISTS billing_plans_owner_idx ON billing_plans (owner_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS billing_installments_generation_idx
       ON billing_installments (status, issue_date);
+    CREATE INDEX IF NOT EXISTS site_gallery_items_owner_order_idx
+      ON site_gallery_items (owner_id, sort_order, created_at);
+    CREATE INDEX IF NOT EXISTS site_gallery_items_public_idx
+      ON site_gallery_items (owner_id, status, sort_order) WHERE status = 'published';
 
     COMMIT;
   `);

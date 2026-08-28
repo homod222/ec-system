@@ -15,6 +15,7 @@ import {
 import { logger } from "../lib/logger";
 import {
   nurseryContext,
+  permitted,
   requireNurseryPermission,
   resolveNurseryContext,
 } from "./nurseryOperations";
@@ -115,6 +116,8 @@ router.post(
       objectPath,
       ownerId,
       applicationId: application.id,
+      targetType: "application-document",
+      targetId: application.id,
       originalName: parsed.data.name,
       contentType,
       size: parsed.data.size,
@@ -139,7 +142,6 @@ router.post(
 router.put(
   "/storage/uploads/:grantId/content",
   resolveNurseryContext,
-  requireNurseryPermission("write:application-document"),
   async (req, res): Promise<void> => {
   const grantId = Number(req.params.grantId);
   if (!Number.isSafeInteger(grantId) || grantId < 1) {
@@ -155,6 +157,20 @@ router.put(
   const contentType = (req.header("content-type") ?? "").toLowerCase();
   const contentLength = Number(req.header("content-length"));
   const ownerId = nurseryContext(req).ownerId;
+  const [permissionGrant] = await db.select({
+    targetType: uploadGrantsTable.targetType,
+  }).from(uploadGrantsTable).where(and(
+    eq(uploadGrantsTable.id, grantId),
+    eq(uploadGrantsTable.ownerId, ownerId),
+  ));
+  const requiredPermission = permissionGrant?.targetType === "site-gallery"
+    ? "create:site-gallery"
+    : "write:application-document";
+  if (!permissionGrant || !await permitted(req, requiredPermission)) {
+    activeUploads -= 1;
+    res.status(permissionGrant ? 403 : 404).json({ error: permissionGrant ? "Operation not permitted" : "Valid upload grant not found" });
+    return;
+  }
   const reservation = await db.transaction(async (tx) => {
     await tx.execute(sql`select id from upload_grants where id = ${grantId} and owner_id = ${ownerId} for update`);
     const [grant] = await tx.select().from(uploadGrantsTable).where(and(
@@ -165,18 +181,26 @@ router.put(
       gt(uploadGrantsTable.expiresAt, new Date()),
     ));
     if (!grant) return { kind: "missing" as const };
-    const [application] = await tx.select({ status: applicationsTable.status })
-      .from(applicationsTable)
-      .where(and(
-        eq(applicationsTable.id, grant.applicationId),
-        eq(applicationsTable.ownerId, ownerId),
-      ));
-    if (!application) return { kind: "applicationMissing" as const };
-    if (application.status === "accepted") return { kind: "accepted" as const };
+    if (grant.targetType === "application-document") {
+      if (grant.applicationId === null) return { kind: "applicationMissing" as const };
+      const [application] = await tx.select({ status: applicationsTable.status })
+        .from(applicationsTable)
+        .where(and(
+          eq(applicationsTable.id, grant.applicationId),
+          eq(applicationsTable.ownerId, ownerId),
+        ));
+      if (!application) return { kind: "applicationMissing" as const };
+      if (application.status === "accepted") return { kind: "accepted" as const };
+    } else if (grant.targetType !== "site-gallery") {
+      return { kind: "missing" as const };
+    }
     if (!Number.isSafeInteger(contentLength) || contentLength !== grant.size) {
       return { kind: "sizeMismatch" as const };
     }
-    if (contentType !== grant.contentType || !isAllowedDocumentContentType(contentType)) {
+    const allowedType = grant.targetType === "site-gallery"
+      ? ["image/jpeg", "image/png", "image/webp"].includes(contentType)
+      : isAllowedDocumentContentType(contentType);
+    if (contentType !== grant.contentType || !allowedType) {
       return { kind: "typeMismatch" as const };
     }
     const [reserved] = await tx.update(uploadGrantsTable).set({

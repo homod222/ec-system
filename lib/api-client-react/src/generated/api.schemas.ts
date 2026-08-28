@@ -938,6 +938,7 @@ export const SessionContextRole = {
 
 export interface SessionContext {
   role: SessionContextRole;
+  effectivePermissions: string[];
 }
 
 export interface ProgressReport {
@@ -1368,6 +1369,147 @@ export interface RolePermissionInput {
   allowed: boolean;
 }
 
+export interface UserPermission {
+  id: number;
+  userId: string;
+  operation: string;
+  allowed: boolean;
+  updatedAt: string;
+}
+
+export interface UserPermissionInput {
+  /** @minLength 1 */
+  userId: string;
+  /** @minLength 1 */
+  operation: string;
+  allowed: boolean;
+}
+
+export interface PermissionPrincipal {
+  userId: string;
+  label: string;
+  role: string;
+}
+
+export type SiteGalleryItemContentType =
+  (typeof SiteGalleryItemContentType)[keyof typeof SiteGalleryItemContentType];
+
+export const SiteGalleryItemContentType = {
+  "image/jpeg": "image/jpeg",
+  "image/png": "image/png",
+  "image/webp": "image/webp",
+} as const;
+
+export type SiteGalleryItemStatus =
+  (typeof SiteGalleryItemStatus)[keyof typeof SiteGalleryItemStatus];
+
+export const SiteGalleryItemStatus = {
+  draft: "draft",
+  published: "published",
+  hidden: "hidden",
+  deleting: "deleting",
+} as const;
+
+export interface SiteGalleryItem {
+  id: number;
+  title: string;
+  altText: string;
+  objectPath: string;
+  contentType: SiteGalleryItemContentType;
+  size: number;
+  sortOrder: number;
+  status: SiteGalleryItemStatus;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PublicSiteGalleryItem {
+  id: number;
+  title: string;
+  altText: string;
+  imageUrl: string;
+}
+
+export type SiteGalleryUploadRequestContentType =
+  (typeof SiteGalleryUploadRequestContentType)[keyof typeof SiteGalleryUploadRequestContentType];
+
+export const SiteGalleryUploadRequestContentType = {
+  "image/jpeg": "image/jpeg",
+  "image/png": "image/png",
+  "image/webp": "image/webp",
+} as const;
+
+export interface SiteGalleryUploadRequest {
+  /**
+   * @minLength 1
+   * @maxLength 255
+   */
+  name: string;
+  /**
+   * @minimum 1
+   * @maximum 10485760
+   */
+  size: number;
+  contentType: SiteGalleryUploadRequestContentType;
+}
+
+export type SiteGalleryAttachInputContentType =
+  (typeof SiteGalleryAttachInputContentType)[keyof typeof SiteGalleryAttachInputContentType];
+
+export const SiteGalleryAttachInputContentType = {
+  "image/jpeg": "image/jpeg",
+  "image/png": "image/png",
+  "image/webp": "image/webp",
+} as const;
+
+export interface SiteGalleryAttachInput {
+  /**
+   * @minLength 1
+   * @maxLength 200
+   */
+  title: string;
+  /**
+   * @minLength 1
+   * @maxLength 500
+   */
+  altText: string;
+  /** @minLength 1 */
+  objectPath: string;
+  contentType: SiteGalleryAttachInputContentType;
+  /**
+   * @minimum 1
+   * @maximum 10485760
+   */
+  size: number;
+  sortOrder?: number;
+}
+
+export type SiteGalleryUpdateStatus =
+  (typeof SiteGalleryUpdateStatus)[keyof typeof SiteGalleryUpdateStatus];
+
+export const SiteGalleryUpdateStatus = {
+  draft: "draft",
+  published: "published",
+  hidden: "hidden",
+  deleting: "deleting",
+} as const;
+
+export interface SiteGalleryUpdate {
+  /**
+   * @minLength 1
+   * @maxLength 200
+   */
+  title?: string;
+  /**
+   * @minLength 1
+   * @maxLength 500
+   */
+  altText?: string;
+  sortOrder?: number;
+  status?: SiteGalleryUpdateStatus;
+}
+
 /**
  * @nullable
  */
@@ -1482,6 +1624,13 @@ export const GetNurseryReportDomain = {
   academic: "academic",
   financial: "financial",
 } as const;
+
+export type ListUserPermissionsParams = {
+  /**
+   * @minLength 1
+   */
+  userId: string;
+};
 
 export type ListAuditLogsParams = {
   operation?: string;

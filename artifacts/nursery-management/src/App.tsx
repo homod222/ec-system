@@ -10,7 +10,7 @@ import {
   Activity as ActivityIcon, ArrowUpRight, Baby, Banknote, BarChart3, Bell, BookOpen,
   CalendarCheck, Check, ChevronLeft, ChevronRight, CircleAlert, CircleDollarSign, Clock3,
   CreditCard, Edit3, FileText, GraduationCap, LayoutDashboard, LogOut, Menu, MoreHorizontal,
-  Phone, Plus, Search, Settings as SettingsIcon, ShieldCheck, Sparkles, Trash2, TrendingUp, Users, Wallet, X,
+  Phone, Plus, Search, Settings as SettingsIcon, ShieldCheck, Sparkles, Trash2, TrendingUp, Users, Wallet, X, Images,
 } from 'lucide-react';
 import {
   getGetChildQueryKey, getGetTodayAttendanceQueryKey, getListChildrenQueryKey,
@@ -50,6 +50,7 @@ import { Reports } from './pages/admin/Reports';
 import { Permissions } from './pages/admin/Permissions';
 import { Settings } from './pages/admin/Settings';
 import { Audit } from './pages/admin/Audit';
+import { SiteGallery } from './pages/admin/SiteGallery';
 
 const queryClient = new QueryClient();
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
@@ -71,6 +72,7 @@ const navItems = [
   { href: '/reports', label: 'التقارير', icon: BarChart3 },
   { href: '/audit', label: 'سجل النظام', icon: ShieldCheck },
   { href: '/permissions', label: 'الصلاحيات', icon: Users },
+  { href: '/site-gallery', label: 'ألبوم الموقع', icon: Images },
 ];
 export const arDate = new Intl.DateTimeFormat('ar-SA', { weekday: 'long', day: 'numeric', month: 'long' });
 export const money = (n: number) => new Intl.NumberFormat('ar-KW', {
@@ -122,7 +124,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const [location] = useLocation();
   const { user } = useUser();
+  const { isSignedIn } = useAuth();
   const { signOut } = useClerk();
+  const session = useGetSessionContext({ query: { enabled: Boolean(isSignedIn), queryKey: getGetSessionContextQueryKey(), retry: false } });
+  const visibleNavItems = navItems.filter((item) => item.href !== '/site-gallery' || session.data?.effectivePermissions?.includes('read:site-gallery'));
   
   return (
     <div className="app-noise min-h-[100dvh] bg-background selection:bg-primary/20" dir="rtl">
@@ -146,7 +151,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
         
         <p className="mb-3 px-3 text-[11px] font-bold tracking-[.18em] text-sidebar-foreground/40 uppercase">الإدارة</p>
         <nav className="space-y-1">
-          {navItems.map(({ href, label, icon: Icon }) => (
+          {visibleNavItems.map(({ href, label, icon: Icon }) => (
             <Link key={href} href={href} data-testid={`link-nav-${href.slice(1)}`} onClick={() => setOpen(false)} 
               className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-bold transition-colors ${location === href || location.startsWith(`${href}/`) ? 'bg-sidebar-primary text-sidebar-primary-foreground shadow-sm' : 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground'}`}>
               <Icon size={18} />
@@ -987,7 +992,7 @@ function Protected({ children, allowedRole }: { children: React.ReactNode, allow
   if (session.data) {
     const role = session.data.role;
     const isParentRole = role === 'parent';
-    const isAdminRoute = location.startsWith('/dashboard') || location.startsWith('/children') || location.startsWith('/guardians') || location.startsWith('/classrooms') || location.startsWith('/staff') || location.startsWith('/finance') || location.startsWith('/education') || location.startsWith('/activities') || location.startsWith('/reports') || location.startsWith('/permissions') || location.startsWith('/settings') || location.startsWith('/audit') || location.startsWith('/applications');
+    const isAdminRoute = location.startsWith('/dashboard') || location.startsWith('/children') || location.startsWith('/guardians') || location.startsWith('/classrooms') || location.startsWith('/staff') || location.startsWith('/finance') || location.startsWith('/education') || location.startsWith('/activities') || location.startsWith('/reports') || location.startsWith('/permissions') || location.startsWith('/site-gallery') || location.startsWith('/settings') || location.startsWith('/audit') || location.startsWith('/applications');
     const isParentRoute = location.startsWith('/parent');
 
     if (role === 'pending') {
@@ -1083,6 +1088,7 @@ function Router() {
         <Route path="/activities"><Protected allowedRole="admin"><Activities /></Protected></Route>
         <Route path="/reports"><Protected allowedRole="admin"><Reports /></Protected></Route>
         <Route path="/permissions"><Protected allowedRole="admin"><Permissions /></Protected></Route>
+        <Route path="/site-gallery"><Protected allowedRole="admin"><SiteGallery /></Protected></Route>
         <Route path="/settings"><Protected allowedRole="admin"><Settings /></Protected></Route>
         <Route path="/audit"><Protected allowedRole="admin"><Audit /></Protected></Route>
         <Route><Redirect to="/" /></Route>

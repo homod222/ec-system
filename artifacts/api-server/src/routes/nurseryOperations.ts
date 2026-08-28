@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type RequestHandler } from "express";
-import { and, desc, eq, gte, lte, inArray } from "drizzle-orm";
+import { and, desc, eq, gte, lte, inArray, sql } from "drizzle-orm";
 import { clerkClient, getAuth } from "@clerk/express";
 import {
   CreateChildRecordBody,
@@ -13,17 +13,22 @@ import {
   GetNurseryReportResponse,
   ListAuditLogsQueryParams,
   ListAuditLogsResponse,
+  ListPermissionPrincipalsResponse,
   ListChildRecordsParams,
   ListChildRecordsResponse,
   ListOperationalRecordsParams,
   ListOperationalRecordsResponse,
   ListRolePermissionsResponse,
+  ListUserPermissionsQueryParams,
+  ListUserPermissionsResponse,
   ListStaffAttendanceQueryParams,
   ListStaffAttendanceResponse,
   RecordStaffAttendanceBody,
   RecordStaffAttendanceResponse,
   SetRolePermissionBody,
   SetRolePermissionResponse,
+  SetUserPermissionBody,
+  SetUserPermissionResponse,
   UpdateOperationalRecordBody,
   UpdateOperationalRecordParams,
   UpdateOperationalRecordResponse,
@@ -36,8 +41,10 @@ import {
   invoicePaymentsTable,
   invoiceRefundsTable,
   invoicesTable,
+  guardiansTable,
   operationalRecordsTable,
   rolePermissionsTable,
+  userPermissionsTable,
   staffAttendanceTable,
   staffTable,
 } from "@workspace/db";
@@ -85,7 +92,7 @@ const operationalResources = [
   "setting", "holiday", "notification", "integration",
 ] as const;
 const configurableRoles = ["admin", "manager", "supervisor", "teacher", "accountant", "receptionist", "parent"];
-const configurableOperations = [
+export const configurableOperations = [
   ...operationalResources.flatMap((resource) => [`read:${resource}`, `write:${resource}`, `delete:${resource}`]),
   "read:attendance", "write:attendance",
   "read:child-record", "read:child-confidential",
@@ -96,6 +103,9 @@ const configurableOperations = [
   "read:dashboard", "read:children", "write:children", "delete:children",
   "read:invoice", "write:invoice", "write:payment",
   "read:application", "write:application", "accept:application", "write:application-document",
+  "read:site-gallery", "create:site-gallery", "update:site-gallery",
+  "publish:site-gallery", "delete:site-gallery",
+  "reorder:site-gallery",
 ];
 
 export function defaultAllowed(role: string, operation: string) {
@@ -137,7 +147,13 @@ export function defaultAllowed(role: string, operation: string) {
 }
 
 export async function permitted(req: Request, operation: string) {
-  const { ownerId, role } = nurseryContext(req);
+  const { ownerId, role, actorId } = nurseryContext(req);
+  const [userConfigured] = await db.select().from(userPermissionsTable).where(and(
+    eq(userPermissionsTable.ownerId, ownerId),
+    eq(userPermissionsTable.userId, actorId),
+    eq(userPermissionsTable.operation, operation),
+  )).limit(1);
+  if (userConfigured) return userConfigured.allowed;
   const [configured] = await db.select().from(rolePermissionsTable).where(and(
     eq(rolePermissionsTable.ownerId, ownerId),
     eq(rolePermissionsTable.role, role),
@@ -543,6 +559,49 @@ router.put("/permissions", async (req, res): Promise<void> => {
     existing as unknown as Record<string, unknown> | null, record as unknown as Record<string, unknown>);
   const { ownerId: _, updatedAt, ...data } = record;
   res.json(SetRolePermissionResponse.parse({ ...data, updatedAt: updatedAt.toISOString() }));
+});
+
+router.get("/permission-principals", async (req, res): Promise<void> => {
+  const { ownerId, role } = nurseryContext(req);
+  if (!["owner", "superadmin", "admin", "nursery_admin"].includes(role) || !await permitted(req, "read:permissions")) {
+    res.status(403).json({ error: "Administrative access required" });
+    return;
+  }
+  const guardians = await db.select({ userId: guardiansTable.clerkUserId, label: guardiansTable.name })
+    .from(guardiansTable).where(and(eq(guardiansTable.ownerId, ownerId), sql`${guardiansTable.clerkUserId} is not null`));
+  const principals = [{ userId: ownerId, label: "مالك الحضانة", role: "admin" }, ...guardians
+    .filter((guardian): guardian is { userId: string; label: string } => Boolean(guardian.userId))
+    .map((guardian) => ({ userId: guardian.userId, label: guardian.label || "مستخدم معروف", role: "parent" }))];
+  res.json(ListPermissionPrincipalsResponse.parse(Array.from(new Map(principals.map((principal) => [principal.userId, principal])).values())));
+});
+
+router.get("/user-permissions", async (req, res): Promise<void> => {
+  const query = ListUserPermissionsQueryParams.safeParse(req.query);
+  if (!query.success) return void res.status(400).json({ error: query.error.message });
+  const { ownerId, role } = nurseryContext(req);
+  if (!["owner", "superadmin"].includes(role)) return void res.status(403).json({ error: "Owner access required" });
+  const rows = await db.select().from(userPermissionsTable).where(and(
+    eq(userPermissionsTable.ownerId, ownerId), eq(userPermissionsTable.userId, query.data.userId),
+  )).orderBy(userPermissionsTable.operation);
+  res.json(ListUserPermissionsResponse.parse(rows.map(({ ownerId: _, updatedAt, ...row }) => ({ ...row, updatedAt: updatedAt.toISOString() }))));
+});
+
+router.put("/user-permissions", async (req, res): Promise<void> => {
+  const body = SetUserPermissionBody.safeParse(req.body);
+  if (!body.success) return void res.status(400).json({ error: body.error.message });
+  const { ownerId, role } = nurseryContext(req);
+  if (!["owner", "superadmin"].includes(role)) return void res.status(403).json({ error: "Owner access required" });
+  const [existing] = await db.select().from(userPermissionsTable).where(and(
+    eq(userPermissionsTable.ownerId, ownerId), eq(userPermissionsTable.userId, body.data.userId),
+    eq(userPermissionsTable.operation, body.data.operation),
+  ));
+  const [record] = existing
+    ? await db.update(userPermissionsTable).set({ allowed: body.data.allowed }).where(eq(userPermissionsTable.id, existing.id)).returning()
+    : await db.insert(userPermissionsTable).values({ ownerId, ...body.data }).returning();
+  await auditNurseryOperation(req, "set-user-permission", "user-permission", String(record.id),
+    existing as unknown as Record<string, unknown> | null, record as unknown as Record<string, unknown>);
+  const { ownerId: _, updatedAt, ...data } = record;
+  res.json(SetUserPermissionResponse.parse({ ...data, updatedAt: updatedAt.toISOString() }));
 });
 
 router.get("/audit-logs", async (req, res): Promise<void> => {
