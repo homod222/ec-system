@@ -8,3 +8,4 @@
 - [MyFatoorah KNET reliability](myfatoorah-knet-reliability.md) — v2 response and webhook quirks require immutable attempts, signed events, and status repair.
 - [pnpm override source of truth](pnpm-override-source-of-truth.md) — keep overrides in the workspace config; a root package override can replace them and cause broad lockfile churn.
 - [Permission override semantics](permission-override-semantics.md) — user overrides take precedence; UIs must show the real role baseline and distinguish inherited access.
+- [Clerk E2E user provisioning](clerk-e2e-user-provisioning.md) — this managed Clerk instance requires a password when backend tests create temporary users.
