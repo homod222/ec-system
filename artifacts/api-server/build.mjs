@@ -99,6 +99,8 @@ async function buildAll() {
       "playwright",
       "puppeteer",
       "puppeteer-core",
+      "exceljs",
+      "pdfkit",
       "electron",
       // Resolves its SQL migration files relative to its own package directory
       // via `import.meta.url` -- bundling breaks that path resolution.

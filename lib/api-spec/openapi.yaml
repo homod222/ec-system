@@ -1245,6 +1245,37 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/NurseryReport" }
+  /reports/export:
+    get:
+      operationId: exportNurseryReport
+      tags: [reports]
+      summary: Export a filtered nursery report as PDF or Excel
+      parameters:
+        - name: domain
+          in: query
+          required: true
+          schema: { type: string, enum: [operational, academic, financial] }
+        - name: format
+          in: query
+          required: true
+          schema: { type: string, enum: [pdf, xlsx] }
+        - { name: branchId, in: query, schema: { type: number } }
+        - { name: classroomId, in: query, schema: { type: number } }
+        - { name: status, in: query, schema: { type: string } }
+        - { name: dateFrom, in: query, schema: { type: string } }
+        - { name: dateTo, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Generated report file
+          headers:
+            Content-Disposition:
+              schema: { type: string }
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema: { type: string, format: binary }
+        "403": { description: Operation not permitted }
   /permissions:
     get:
       operationId: listRolePermissions

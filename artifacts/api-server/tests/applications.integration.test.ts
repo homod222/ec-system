@@ -632,10 +632,25 @@ describe.sequential("application registration regression flow", () => {
       .expect(({ body }) => {
         for (const invoiceId of [cash.id, stripe.id]) {
           expect(body.records).toEqual(expect.arrayContaining([
-            expect.objectContaining({ id: invoiceId, data: expect.objectContaining({ paidAmount: 25 }) }),
+            expect.objectContaining({
+              resource: "revenue",
+              amount: 25,
+              data: expect.objectContaining({ invoiceId }),
+            }),
           ]));
         }
       });
+    await request(app).get("/api/reports?domain=financial&dateTo=2000-01-01").set(auth(ownerA)).expect(200)
+      .expect(({ body }) => expect(body).toMatchObject({ count: 0, totalAmount: 0, records: [] }));
+    await request(app).get("/api/reports?domain=financial&dateFrom=01%2F01%2F2024").set(auth(ownerA)).expect(400);
+    await request(app).get("/api/reports/export?domain=financial&format=pdf").set(auth(ownerA)).expect(200)
+      .expect("Content-Type", /application\/pdf/)
+      .expect("Content-Disposition", /nursery-report-financial-.*\.pdf/);
+    await request(app).get("/api/reports/export?domain=financial&format=xlsx").set(auth(ownerA)).expect(200)
+      .expect("Content-Type", /application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet/)
+      .expect("Content-Disposition", /nursery-report-financial-.*\.xlsx/);
+    await request(app).get("/api/reports/export?domain=financial&format=pdf")
+      .set(auth(ownerA, "teacher")).expect(403);
     await request(app).get("/api/finance/summary").set(auth(ownerA)).expect(200)
       .expect(({ body }) => expect(body.collectedThisMonth).toBeGreaterThanOrEqual(50));
   });
@@ -1462,7 +1477,11 @@ describe.sequential("application registration regression flow", () => {
       .expect(({ body }) => expect(body).toMatchObject({ paidAmount: 45, refundedAmount: 0, balance: 0, status: "paid" }));
     await request(app).get("/api/reports?domain=financial").set(auth(ownerB)).expect(200)
       .expect(({ body }) => expect(body.records).toEqual(expect.arrayContaining([
-        expect.objectContaining({ id: stripeInvoice.body.id, data: expect.objectContaining({ paidAmount: 45 }) }),
+        expect.objectContaining({
+          resource: "revenue",
+          amount: 45,
+          data: expect.objectContaining({ invoiceId: stripeInvoice.body.id }),
+        }),
       ])));
     await request(app).post(`/api/invoices/${stripeInvoice.body.id}/payments`).set(auth(ownerB))
       .send({ method: "cash", amount: 45 }).expect(409);

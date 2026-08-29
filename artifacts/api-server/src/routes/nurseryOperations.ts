@@ -1,6 +1,9 @@
 import { Router, type IRouter, type Request, type RequestHandler } from "express";
+import { createRequire } from "node:module";
 import { and, desc, eq, gte, lte, inArray, sql } from "drizzle-orm";
 import { clerkClient, getAuth } from "@clerk/express";
+import ExcelJS from "exceljs";
+import PDFDocument from "pdfkit";
 import {
   CreateChildRecordBody,
   CreateChildRecordParams,
@@ -9,6 +12,7 @@ import {
   CreateOperationalRecordParams,
   CreateOperationalRecordResponse,
   DeleteOperationalRecordParams,
+  ExportNurseryReportQueryParams,
   GetNurseryReportQueryParams,
   GetNurseryReportResponse,
   ListAuditLogsQueryParams,
@@ -42,10 +46,12 @@ import {
   auditLogsTable,
   childRecordsTable,
   childrenTable,
+  classroomsTable,
   db,
   invoicePaymentsTable,
   invoiceRefundsTable,
   invoicesTable,
+  nurserySettingsTable,
   guardiansTable,
   operationalRecordsTable,
   rolePermissionsTable,
@@ -60,6 +66,8 @@ import {
 } from "../lib/permissionCatalog";
 
 const router: IRouter = Router();
+const require = createRequire(import.meta.url);
+const arabicPdfFont = require.resolve("dejavu-fonts-ttf/ttf/DejaVuSans.ttf");
 type Claims = Record<string, unknown>;
 
 export function nurseryContext(req: Request) {
@@ -504,81 +512,258 @@ router.delete("/operations/:resource/:id", async (req, res): Promise<void> => {
   res.sendStatus(204);
 });
 
-router.get("/reports", async (req, res): Promise<void> => {
-  const query = GetNurseryReportQueryParams.safeParse(req.query);
-  if (!query.success) {
-    res.status(400).json({ error: query.error.message });
-    return;
-  }
-  if (!await permitted(req, `read:report-${query.data.domain}`)) {
-    res.status(403).json({ error: "Operation not permitted" });
-    return;
-  }
-  const resources = query.data.domain === "academic"
+type ReportFilters = {
+  domain: "operational" | "academic" | "financial";
+  branchId?: number;
+  classroomId?: number;
+  status?: string;
+  dateFrom?: string;
+  dateTo?: string;
+};
+
+function hasInvalidReportDate({ dateFrom, dateTo }: ReportFilters) {
+  return [dateFrom, dateTo].some((value) => {
+    if (!value) return false;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return true;
+    return Number.isNaN(new Date(`${value}T00:00:00.000Z`).getTime());
+  });
+}
+
+async function buildNurseryReport(ownerId: string, filters: ReportFilters) {
+  const resources = filters.domain === "academic"
     ? [...academicResources]
-    : query.data.domain === "financial"
+    : filters.domain === "financial"
       ? [...financialResources]
       : undefined;
-  const { ownerId } = nurseryContext(req);
-  if (query.data.domain === "financial") {
-    const [invoices, payments, refunds] = await Promise.all([
-      db.select().from(invoicesTable).where(and(
-        eq(invoicesTable.ownerId, ownerId),
-        query.data.status ? eq(invoicesTable.status, query.data.status) : undefined,
-        query.data.dateFrom ? gte(invoicesTable.dueDate, query.data.dateFrom) : undefined,
-        query.data.dateTo ? lte(invoicesTable.dueDate, query.data.dateTo) : undefined,
-      )),
+  if (filters.domain === "financial") {
+    const [classrooms, children] = await Promise.all([
+      db.select({ id: classroomsTable.id, branchId: classroomsTable.branchId })
+        .from(classroomsTable).where(eq(classroomsTable.ownerId, ownerId)),
+      db.select({ id: childrenTable.id, classroomId: childrenTable.classroomId })
+        .from(childrenTable).where(eq(childrenTable.ownerId, ownerId)),
+    ]);
+    const classroomBranches = new Map(classrooms.map(({ id, branchId }) => [id, branchId]));
+    const childDimensions = new Map(children.map(({ id, classroomId }) => [
+      id,
+      { classroomId, branchId: classroomId ? classroomBranches.get(classroomId) ?? null : null },
+    ]));
+    const childIds = (filters.branchId || filters.classroomId)
+      ? children.filter(({ classroomId }) => {
+          if (filters.classroomId && classroomId !== filters.classroomId) return false;
+          return !filters.branchId || (classroomId ? classroomBranches.get(classroomId) === filters.branchId : false);
+        }).map(({ id }) => id)
+      : null;
+    const invoices = await db.select().from(invoicesTable).where(and(
+      eq(invoicesTable.ownerId, ownerId),
+      childIds ? (childIds.length ? inArray(invoicesTable.childId, childIds) : sql`false`) : undefined,
+      filters.status ? eq(invoicesTable.status, filters.status) : undefined,
+    ));
+    const invoiceIds = invoices.map(({ id }) => id);
+    const dateFrom = filters.dateFrom ? new Date(`${filters.dateFrom}T00:00:00.000Z`) : undefined;
+    const dateTo = filters.dateTo ? new Date(`${filters.dateTo}T23:59:59.999Z`) : undefined;
+    const [payments, refunds] = await Promise.all([
       db.select().from(invoicePaymentsTable).where(and(
         eq(invoicePaymentsTable.ownerId, ownerId),
+        invoiceIds.length ? inArray(invoicePaymentsTable.invoiceId, invoiceIds) : sql`false`,
         inArray(invoicePaymentsTable.status, ["completed", "succeeded"]),
-        query.data.dateFrom ? gte(invoicePaymentsTable.createdAt, new Date(`${query.data.dateFrom}T00:00:00.000Z`)) : undefined,
-        query.data.dateTo ? lte(invoicePaymentsTable.createdAt, new Date(`${query.data.dateTo}T23:59:59.999Z`)) : undefined,
+        dateFrom ? gte(invoicePaymentsTable.createdAt, dateFrom) : undefined,
+        dateTo ? lte(invoicePaymentsTable.createdAt, dateTo) : undefined,
       )),
       db.select().from(invoiceRefundsTable).where(and(
         eq(invoiceRefundsTable.ownerId, ownerId),
-        query.data.dateFrom ? gte(invoiceRefundsTable.createdAt, new Date(`${query.data.dateFrom}T00:00:00.000Z`)) : undefined,
-        query.data.dateTo ? lte(invoiceRefundsTable.createdAt, new Date(`${query.data.dateTo}T23:59:59.999Z`)) : undefined,
+        invoiceIds.length ? inArray(invoiceRefundsTable.invoiceId, invoiceIds) : sql`false`,
+        dateFrom ? gte(invoiceRefundsTable.createdAt, dateFrom) : undefined,
+        dateTo ? lte(invoiceRefundsTable.createdAt, dateTo) : undefined,
       )),
     ]);
+    const invoiceById = new Map(invoices.map((invoice) => [invoice.id, invoice]));
     const byStatus: Record<string, number> = {};
-    invoices.forEach((invoice) => { byStatus[invoice.status] = (byStatus[invoice.status] ?? 0) + 1; });
-    const records = invoices.map((invoice) => ({
-      id: invoice.id, resource: "revenue" as const, subjectId: invoice.childId, branchId: null,
-      title: invoice.invoiceNumber, status: invoice.status, occurredOn: invoice.dueDate,
-      amount: invoice.amount, data: {
-        guardianId: invoice.guardianId,
-        paidAmount: payments.filter((payment) => payment.invoiceId === invoice.id)
-          .reduce((sum, payment) => sum + payment.amount, 0),
-      },
-      createdBy: "system", createdAt: invoice.createdAt.toISOString(),
-      updatedAt: (invoice.paidAt ?? invoice.createdAt).toISOString(),
-    }));
-    res.json(GetNurseryReportResponse.parse({
-      domain: "financial", count: invoices.length,
+    payments.forEach(() => { byStatus.payment = (byStatus.payment ?? 0) + 1; });
+    refunds.forEach(() => { byStatus.refund = (byStatus.refund ?? 0) + 1; });
+    const records = [
+      ...payments.map((payment) => {
+        const invoice = invoiceById.get(payment.invoiceId)!;
+        const dimensions = childDimensions.get(invoice.childId);
+        return {
+          id: payment.id,
+          resource: "revenue" as const,
+          subjectId: invoice.childId,
+          branchId: dimensions?.branchId ?? null,
+          title: invoice.invoiceNumber,
+          status: "payment",
+          occurredOn: payment.createdAt.toISOString().slice(0, 10),
+          amount: payment.amount,
+          data: {
+            invoiceId: invoice.id,
+            guardianId: invoice.guardianId,
+            childId: invoice.childId,
+            classroomId: dimensions?.classroomId ?? null,
+            branchId: dimensions?.branchId ?? null,
+            method: payment.method,
+            reference: payment.reference,
+          },
+          createdBy: payment.recordedBy ?? "system",
+          createdAt: payment.createdAt.toISOString(),
+          updatedAt: payment.createdAt.toISOString(),
+        };
+      }),
+      ...refunds.map((refund) => {
+        const invoice = invoiceById.get(refund.invoiceId)!;
+        const dimensions = childDimensions.get(invoice.childId);
+        return {
+          id: refund.id,
+          resource: "refund" as const,
+          subjectId: invoice.childId,
+          branchId: dimensions?.branchId ?? null,
+          title: invoice.invoiceNumber,
+          status: "refund",
+          occurredOn: refund.createdAt.toISOString().slice(0, 10),
+          amount: -refund.amount,
+          data: {
+            invoiceId: invoice.id,
+            guardianId: invoice.guardianId,
+            childId: invoice.childId,
+            classroomId: dimensions?.classroomId ?? null,
+            branchId: dimensions?.branchId ?? null,
+            reason: refund.reason,
+          },
+          createdBy: refund.recordedBy,
+          createdAt: refund.createdAt.toISOString(),
+          updatedAt: refund.createdAt.toISOString(),
+        };
+      }),
+    ].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    return GetNurseryReportResponse.parse({
+      domain: "financial", count: records.length,
       totalAmount: payments.reduce((sum, payment) => sum + payment.amount, 0)
         - refunds.reduce((sum, refund) => sum + refund.amount, 0),
       byStatus, records,
-    }));
-    return;
+    });
   }
   const rows = await db.select().from(operationalRecordsTable).where(and(
     eq(operationalRecordsTable.ownerId, ownerId),
     resources ? inArray(operationalRecordsTable.resource, resources) : undefined,
-    query.data.branchId ? eq(operationalRecordsTable.branchId, query.data.branchId) : undefined,
-    query.data.classroomId ? eq(operationalRecordsTable.subjectId, query.data.classroomId) : undefined,
-    query.data.status ? eq(operationalRecordsTable.status, query.data.status) : undefined,
-    query.data.dateFrom ? gte(operationalRecordsTable.occurredOn, query.data.dateFrom) : undefined,
-    query.data.dateTo ? lte(operationalRecordsTable.occurredOn, query.data.dateTo) : undefined,
+    filters.branchId ? eq(operationalRecordsTable.branchId, filters.branchId) : undefined,
+    filters.classroomId ? eq(operationalRecordsTable.subjectId, filters.classroomId) : undefined,
+    filters.status ? eq(operationalRecordsTable.status, filters.status) : undefined,
+    filters.dateFrom ? gte(operationalRecordsTable.occurredOn, filters.dateFrom) : undefined,
+    filters.dateTo ? lte(operationalRecordsTable.occurredOn, filters.dateTo) : undefined,
   )).orderBy(desc(operationalRecordsTable.occurredOn));
   const byStatus: Record<string, number> = {};
   rows.forEach((row) => { byStatus[row.status] = (byStatus[row.status] ?? 0) + 1; });
-  res.json(GetNurseryReportResponse.parse({
-    domain: query.data.domain,
+  return GetNurseryReportResponse.parse({
+    domain: filters.domain,
     count: rows.length,
     totalAmount: rows.reduce((sum, row) => sum + (row.amount ?? 0), 0),
     byStatus,
     records: rows.map(serializeRecord),
-  }));
+  });
+}
+
+router.get("/reports", async (req, res): Promise<void> => {
+  const query = GetNurseryReportQueryParams.safeParse(req.query);
+  if (!query.success) return void res.status(400).json({ error: query.error.message });
+  if (hasInvalidReportDate(query.data)) return void res.status(400).json({ error: "Invalid report date" });
+  if (!await permitted(req, `read:report-${query.data.domain}`)) {
+    return void res.status(403).json({ error: "Operation not permitted" });
+  }
+  res.json(await buildNurseryReport(nurseryContext(req).ownerId, query.data));
+});
+
+router.get("/reports/export", async (req, res): Promise<void> => {
+  const query = ExportNurseryReportQueryParams.safeParse(req.query);
+  if (!query.success) return void res.status(400).json({ error: query.error.message });
+  if (hasInvalidReportDate(query.data)) return void res.status(400).json({ error: "Invalid report date" });
+  if (!await permitted(req, `read:report-${query.data.domain}`)) {
+    return void res.status(403).json({ error: "Operation not permitted" });
+  }
+  const { ownerId } = nurseryContext(req);
+  const { format, ...filters } = query.data;
+  const report = await buildNurseryReport(ownerId, filters);
+  const [settings] = await db.select({ nurseryName: nurserySettingsTable.nurseryName })
+    .from(nurserySettingsTable).where(eq(nurserySettingsTable.ownerId, ownerId)).limit(1);
+  const nurseryName = settings?.nurseryName ?? "حضانة EC";
+  const filterRows = [
+    ["نوع التقرير", filters.domain],
+    ["الفترة", `${filters.dateFrom ?? "الكل"} — ${filters.dateTo ?? "الكل"}`],
+    ["الفرع", filters.branchId ? String(filters.branchId) : "جميع الفروع"],
+    ["الفصل", filters.classroomId ? String(filters.classroomId) : "جميع الفصول"],
+    ["الحالة", filters.status ?? "جميع الحالات"],
+  ];
+  const filename = `nursery-report-${filters.domain}-${new Date().toISOString().slice(0, 10)}.${format}`;
+
+  if (format === "xlsx") {
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = nurseryName;
+    const summary = workbook.addWorksheet("ملخص التقرير", { views: [{ rightToLeft: true }] });
+    summary.addRow([nurseryName]).font = { bold: true, size: 18, color: { argb: "FF165032" } };
+    summary.addRow(["تقرير الحضانة"]);
+    filterRows.forEach((row) => summary.addRow(row));
+    summary.addRow([]);
+    summary.addRow(["إجمالي السجلات", report.count]);
+    summary.addRow(["الإجمالي المالي", report.totalAmount]);
+    summary.addRow([]);
+    summary.addRow(["الحالة", "العدد"]).font = { bold: true };
+    Object.entries(report.byStatus).forEach(([status, count]) => summary.addRow([status, count]));
+    summary.columns = [{ width: 28 }, { width: 28 }];
+
+    const records = workbook.addWorksheet("البيانات", { views: [{ rightToLeft: true, state: "frozen", ySplit: 1 }] });
+    records.columns = [
+      { header: "المعرف", key: "id", width: 12 },
+      { header: "النوع", key: "resource", width: 20 },
+      { header: "العنوان", key: "title", width: 32 },
+      { header: "الحالة", key: "status", width: 18 },
+      { header: "التاريخ", key: "occurredOn", width: 18 },
+      { header: "المبلغ", key: "amount", width: 16 },
+      { header: "معرف الفرع", key: "branchId", width: 16 },
+      { header: filters.domain === "financial" ? "معرف الطفل" : "معرف الفصل/الموضوع", key: "subjectId", width: 22 },
+      { header: "معرف الفصل", key: "classroomId", width: 16 },
+    ];
+    records.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+    records.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF165032" } };
+    report.records.forEach((record) => records.addRow({
+      ...record,
+      classroomId: typeof record.data.classroomId === "number" ? record.data.classroomId : null,
+    }));
+    const buffer = await workbook.xlsx.writeBuffer();
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.send(Buffer.from(buffer));
+    return;
+  }
+
+  try {
+  const doc = new PDFDocument({ size: "A4", margin: 48, info: { Title: `${nurseryName} - تقرير الحضانة` } });
+  const chunks: Buffer[] = [];
+  doc.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+  const completed = new Promise<Buffer>((resolve, reject) => {
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    doc.on("error", reject);
+  });
+  doc.font(arabicPdfFont);
+  doc.fillColor("#165032").fontSize(20).text(nurseryName, { align: "right" });
+  doc.fillColor("#111827").fontSize(15).text("تقرير الحضانة", { align: "right" });
+  doc.moveDown();
+  doc.fontSize(10);
+  filterRows.forEach(([label, value]) => doc.text(`${label}: ${value}`, { align: "right" }));
+  doc.moveDown().fontSize(12).text(`إجمالي السجلات: ${report.count}`, { align: "right" });
+  if (filters.domain === "financial") doc.text(`الإجمالي المالي: ${report.totalAmount.toFixed(3)} KWD`, { align: "right" });
+  doc.moveDown().fillColor("#165032").fontSize(13).text("الحالات", { align: "right" });
+  doc.fillColor("#111827").fontSize(10);
+  Object.entries(report.byStatus).forEach(([status, count]) => doc.text(`${status}: ${count}`, { align: "right" }));
+  doc.moveDown().fillColor("#165032").fontSize(13).text("البيانات", { align: "right" });
+  doc.fillColor("#111827").fontSize(9);
+  report.records.forEach((record) => {
+    doc.text(`${record.occurredOn ?? "—"} | ${record.title} | ${record.status}${record.amount == null ? "" : ` | ${record.amount}`}`, { align: "right" });
+  });
+  doc.end();
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  res.send(await completed);
+  } catch (error) {
+    req.log.error({ err: error }, "Failed to generate nursery report PDF");
+    if (!res.headersSent) res.status(500).json({ error: "Report PDF generation failed" });
+  }
 });
 
 router.get("/permissions", async (req, res): Promise<void> => {

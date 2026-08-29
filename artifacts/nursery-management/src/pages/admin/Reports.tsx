@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { useGetNurseryReport, useListClassrooms, useListOperationalRecords } from '@workspace/api-client-react';
+import { exportNurseryReport, useGetNurseryReport, useListClassrooms, useListOperationalRecords } from '@workspace/api-client-react';
 import { Shell, Button, QueryState, PageHeader } from '../../App';
-import { Download } from 'lucide-react';
+import { Download, FileSpreadsheet, FileText } from 'lucide-react';
 import { useI18n } from '../../i18n';
 
 export function Reports() {
@@ -11,6 +11,8 @@ export function Reports() {
   const [dateTo, setDateTo] = useState('');
   const [branchId, setBranchId] = useState('');
   const [classroomId, setClassroomId] = useState('');
+  const [exporting, setExporting] = useState<'pdf' | 'xlsx' | null>(null);
+  const [exportError, setExportError] = useState(false);
   
   const query = useGetNurseryReport({ 
     domain,
@@ -26,12 +28,49 @@ export function Reports() {
   const classroomQuery = useListClassrooms();
   const classrooms = classroomQuery.data || [];
 
+  const exportReport = async (format: 'pdf' | 'xlsx') => {
+    setExporting(format);
+    setExportError(false);
+    try {
+      const blob = await exportNurseryReport({
+        domain,
+        format,
+        dateFrom: dateFrom || undefined,
+        dateTo: dateTo || undefined,
+        branchId: branchId ? Number(branchId) : undefined,
+        classroomId: classroomId ? Number(classroomId) : undefined,
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `nursery-report-${domain}-${new Date().toISOString().slice(0, 10)}.${format}`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      setExportError(true);
+    } finally {
+      setExporting(null);
+    }
+  };
+
   return (
     <Shell>
       <PageHeader 
         eyebrow={t('reports.eyebrow')} title={t('reports.title')} description={t('reports.description')}
-        action={<Button data-testid="button-print-report" variant="soft" onClick={() => window.print()}><Download size={18} />{t('reports.print')}</Button>}
+        action={
+          <div className="flex flex-wrap gap-2">
+            <Button data-testid="button-export-pdf" variant="soft" disabled={exporting !== null || !report} onClick={() => exportReport('pdf')}>
+              <FileText size={18} />{exporting === 'pdf' ? t('reports.exporting') : t('reports.exportPdf')}
+            </Button>
+            <Button data-testid="button-export-excel" disabled={exporting !== null || !report} onClick={() => exportReport('xlsx')}>
+              <FileSpreadsheet size={18} />{exporting === 'xlsx' ? t('reports.exporting') : t('reports.exportExcel')}
+            </Button>
+          </div>
+        }
       />
+      {exportError && <p role="alert" className="mb-4 rounded-xl bg-destructive/10 px-4 py-3 text-sm font-bold text-destructive">{t('reports.exportError')}</p>}
       
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between bg-card p-4 rounded-2xl border border-border">
         <div className="flex flex-wrap gap-2">

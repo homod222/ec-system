@@ -1807,6 +1807,33 @@ export const GetNurseryReportDomain = {
   financial: "financial",
 } as const;
 
+export type ExportNurseryReportParams = {
+  domain: ExportNurseryReportDomain;
+  format: ExportNurseryReportFormat;
+  branchId?: number;
+  classroomId?: number;
+  status?: string;
+  dateFrom?: string;
+  dateTo?: string;
+};
+
+export type ExportNurseryReportDomain =
+  (typeof ExportNurseryReportDomain)[keyof typeof ExportNurseryReportDomain];
+
+export const ExportNurseryReportDomain = {
+  operational: "operational",
+  academic: "academic",
+  financial: "financial",
+} as const;
+
+export type ExportNurseryReportFormat =
+  (typeof ExportNurseryReportFormat)[keyof typeof ExportNurseryReportFormat];
+
+export const ExportNurseryReportFormat = {
+  pdf: "pdf",
+  xlsx: "xlsx",
+} as const;
+
 export type ListUserPermissionsParams = {
   /**
    * @minLength 1

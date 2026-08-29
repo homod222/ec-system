@@ -2319,6 +2319,19 @@ export const GetNurseryReportResponse = zod.object({
   ),
 });
 /**
+ * @summary Export a filtered nursery report as PDF or Excel
+ */
+export const ExportNurseryReportQueryParams = zod.object({
+  domain: zod.enum(["operational", "academic", "financial"]),
+  format: zod.enum(["pdf", "xlsx"]),
+  branchId: zod.coerce.number().optional(),
+  classroomId: zod.coerce.number().optional(),
+  status: zod.coerce.string().optional(),
+  dateFrom: zod.coerce.string().optional(),
+  dateTo: zod.coerce.string().optional(),
+});
+export const ExportNurseryReportResponse = zod.unknown();
+/**
  * @summary List configured role permissions
  */
 export const ListRolePermissionsResponseItem = zod.object({

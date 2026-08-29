@@ -43,6 +43,7 @@ import type {
   Classroom,
   ClassroomInput,
   DashboardSummary,
+  ExportNurseryReportParams,
   FinanceSummary,
   GetNurseryReportParams,
   Guardian,
@@ -7158,6 +7159,106 @@ export function useGetNurseryReport<
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetNurseryReportQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getExportNurseryReportUrl = (
+  params: ExportNurseryReportParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : String(value));
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/reports/export?${stringifiedParams}`
+    : `/api/reports/export`;
+};
+
+/**
+ * @summary Export a filtered nursery report as PDF or Excel
+ */
+export const exportNurseryReport = async (
+  params: ExportNurseryReportParams,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<Blob> => {
+  return customFetch<Blob>(getExportNurseryReportUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getExportNurseryReportQueryKey = (
+  params?: ExportNurseryReportParams,
+) => {
+  return [`/api/reports/export`, ...(params ? [params] : [])] as const;
+};
+
+export const getExportNurseryReportQueryOptions = <
+  TData = Awaited<ReturnType<typeof exportNurseryReport>>,
+  TError = ErrorType<void>,
+>(
+  params: ExportNurseryReportParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof exportNurseryReport>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getExportNurseryReportQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof exportNurseryReport>>
+  > = ({ signal }) =>
+    exportNurseryReport(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof exportNurseryReport>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ExportNurseryReportQueryResult = NonNullable<
+  Awaited<ReturnType<typeof exportNurseryReport>>
+>;
+export type ExportNurseryReportQueryError = ErrorType<void>;
+
+/**
+ * @summary Export a filtered nursery report as PDF or Excel
+ */
+
+export function useExportNurseryReport<
+  TData = Awaited<ReturnType<typeof exportNurseryReport>>,
+  TError = ErrorType<void>,
+>(
+  params: ExportNurseryReportParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof exportNurseryReport>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getExportNurseryReportQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;
