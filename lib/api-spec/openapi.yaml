@@ -1128,6 +1128,14 @@ paths:
         "200":
           description: Updated settings
           content: { application/json: { schema: { $ref: "#/components/schemas/NurserySettings" } } }
+  /public/site-settings:
+    get:
+      operationId: getPublicSiteSettings
+      tags: [operations]
+      responses:
+        "200":
+          description: Public registration settings
+          content: { application/json: { schema: { $ref: "#/components/schemas/PublicSiteSettings" } } }
   /staff-attendance:
     get:
       operationId: listStaffAttendance
@@ -2296,10 +2304,11 @@ components:
         data: { type: object, additionalProperties: true }
     NurserySettings:
       type: object
-      required: [id, nurseryName, timezone, currency, workingHours, calendar, updatedBy, updatedAt]
+      required: [id, nurseryName, registrationWhatsApp, timezone, currency, workingHours, calendar, updatedBy, updatedAt]
       properties:
         id: { type: number }
         nurseryName: { type: string }
+        registrationWhatsApp: { type: string, pattern: '^965[569][0-9]{7}$' }
         timezone: { type: string }
         currency: { type: string, enum: [KWD] }
         workingHours: { type: object, additionalProperties: true }
@@ -2308,13 +2317,19 @@ components:
         updatedAt: { type: string }
     NurserySettingsInput:
       type: object
-      required: [nurseryName, timezone, currency, workingHours, calendar]
+      required: [nurseryName, registrationWhatsApp, timezone, currency, workingHours, calendar]
       properties:
         nurseryName: { type: string, minLength: 1 }
+        registrationWhatsApp: { type: string, pattern: '^(?:\+?965)?[569][0-9]{7}$' }
         timezone: { type: string, minLength: 1 }
         currency: { type: string, enum: [KWD] }
         workingHours: { type: object, additionalProperties: true }
         calendar: { type: object, additionalProperties: true }
+    PublicSiteSettings:
+      type: object
+      required: [registrationWhatsApp]
+      properties:
+        registrationWhatsApp: { type: string, pattern: '^965[569][0-9]{7}$' }
     StaffAttendance:
       type: object
       required: [id, staffId, date, status, source, recordedBy]

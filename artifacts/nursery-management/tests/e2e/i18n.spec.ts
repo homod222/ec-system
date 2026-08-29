@@ -41,6 +41,7 @@ test('renders admin and parent harnesses in the stored English locale', async ({
     body: JSON.stringify({
       id: 1,
       nurseryName: 'EC Nursery',
+      registrationWhatsApp: '96590916677',
       timezone: 'Asia/Kuwait',
       currency: 'KWD',
       workingHours: {},

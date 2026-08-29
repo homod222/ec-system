@@ -84,6 +84,7 @@ import type {
   PermissionPrincipal,
   ProgressReport,
   PublicSiteGalleryItem,
+  PublicSiteSettings,
   Receipt,
   RefundInput,
   RolePermission,
@@ -5811,6 +5812,74 @@ export const useSetNurserySettings = <
 > => {
   return useMutation(getSetNurserySettingsMutationOptions(options));
 };
+
+export const getGetPublicSiteSettingsUrl = () => {
+  return `/api/public/site-settings`;
+};
+
+export const getPublicSiteSettings = async (
+  options?: Parameters<typeof customFetch>[1],
+): Promise<PublicSiteSettings> => {
+  return customFetch<PublicSiteSettings>(getGetPublicSiteSettingsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetPublicSiteSettingsQueryKey = () => {
+  return [`/api/public/site-settings`] as const;
+};
+
+export const getGetPublicSiteSettingsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getPublicSiteSettings>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getPublicSiteSettings>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetPublicSiteSettingsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getPublicSiteSettings>>
+  > = ({ signal }) => getPublicSiteSettings({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getPublicSiteSettings>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetPublicSiteSettingsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getPublicSiteSettings>>
+>;
+export type GetPublicSiteSettingsQueryError = ErrorType<unknown>;
+
+export function useGetPublicSiteSettings<
+  TData = Awaited<ReturnType<typeof getPublicSiteSettings>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getPublicSiteSettings>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetPublicSiteSettingsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
 
 export const getListStaffAttendanceUrl = (
   params?: ListStaffAttendanceParams,

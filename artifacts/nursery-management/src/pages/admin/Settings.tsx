@@ -50,6 +50,7 @@ export function Settings({ withShell = true }: { withShell?: boolean } = {}) {
   const save = useSetNurserySettings();
   const qc = useQueryClient();
   const [nurseryName, setNurseryName] = useState('');
+  const [registrationWhatsApp, setRegistrationWhatsApp] = useState('96590916677');
   const [timezone, setTimezone] = useState('Asia/Kuwait');
   const [hours, setHours] = useState<HoursForm>(defaultHours);
   const [holidays, setHolidays] = useState<string[]>([]);
@@ -64,6 +65,7 @@ export function Settings({ withShell = true }: { withShell?: boolean } = {}) {
     const workingHours = isRecord(query.data.workingHours) ? query.data.workingHours : {};
     const calendar = isRecord(query.data.calendar) ? query.data.calendar : {};
     setNurseryName(query.data.nurseryName);
+    setRegistrationWhatsApp(query.data.registrationWhatsApp ?? '96590916677');
     setTimezone(query.data.timezone);
     setHours(settingsToHours(workingHours, calendar));
     setHolidays(Array.isArray(calendar.holidays) ? calendar.holidays.filter((date): date is string => typeof date === 'string').sort() : []);
@@ -73,6 +75,8 @@ export function Settings({ withShell = true }: { withShell?: boolean } = {}) {
 
   const errors = useMemo(() => {
     const next: string[] = [];
+    const whatsappDigits = registrationWhatsApp.replace(/\D/g, '');
+    if (!/^(?:965)?[569]\d{7}$/.test(whatsappDigits)) next.push(t('settings.registrationWhatsAppInvalid'));
     DAYS.forEach(({ key, labelKey }) => {
       const label = t(labelKey);
       const day = hours[key];
@@ -84,7 +88,7 @@ export function Settings({ withShell = true }: { withShell?: boolean } = {}) {
       next.push(t('settings.invalidHoliday'));
     }
     return next;
-  }, [hours, holidays, t]);
+  }, [hours, holidays, registrationWhatsApp, t]);
 
   const updateDay = (key: DayKey, patch: Partial<DayHours>) => {
     setHours(current => ({ ...current, [key]: { ...current[key], ...patch } }));
@@ -117,7 +121,7 @@ export function Settings({ withShell = true }: { withShell?: boolean } = {}) {
     const calendar = { ...originalCalendar, weekend, holidays };
 
     save.mutate(
-      { data: { nurseryName, timezone, currency: 'KWD', workingHours, calendar } },
+      { data: { nurseryName, registrationWhatsApp, timezone, currency: 'KWD', workingHours, calendar } },
       {
         onSuccess: () => {
           setSubmitted(false);
@@ -144,6 +148,19 @@ export function Settings({ withShell = true }: { withShell?: boolean } = {}) {
             </label>
             <label className="text-sm font-bold">{t('settings.timezone')}
               <input required value={timezone} onChange={event => setTimezone(event.target.value)} className="mt-2 w-full rounded-xl border border-input bg-background px-4 py-3" />
+            </label>
+            <label className="text-sm font-bold">{t('settings.registrationWhatsApp')}
+              <input
+                required
+                type="tel"
+                inputMode="tel"
+                dir="ltr"
+                value={registrationWhatsApp}
+                onChange={event => { setRegistrationWhatsApp(event.target.value); setSubmitted(false); }}
+                placeholder="96590916677"
+                className={`mt-2 w-full rounded-xl border bg-background px-4 py-3 text-left ${submitted && !/^(?:965)?[569]\d{7}$/.test(registrationWhatsApp.replace(/\D/g, '')) ? 'border-destructive' : 'border-input'}`}
+              />
+              <span className="mt-1 block text-xs font-normal text-muted-foreground">{t('settings.registrationWhatsAppHelp')}</span>
             </label>
           </div>
 

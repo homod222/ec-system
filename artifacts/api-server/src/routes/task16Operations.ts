@@ -39,6 +39,13 @@ import {
 
 const router: IRouter = Router();
 const storage = new ObjectStorageService();
+const DEFAULT_REGISTRATION_WHATSAPP = "96590916677";
+
+function normalizeRegistrationWhatsApp(value: string): string {
+  const digits = value.replace(/\D/g, "");
+  return digits.startsWith("965") ? digits : `965${digits}`;
+}
+
 const requireAuth: RequestHandler = (req, res, next) => {
   if (!getAuth(req).userId) {
     res.status(401).json({ error: "Unauthorized" });
@@ -534,6 +541,7 @@ router.get("/nursery/settings", requireNurseryPermission("read:setting"), async 
     res.json(GetNurserySettingsResponse.parse({
       id: 0,
       nurseryName: "حضانة EC",
+      registrationWhatsApp: DEFAULT_REGISTRATION_WHATSAPP,
       timezone: "Asia/Kuwait",
       currency: "KWD",
       workingHours: {
@@ -557,10 +565,14 @@ router.put("/nursery/settings", requireNurseryPermission("write:setting"), async
   const body = SetNurserySettingsBody.safeParse(req.body);
   if (!body.success) return void res.status(400).json({ error: body.error.message });
   const { ownerId, actorId } = nurseryContext(req);
+  const settings = {
+    ...body.data,
+    registrationWhatsApp: normalizeRegistrationWhatsApp(body.data.registrationWhatsApp),
+  };
   const [before] = await db.select().from(nurserySettingsTable).where(eq(nurserySettingsTable.ownerId, ownerId));
   const [row] = before
-    ? await db.update(nurserySettingsTable).set({ ...body.data, updatedBy: actorId, updatedAt: new Date() }).where(eq(nurserySettingsTable.id, before.id)).returning()
-    : await db.insert(nurserySettingsTable).values({ ownerId, ...body.data, updatedBy: actorId }).returning();
+    ? await db.update(nurserySettingsTable).set({ ...settings, updatedBy: actorId, updatedAt: new Date() }).where(eq(nurserySettingsTable.id, before.id)).returning()
+    : await db.insert(nurserySettingsTable).values({ ownerId, ...settings, updatedBy: actorId }).returning();
   await auditNurseryOperation(req, before ? "update" : "create", "nursery-settings", String(row.id), before as unknown as Record<string, unknown> | null, row as unknown as Record<string, unknown>);
   const { ownerId: _, updatedAt, ...data } = row;
   res.json(SetNurserySettingsResponse.parse({ ...data, updatedAt: updatedAt.toISOString() }));

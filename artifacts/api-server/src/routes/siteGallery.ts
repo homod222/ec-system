@@ -4,6 +4,7 @@ import {
   AttachSiteGalleryItemBody,
   AttachSiteGalleryItemResponse,
   DeleteSiteGalleryItemParams,
+  GetPublicSiteSettingsResponse,
   GetPublicSiteGalleryImageParams,
   ListPublicSiteGalleryResponse,
   ListSiteGalleryResponse,
@@ -13,7 +14,7 @@ import {
   UpdateSiteGalleryItemParams,
   UpdateSiteGalleryItemResponse,
 } from "@workspace/api-zod";
-import { db, siteGalleryItemsTable, uploadGrantsTable } from "@workspace/db";
+import { db, nurserySettingsTable, siteGalleryItemsTable, uploadGrantsTable } from "@workspace/db";
 import { ObjectNotFoundError, ObjectStorageService } from "../lib/objectStorage";
 import {
   auditNurseryOperation,
@@ -28,6 +29,7 @@ const storage = new ObjectStorageService();
 const MAX_GALLERY_SIZE = 10 * 1024 * 1024;
 const GALLERY_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const GRANT_TTL_MS = 5 * 60 * 1000;
+const DEFAULT_REGISTRATION_WHATSAPP = "96590916677";
 
 async function hasImageSignature(file: Awaited<ReturnType<ObjectStorageService["getObjectEntityFile"]>>, contentType: string): Promise<boolean> {
   const response = await storage.downloadObject(file, 0);
@@ -73,6 +75,23 @@ router.get("/public/site-gallery", async (_req, res): Promise<void> => {
     ...row,
     imageUrl: `/api/public/site-gallery/${row.id}/image`,
   }))));
+});
+
+router.get("/public/site-settings", async (_req, res): Promise<void> => {
+  const ownerId = process.env.PUBLIC_SITE_OWNER_ID?.trim();
+  if (!ownerId) {
+    res.json(GetPublicSiteSettingsResponse.parse({
+      registrationWhatsApp: DEFAULT_REGISTRATION_WHATSAPP,
+    }));
+    return;
+  }
+  const [settings] = await db.select({
+    registrationWhatsApp: nurserySettingsTable.registrationWhatsApp,
+  }).from(nurserySettingsTable).where(eq(nurserySettingsTable.ownerId, ownerId)).limit(1);
+  res.setHeader("Cache-Control", "public, max-age=60");
+  res.json(GetPublicSiteSettingsResponse.parse({
+    registrationWhatsApp: settings?.registrationWhatsApp ?? DEFAULT_REGISTRATION_WHATSAPP,
+  }));
 });
 
 router.get("/public/site-gallery/:id/image", async (req, res): Promise<void> => {

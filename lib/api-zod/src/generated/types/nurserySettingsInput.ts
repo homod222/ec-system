@@ -12,6 +12,8 @@ import type { NurserySettingsInputWorkingHours } from './nurserySettingsInputWor
 export interface NurserySettingsInput {
   /** @minLength 1 */
   nurseryName: string;
+  /** @pattern ^(?:\+?965)?[569][0-9]{7}$ */
+  registrationWhatsApp: string;
   /** @minLength 1 */
   timezone: string;
   currency: NurserySettingsInputCurrency;

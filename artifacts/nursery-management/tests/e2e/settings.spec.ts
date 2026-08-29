@@ -3,6 +3,7 @@ import { expect, test, type Page } from '@playwright/test';
 const initialSettings = {
   id: 1,
   nurseryName: 'حضانة الاختبار',
+  registrationWhatsApp: '96590916677',
   timezone: 'Asia/Kuwait',
   currency: 'KWD',
   workingHours: {

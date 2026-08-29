@@ -540,6 +540,7 @@ export const nurserySettingsTable = pgTable("nursery_settings", {
   id: serial("id").primaryKey(),
   ownerId: text("owner_id").notNull(),
   nurseryName: text("nursery_name").notNull(),
+  registrationWhatsApp: text("registration_whatsapp").notNull().default("96590916677"),
   timezone: text("timezone").notNull().default("Asia/Kuwait"),
   currency: text("currency").notNull().default("KWD"),
   workingHours: jsonb("working_hours").$type<Record<string, unknown>>().notNull().default({}),

@@ -1260,6 +1260,8 @@ export type NurserySettingsCalendar = { [key: string]: unknown };
 export interface NurserySettings {
   id: number;
   nurseryName: string;
+  /** @pattern ^965[569][0-9]{7}$ */
+  registrationWhatsApp: string;
   timezone: string;
   currency: NurserySettingsCurrency;
   workingHours: NurserySettingsWorkingHours;
@@ -1282,11 +1284,18 @@ export type NurserySettingsInputCalendar = { [key: string]: unknown };
 export interface NurserySettingsInput {
   /** @minLength 1 */
   nurseryName: string;
+  /** @pattern ^(?:\+?965)?[569][0-9]{7}$ */
+  registrationWhatsApp: string;
   /** @minLength 1 */
   timezone: string;
   currency: NurserySettingsInputCurrency;
   workingHours: NurserySettingsInputWorkingHours;
   calendar: NurserySettingsInputCalendar;
+}
+
+export interface PublicSiteSettings {
+  /** @pattern ^965[569][0-9]{7}$ */
+  registrationWhatsApp: string;
 }
 
 export type StaffAttendanceStatus =

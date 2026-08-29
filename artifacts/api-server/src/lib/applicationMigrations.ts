@@ -241,11 +241,14 @@ export async function runApplicationMigrations(): Promise<void> {
     );
     CREATE TABLE IF NOT EXISTS nursery_settings (
       id serial PRIMARY KEY, owner_id text NOT NULL, nursery_name text NOT NULL,
+      registration_whatsapp text NOT NULL DEFAULT '96590916677',
       timezone text NOT NULL DEFAULT 'Asia/Kuwait', currency text NOT NULL DEFAULT 'KWD',
       working_hours jsonb NOT NULL DEFAULT '{}'::jsonb,
       calendar jsonb NOT NULL DEFAULT '{}'::jsonb, updated_by text NOT NULL,
       updated_at timestamptz NOT NULL DEFAULT now()
     );
+    ALTER TABLE nursery_settings
+      ADD COLUMN IF NOT EXISTS registration_whatsapp text NOT NULL DEFAULT '96590916677';
     CREATE TABLE IF NOT EXISTS billing_plans (
       id serial PRIMARY KEY,
       owner_id text NOT NULL,

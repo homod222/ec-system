@@ -1,7 +1,14 @@
 import { Link, Redirect } from 'wouter';
 import { useAuth, useUser } from '@clerk/react';
 import { ArrowUpRight, Check, CalendarCheck, ShieldCheck, Sparkles, Star, ChevronRight, ChevronLeft } from 'lucide-react';
-import { getGetSessionContextQueryKey, getListPublicSiteGalleryQueryKey, useGetSessionContext, useListPublicSiteGallery } from '@workspace/api-client-react';
+import {
+  getGetPublicSiteSettingsQueryKey,
+  getGetSessionContextQueryKey,
+  getListPublicSiteGalleryQueryKey,
+  useGetPublicSiteSettings,
+  useGetSessionContext,
+  useListPublicSiteGallery,
+} from '@workspace/api-client-react';
 import { useCallback, useEffect, useState } from 'react';
 import useEmblaCarousel from 'embla-carousel-react';
 import { useI18n } from '@/i18n';
@@ -167,6 +174,11 @@ export function Landing() {
   const publicGallery = useListPublicSiteGallery({
     query: { queryKey: getListPublicSiteGalleryQueryKey(), retry: false, staleTime: 60_000 },
   });
+  const publicSettings = useGetPublicSiteSettings({
+    query: { queryKey: getGetPublicSiteSettingsQueryKey(), retry: false, staleTime: 60_000 },
+  });
+  const registrationWhatsApp = publicSettings.data?.registrationWhatsApp ?? '96590916677';
+  const registrationMessage = encodeURIComponent(t('landing.registrationMessage'));
   const galleryImages = [
     'classroom-learning.webp', 'cooking-activity.webp', 'creative-play.webp',
     'hero-child.webp', 'outdoor-play.webp', 'space-day.webp',
@@ -220,9 +232,14 @@ export function Landing() {
                {t('landing.heroBody')}
             </p>
              <div className="mt-10">
-               <Link href="/sign-up" className="inline-flex items-center gap-2 rounded-2xl bg-accent px-8 py-4 text-base font-bold text-accent-foreground shadow-lg transition-all hover:-translate-y-1 hover:shadow-xl">
+               <a
+                 href={`https://wa.me/${registrationWhatsApp}?text=${registrationMessage}`}
+                 target="_blank"
+                 rel="noopener noreferrer"
+                 className="inline-flex items-center gap-2 rounded-2xl bg-accent px-8 py-4 text-base font-bold text-accent-foreground shadow-lg transition-all hover:-translate-y-1 hover:shadow-xl"
+               >
                  {t('landing.start')} <ArrowUpRight size={18} />
-              </Link>
+              </a>
             </div>
             
             <div className="mt-12 flex items-center gap-6 text-primary-foreground/70">

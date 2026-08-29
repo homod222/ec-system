@@ -142,6 +142,7 @@ export * from './permissionCatalogGroup';
 export * from './permissionPrincipal';
 export * from './progressReport';
 export * from './publicSiteGalleryItem';
+export * from './publicSiteSettings';
 export * from './receipt';
 export * from './refundInput';
 export * from './rolePermission';

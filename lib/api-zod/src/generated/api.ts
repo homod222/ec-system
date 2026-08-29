@@ -1902,9 +1902,15 @@ export const DeleteStaffParams = zod.object({
   id: zod.coerce.number(),
 });
 export const DeleteStaffResponse = zod.void();
+export const getNurserySettingsResponseRegistrationWhatsAppRegExp = new RegExp(
+  "^965[569][0-9]{7}$",
+);
 export const GetNurserySettingsResponse = zod.object({
   id: zod.number(),
   nurseryName: zod.string(),
+  registrationWhatsApp: zod
+    .string()
+    .regex(getNurserySettingsResponseRegistrationWhatsAppRegExp),
   timezone: zod.string(),
   currency: zod.enum(["KWD"]),
   workingHours: zod.record(zod.string(), zod.unknown()),
@@ -1912,22 +1918,41 @@ export const GetNurserySettingsResponse = zod.object({
   updatedBy: zod.string(),
   updatedAt: zod.string(),
 });
+export const setNurserySettingsBodyRegistrationWhatsAppRegExp = new RegExp(
+  "^(?:\\+?965)?[569][0-9]{7}$",
+);
 export const SetNurserySettingsBody = zod.object({
   nurseryName: zod.string().min(1),
+  registrationWhatsApp: zod
+    .string()
+    .regex(setNurserySettingsBodyRegistrationWhatsAppRegExp),
   timezone: zod.string().min(1),
   currency: zod.enum(["KWD"]),
   workingHours: zod.record(zod.string(), zod.unknown()),
   calendar: zod.record(zod.string(), zod.unknown()),
 });
+export const setNurserySettingsResponseRegistrationWhatsAppRegExp = new RegExp(
+  "^965[569][0-9]{7}$",
+);
 export const SetNurserySettingsResponse = zod.object({
   id: zod.number(),
   nurseryName: zod.string(),
+  registrationWhatsApp: zod
+    .string()
+    .regex(setNurserySettingsResponseRegistrationWhatsAppRegExp),
   timezone: zod.string(),
   currency: zod.enum(["KWD"]),
   workingHours: zod.record(zod.string(), zod.unknown()),
   calendar: zod.record(zod.string(), zod.unknown()),
   updatedBy: zod.string(),
   updatedAt: zod.string(),
+});
+export const getPublicSiteSettingsResponseRegistrationWhatsAppRegExp =
+  new RegExp("^965[569][0-9]{7}$");
+export const GetPublicSiteSettingsResponse = zod.object({
+  registrationWhatsApp: zod
+    .string()
+    .regex(getPublicSiteSettingsResponseRegistrationWhatsAppRegExp),
 });
 /**
  * @summary List staff attendance with date and staff filters

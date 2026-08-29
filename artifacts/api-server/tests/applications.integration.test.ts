@@ -1501,6 +1501,39 @@ describe.sequential("application registration regression flow", () => {
     delete process.env.PUBLIC_SITE_OWNER_ID;
   });
 
+  it("saves a normalized registration WhatsApp number and exposes only the selected public value", async () => {
+    const settingsInput = {
+      nurseryName: "حضانة الاختبار",
+      registrationWhatsApp: "90916677",
+      timezone: "Asia/Kuwait",
+      currency: "KWD",
+      workingHours: {},
+      calendar: {},
+    };
+    await request(app).put("/api/nursery/settings").set(auth(ownerA)).send(settingsInput).expect(200)
+      .expect(({ body }) => expect(body.registrationWhatsApp).toBe("96590916677"));
+    await request(app).put("/api/nursery/settings").set(auth(ownerB)).send({
+      ...settingsInput,
+      registrationWhatsApp: "+96555555555",
+    }).expect(200);
+
+    process.env.PUBLIC_SITE_OWNER_ID = ownerA;
+    await request(app).get("/api/public/site-settings").expect(200).expect(({ body }) => {
+      expect(body).toEqual({ registrationWhatsApp: "96590916677" });
+      expect(body.nurseryName).toBeUndefined();
+      expect(body.timezone).toBeUndefined();
+    });
+    process.env.PUBLIC_SITE_OWNER_ID = ownerB;
+    await request(app).get("/api/public/site-settings").expect(200)
+      .expect(({ body }) => expect(body).toEqual({ registrationWhatsApp: "96555555555" }));
+
+    await request(app).put("/api/nursery/settings").set(auth(ownerA)).send({
+      ...settingsInput,
+      registrationWhatsApp: "123",
+    }).expect(400);
+    delete process.env.PUBLIC_SITE_OWNER_ID;
+  });
+
   it("isolates applications, children and documents and returns 404/409 for invalid operations", async () => {
     const created = await request(app)
       .post("/api/applications")

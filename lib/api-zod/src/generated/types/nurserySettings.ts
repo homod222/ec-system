@@ -12,6 +12,8 @@ import type { NurserySettingsWorkingHours } from './nurserySettingsWorkingHours'
 export interface NurserySettings {
   id: number;
   nurseryName: string;
+  /** @pattern ^965[569][0-9]{7}$ */
+  registrationWhatsApp: string;
   timezone: string;
   currency: NurserySettingsCurrency;
   workingHours: NurserySettingsWorkingHours;
