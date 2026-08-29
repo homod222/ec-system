@@ -200,11 +200,8 @@ export function Landing() {
         </div>
          <div className="flex flex-wrap items-center justify-end gap-2">
            <LanguageSwitcher className="max-sm:w-full max-sm:justify-center" />
-          <Link href="/sign-in" data-testid="link-landing-sign-in" className="hidden sm:inline-flex rounded-xl px-5 py-2.5 text-sm font-bold text-primary hover:bg-muted transition-colors">
+           <Link href="/sign-in" data-testid="link-landing-sign-in" className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md">
             {t('landing.adminLogin')}
-          </Link>
-          <Link href="/sign-up" data-testid="link-landing-sign-up" className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-sm hover:-translate-y-0.5 hover:shadow-md transition-all">
-            {t('landing.createAccount')}
           </Link>
         </div>
       </nav>
