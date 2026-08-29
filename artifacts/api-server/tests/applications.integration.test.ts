@@ -393,6 +393,75 @@ describe.sequential("application registration regression flow", () => {
     });
   });
 
+  it("restores a valid OTP after Clerk provisioning fails and succeeds on retry without duplicates", async () => {
+    clerkCreateUser.mockClear();
+    clerkCreateUser.mockRejectedValueOnce(new Error("Simulated Clerk provisioning failure"));
+    const otp = "246810";
+    const staffId = await createStaffAccountFixture({
+      accountStatus: "pending_verification",
+      otp,
+    });
+
+    const failed = await request(app)
+      .post(`/api/staff/${staffId}/account/verify`)
+      .send({ otp, password: "ValidPassword123!" });
+
+    expect(failed.status).toBe(500);
+    const restored = await pool.query<{
+      account_status: string;
+      clerk_user_id: string | null;
+      otp_hash: string | null;
+      otp_expires_at: Date | null;
+      otp_attempts: number;
+    }>(
+      `select account_status, clerk_user_id, otp_hash, otp_expires_at, otp_attempts
+         from staff where id = $1`,
+      [staffId],
+    );
+    expect(restored.rows[0]).toMatchObject({
+      account_status: "pending_verification",
+      clerk_user_id: null,
+      otp_hash: staffOtpDigest(staffId, otp),
+      otp_attempts: 0,
+    });
+    expect(restored.rows[0].otp_expires_at?.getTime()).toBeGreaterThan(Date.now());
+
+    const failedAudit = await pool.query<{ count: string }>(
+      `select count(*)::text as count
+         from audit_logs
+        where operation = 'verify-staff-account' and entity_id = $1`,
+      [String(staffId)],
+    );
+    expect(failedAudit.rows[0].count).toBe("0");
+
+    const retried = await request(app)
+      .post(`/api/staff/${staffId}/account/verify`)
+      .send({ otp, password: "ValidPassword123!" });
+
+    expect(retried.status).toBe(200);
+    expect(clerkCreateUser).toHaveBeenCalledTimes(2);
+    const createdAccounts = [...clerkUsers.values()].filter(
+      (user) => user.privateMetadata?.staffId === staffId,
+    );
+    expect(createdAccounts).toHaveLength(1);
+
+    const activated = await pool.query<{ account_status: string; clerk_user_id: string | null }>(
+      "select account_status, clerk_user_id from staff where id = $1",
+      [staffId],
+    );
+    expect(activated.rows[0]).toMatchObject({
+      account_status: "active",
+      clerk_user_id: createdAccounts[0].id,
+    });
+    const successfulAudit = await pool.query<{ count: string }>(
+      `select count(*)::text as count
+         from audit_logs
+        where operation = 'verify-staff-account' and entity_id = $1`,
+      [String(staffId)],
+    );
+    expect(successfulAudit.rows[0].count).toBe("1");
+  });
+
   it("rejects relinking an active record or a Clerk user linked elsewhere", async () => {
     const activeUserId = `integration-linked-user-${randomUUID()}`;
     clerkUsers.set(activeUserId, {
