@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 
@@ -17,6 +17,24 @@ const clerkFixtures = vi.hoisted(() => ({
   staffA: `integration-staff-a-${Math.random().toString(36).slice(2)}`,
   staffB: `integration-staff-b-${Math.random().toString(36).slice(2)}`,
 }));
+const clerkUsers = vi.hoisted(() => new Map<string, Record<string, any>>());
+const clerkCreateUser = vi.hoisted(() => vi.fn(async (input: Record<string, any>) => {
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  const id = `integration-created-staff-${Math.random().toString(36).slice(2)}`;
+  const user = {
+    id,
+    firstName: input.firstName,
+    lastName: input.lastName,
+    publicMetadata: { ...input.publicMetadata },
+    privateMetadata: { ...input.privateMetadata },
+    emailAddresses: (input.emailAddress ?? []).map((emailAddress: string) => ({
+      emailAddress,
+      verification: { status: "verified" },
+    })),
+  };
+  clerkUsers.set(id, user);
+  return user;
+}));
 
 vi.mock("@clerk/express", () => ({
   clerkMiddleware: () => (req: unknown, _res: unknown, next: () => void) => next(),
@@ -33,10 +51,29 @@ vi.mock("@clerk/express", () => ({
           [clerkFixtures.staffA]: { id: clerkFixtures.staffA, publicMetadata: { ownerId: clerkFixtures.ownerA, role: "Teacher" }, firstName: "Tenant", lastName: "A", emailAddresses: [] },
           [clerkFixtures.staffB]: { id: clerkFixtures.staffB, publicMetadata: { owner_id: clerkFixtures.ownerB, role: "Manager" }, emailAddresses: [{ emailAddress: "tenant-b@example.test" }] },
         };
-        return users[userId as keyof typeof users] ?? {
+        return clerkUsers.get(userId) ?? users[userId as keyof typeof users] ?? {
           id: userId, publicMetadata: { role: "owner" }, privateMetadata: {},
           emailAddresses: [{ emailAddress: "integration@example.test", verification: { status: "verified" } }],
         };
+      }),
+      createUser: clerkCreateUser,
+      updateUserMetadata: vi.fn(async (
+        userId: string,
+        input: { publicMetadata?: Record<string, unknown>; privateMetadata?: Record<string, unknown> },
+      ) => {
+        const current = clerkUsers.get(userId) ?? {
+          id: userId,
+          publicMetadata: {},
+          privateMetadata: {},
+          emailAddresses: [],
+        };
+        const updated = {
+          ...current,
+          publicMetadata: input.publicMetadata ?? current.publicMetadata,
+          privateMetadata: input.privateMetadata ?? current.privateMetadata,
+        };
+        clerkUsers.set(userId, updated);
+        return updated;
       }),
       getUserList: vi.fn(async ({ limit = 100, offset = 0 }: { limit?: number; offset?: number }) => {
         const data = [
@@ -200,6 +237,44 @@ async function createLegacyInvoice(ownerId: string, suffix: string) {
   };
 }
 
+function staffOtpDigest(staffId: number, otp: string) {
+  return createHmac("sha256", process.env.SESSION_SECRET!)
+    .update(`${staffId}:${otp}`)
+    .digest("hex");
+}
+
+async function createStaffAccountFixture(input: {
+  ownerId?: string;
+  clerkUserId?: string | null;
+  accountStatus?: string;
+  otp?: string | null;
+  email?: string;
+}) {
+  const result = await pool.query<{ id: number }>(
+    `insert into staff
+       (owner_id, name, role, email, phone, clerk_user_id, account_status, otp_expires_at)
+     values ($1, $2, 'teacher', $3, $4, $5, $6, $7)
+     returning id`,
+    [
+      input.ownerId ?? ownerA,
+      `account-staff-${randomUUID()}`,
+      input.email ?? `staff-${randomUUID()}@example.test`,
+      `500${Math.floor(Math.random() * 10_000_000).toString().padStart(7, "0")}`,
+      input.clerkUserId ?? null,
+      input.accountStatus ?? "unlinked",
+      input.otp ? new Date(Date.now() + 10 * 60 * 1000) : null,
+    ],
+  );
+  const id = result.rows[0].id;
+  if (input.otp) {
+    await pool.query("update staff set otp_hash = $1, otp_attempts = 0 where id = $2", [
+      staffOtpDigest(id, input.otp),
+      id,
+    ]);
+  }
+  return id;
+}
+
 const applicationInput = {
   firstName: "ليان",
   lastName: "الاختبار",
@@ -243,6 +318,7 @@ afterAll(async () => {
     [owners],
   );
   for (const query of [
+    "delete from staff_attendance where owner_id = any($1::text[])",
     "delete from invoice_receipts where owner_id = any($1::text[])",
     "delete from invoice_refunds where owner_id = any($1::text[])",
     "delete from invoice_payments where owner_id = any($1::text[])",
@@ -262,6 +338,7 @@ afterAll(async () => {
     "delete from children where owner_id = any($1::text[])",
     "delete from classrooms where owner_id = any($1::text[])",
     "delete from guardians where owner_id = any($1::text[])",
+    "delete from staff where owner_id = any($1::text[])",
   ]) {
     await pool.query(query, [owners]);
   }
@@ -269,6 +346,109 @@ afterAll(async () => {
 });
 
 describe.sequential("application registration regression flow", () => {
+  it("atomically caps concurrent invalid OTP attempts", async () => {
+    const staffId = await createStaffAccountFixture({
+      accountStatus: "pending_verification",
+      otp: "123456",
+    });
+
+    const responses = await Promise.all(Array.from({ length: 6 }, () =>
+      request(app)
+        .post(`/api/staff/${staffId}/account/verify`)
+        .send({ otp: "000000", password: "ValidPassword123!" }),
+    ));
+
+    expect(responses.filter(({ status }) => status === 400)).toHaveLength(4);
+    expect(responses.filter(({ status }) => status === 429)).toHaveLength(2);
+    const stored = await pool.query<{ otp_attempts: number }>(
+      "select otp_attempts from staff where id = $1",
+      [staffId],
+    );
+    expect(stored.rows[0].otp_attempts).toBe(5);
+  });
+
+  it("creates only one Clerk account for concurrent valid OTP verification", async () => {
+    clerkCreateUser.mockClear();
+    const staffId = await createStaffAccountFixture({
+      accountStatus: "pending_verification",
+      otp: "654321",
+    });
+
+    const responses = await Promise.all(Array.from({ length: 2 }, () =>
+      request(app)
+        .post(`/api/staff/${staffId}/account/verify`)
+        .send({ otp: "654321", password: "ValidPassword123!" }),
+    ));
+
+    expect(responses.filter(({ status }) => status === 200)).toHaveLength(1);
+    expect(responses.filter(({ status }) => [404, 409].includes(status))).toHaveLength(1);
+    expect(clerkCreateUser).toHaveBeenCalledTimes(1);
+    const stored = await pool.query<{ clerk_user_id: string | null; account_status: string }>(
+      "select clerk_user_id, account_status from staff where id = $1",
+      [staffId],
+    );
+    expect(stored.rows[0]).toMatchObject({
+      clerk_user_id: expect.stringMatching(/^integration-created-staff-/),
+      account_status: "active",
+    });
+  });
+
+  it("rejects relinking an active record or a Clerk user linked elsewhere", async () => {
+    const activeUserId = `integration-linked-user-${randomUUID()}`;
+    clerkUsers.set(activeUserId, {
+      id: activeUserId,
+      publicMetadata: { ownerId: ownerA, role: "teacher", accountStatus: "active" },
+      privateMetadata: {},
+      emailAddresses: [],
+    });
+    const activeStaffId = await createStaffAccountFixture({
+      clerkUserId: activeUserId,
+      accountStatus: "active",
+    });
+    const availableStaffId = await createStaffAccountFixture({});
+
+    await request(app).post(`/api/staff/${activeStaffId}/account`).set(auth(ownerA)).send({
+      mode: "link",
+      clerkUserId: `integration-other-user-${randomUUID()}`,
+      role: "teacher",
+    }).expect(409);
+
+    await request(app).post(`/api/staff/${availableStaffId}/account`).set(auth(ownerA)).send({
+      mode: "link",
+      clerkUserId: activeUserId,
+      role: "teacher",
+    }).expect(409);
+  });
+
+  it("revokes access immediately after disabling and unlinking a staff account", async () => {
+    const userId = `integration-access-user-${randomUUID()}`;
+    clerkUsers.set(userId, {
+      id: userId,
+      publicMetadata: { ownerId: ownerA, role: "teacher", accountStatus: "active" },
+      privateMetadata: {},
+      emailAddresses: [],
+    });
+    const staffId = await createStaffAccountFixture({
+      clerkUserId: userId,
+      accountStatus: "active",
+    });
+
+    await request(app).get("/api/dashboard/summary").set(auth(userId, "teacher")).expect(200);
+    await request(app).patch(`/api/staff/${staffId}/account`).set(auth(ownerA)).send({
+      status: "disabled",
+    }).expect(200);
+    await request(app).get("/api/dashboard/summary").set(auth(userId, "teacher")).expect(403);
+
+    await request(app).patch(`/api/staff/${staffId}/account`).set(auth(ownerA)).send({
+      status: "active",
+    }).expect(200);
+    await request(app).get("/api/dashboard/summary").set(auth(userId, "teacher")).expect(200);
+    await request(app).patch(`/api/staff/${staffId}/account`).set(auth(ownerA)).send({
+      status: "unlinked",
+    }).expect(200);
+    await request(app).get("/api/dashboard/summary").set(auth(userId, "teacher")).expect(403);
+  });
+
   it("limits permission principals and overrides to the authenticated tenant", async () => {
     await request(app).get("/api/permission-principals").set(auth(ownerA)).expect(200)
       .expect(({ body }) => {
