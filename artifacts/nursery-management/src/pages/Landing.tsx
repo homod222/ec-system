@@ -13,6 +13,7 @@ import { useCallback, useEffect, useState } from 'react';
 import useEmblaCarousel from 'embla-carousel-react';
 import { useI18n } from '@/i18n';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
+import { trackEvent } from '@/lib/analytics';
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
 
@@ -236,6 +237,7 @@ export function Landing() {
                  href={`https://wa.me/${registrationWhatsApp}?text=${registrationMessage}`}
                  target="_blank"
                  rel="noopener noreferrer"
+                  onClick={() => trackEvent('registration_whatsapp_clicked', { location: 'landing_hero' })}
                  className="inline-flex items-center gap-2 rounded-2xl bg-accent px-8 py-4 text-base font-bold text-accent-foreground shadow-lg transition-all hover:-translate-y-1 hover:shadow-xl"
                >
                  {t('landing.start')} <ArrowUpRight size={18} />
