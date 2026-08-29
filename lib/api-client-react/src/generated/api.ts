@@ -82,6 +82,11 @@ import type {
   ParentOverview,
   PermissionCatalogGroup,
   PermissionPrincipal,
+  PhoneEnrollmentState,
+  PhoneLoginChallenge,
+  PhoneLoginRequest,
+  PhoneLoginTicket,
+  PhoneLoginVerify,
   ProgressReport,
   PublicSiteGalleryItem,
   PublicSiteSettings,
@@ -140,6 +145,425 @@ const withQueryKey = <T extends object, K>(
     });
   }
   return result;
+};
+
+export const getRequestPhoneLoginUrl = () => {
+  return `/api/auth/phone/request`;
+};
+
+/**
+ * @summary Request a WhatsApp login code
+ */
+export const requestPhoneLogin = async (
+  phoneLoginRequest: PhoneLoginRequest,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<PhoneLoginChallenge> => {
+  return customFetch<PhoneLoginChallenge>(getRequestPhoneLoginUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(phoneLoginRequest),
+  });
+};
+
+export const getRequestPhoneLoginMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof requestPhoneLogin>>,
+    TError,
+    { data: BodyType<PhoneLoginRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof requestPhoneLogin>>,
+  TError,
+  { data: BodyType<PhoneLoginRequest> },
+  TContext
+> => {
+  const mutationKey = ["requestPhoneLogin"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof requestPhoneLogin>>,
+    { data: BodyType<PhoneLoginRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return requestPhoneLogin(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RequestPhoneLoginMutationResult = NonNullable<
+  Awaited<ReturnType<typeof requestPhoneLogin>>
+>;
+export type RequestPhoneLoginMutationBody = BodyType<PhoneLoginRequest>;
+export type RequestPhoneLoginMutationError = ErrorType<void>;
+
+/**
+ * @summary Request a WhatsApp login code
+ */
+export const useRequestPhoneLogin = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof requestPhoneLogin>>,
+    TError,
+    { data: BodyType<PhoneLoginRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof requestPhoneLogin>>,
+  TError,
+  { data: BodyType<PhoneLoginRequest> },
+  TContext
+> => {
+  return useMutation(getRequestPhoneLoginMutationOptions(options));
+};
+
+export const getVerifyPhoneLoginUrl = () => {
+  return `/api/auth/phone/verify`;
+};
+
+/**
+ * @summary Verify code and issue a short-lived Clerk sign-in ticket
+ */
+export const verifyPhoneLogin = async (
+  phoneLoginVerify: PhoneLoginVerify,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<PhoneLoginTicket> => {
+  return customFetch<PhoneLoginTicket>(getVerifyPhoneLoginUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(phoneLoginVerify),
+  });
+};
+
+export const getVerifyPhoneLoginMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof verifyPhoneLogin>>,
+    TError,
+    { data: BodyType<PhoneLoginVerify> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof verifyPhoneLogin>>,
+  TError,
+  { data: BodyType<PhoneLoginVerify> },
+  TContext
+> => {
+  const mutationKey = ["verifyPhoneLogin"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof verifyPhoneLogin>>,
+    { data: BodyType<PhoneLoginVerify> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return verifyPhoneLogin(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type VerifyPhoneLoginMutationResult = NonNullable<
+  Awaited<ReturnType<typeof verifyPhoneLogin>>
+>;
+export type VerifyPhoneLoginMutationBody = BodyType<PhoneLoginVerify>;
+export type VerifyPhoneLoginMutationError = ErrorType<void>;
+
+/**
+ * @summary Verify code and issue a short-lived Clerk sign-in ticket
+ */
+export const useVerifyPhoneLogin = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof verifyPhoneLogin>>,
+    TError,
+    { data: BodyType<PhoneLoginVerify> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof verifyPhoneLogin>>,
+  TError,
+  { data: BodyType<PhoneLoginVerify> },
+  TContext
+> => {
+  return useMutation(getVerifyPhoneLoginMutationOptions(options));
+};
+
+export const getGetPhoneEnrollmentUrl = () => {
+  return `/api/auth/phone/enrollment`;
+};
+
+/**
+ * @summary Get the authenticated owner's verified login phone
+ */
+export const getPhoneEnrollment = async (
+  options?: Parameters<typeof customFetch>[1],
+): Promise<PhoneEnrollmentState> => {
+  return customFetch<PhoneEnrollmentState>(getGetPhoneEnrollmentUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetPhoneEnrollmentQueryKey = () => {
+  return [`/api/auth/phone/enrollment`] as const;
+};
+
+export const getGetPhoneEnrollmentQueryOptions = <
+  TData = Awaited<ReturnType<typeof getPhoneEnrollment>>,
+  TError = ErrorType<void>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getPhoneEnrollment>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetPhoneEnrollmentQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getPhoneEnrollment>>
+  > = ({ signal }) => getPhoneEnrollment({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getPhoneEnrollment>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetPhoneEnrollmentQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getPhoneEnrollment>>
+>;
+export type GetPhoneEnrollmentQueryError = ErrorType<void>;
+
+/**
+ * @summary Get the authenticated owner's verified login phone
+ */
+
+export function useGetPhoneEnrollment<
+  TData = Awaited<ReturnType<typeof getPhoneEnrollment>>,
+  TError = ErrorType<void>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getPhoneEnrollment>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetPhoneEnrollmentQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getRequestPhoneEnrollmentUrl = () => {
+  return `/api/auth/phone/enrollment/request`;
+};
+
+/**
+ * @summary Send a verification code before changing an owner's login phone
+ */
+export const requestPhoneEnrollment = async (
+  phoneLoginRequest: PhoneLoginRequest,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<PhoneLoginChallenge> => {
+  return customFetch<PhoneLoginChallenge>(getRequestPhoneEnrollmentUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(phoneLoginRequest),
+  });
+};
+
+export const getRequestPhoneEnrollmentMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof requestPhoneEnrollment>>,
+    TError,
+    { data: BodyType<PhoneLoginRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof requestPhoneEnrollment>>,
+  TError,
+  { data: BodyType<PhoneLoginRequest> },
+  TContext
+> => {
+  const mutationKey = ["requestPhoneEnrollment"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof requestPhoneEnrollment>>,
+    { data: BodyType<PhoneLoginRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return requestPhoneEnrollment(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RequestPhoneEnrollmentMutationResult = NonNullable<
+  Awaited<ReturnType<typeof requestPhoneEnrollment>>
+>;
+export type RequestPhoneEnrollmentMutationBody = BodyType<PhoneLoginRequest>;
+export type RequestPhoneEnrollmentMutationError = ErrorType<void>;
+
+/**
+ * @summary Send a verification code before changing an owner's login phone
+ */
+export const useRequestPhoneEnrollment = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof requestPhoneEnrollment>>,
+    TError,
+    { data: BodyType<PhoneLoginRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof requestPhoneEnrollment>>,
+  TError,
+  { data: BodyType<PhoneLoginRequest> },
+  TContext
+> => {
+  return useMutation(getRequestPhoneEnrollmentMutationOptions(options));
+};
+
+export const getVerifyPhoneEnrollmentUrl = () => {
+  return `/api/auth/phone/enrollment/verify`;
+};
+
+/**
+ * @summary Verify and atomically enroll an owner's login phone
+ */
+export const verifyPhoneEnrollment = async (
+  phoneLoginVerify: PhoneLoginVerify,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<PhoneEnrollmentState> => {
+  return customFetch<PhoneEnrollmentState>(getVerifyPhoneEnrollmentUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(phoneLoginVerify),
+  });
+};
+
+export const getVerifyPhoneEnrollmentMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof verifyPhoneEnrollment>>,
+    TError,
+    { data: BodyType<PhoneLoginVerify> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof verifyPhoneEnrollment>>,
+  TError,
+  { data: BodyType<PhoneLoginVerify> },
+  TContext
+> => {
+  const mutationKey = ["verifyPhoneEnrollment"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof verifyPhoneEnrollment>>,
+    { data: BodyType<PhoneLoginVerify> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return verifyPhoneEnrollment(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type VerifyPhoneEnrollmentMutationResult = NonNullable<
+  Awaited<ReturnType<typeof verifyPhoneEnrollment>>
+>;
+export type VerifyPhoneEnrollmentMutationBody = BodyType<PhoneLoginVerify>;
+export type VerifyPhoneEnrollmentMutationError = ErrorType<void>;
+
+/**
+ * @summary Verify and atomically enroll an owner's login phone
+ */
+export const useVerifyPhoneEnrollment = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof verifyPhoneEnrollment>>,
+    TError,
+    { data: BodyType<PhoneLoginVerify> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof verifyPhoneEnrollment>>,
+  TError,
+  { data: BodyType<PhoneLoginVerify> },
+  TContext
+> => {
+  return useMutation(getVerifyPhoneEnrollmentMutationOptions(options));
 };
 
 export const getHealthCheckUrl = () => {

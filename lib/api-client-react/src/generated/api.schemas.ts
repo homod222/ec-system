@@ -5,6 +5,51 @@
  * API for the nursery management platform
  * OpenAPI spec version: 0.1.0
  */
+export interface PhoneLoginRequest {
+  /**
+   * @minLength 8
+   * @maxLength 30
+   */
+  phone: string;
+}
+
+export interface PhoneLoginVerify {
+  /**
+   * @minLength 32
+   * @maxLength 64
+   */
+  challengeId: string;
+  /** @pattern ^\d{6}$ */
+  otp: string;
+}
+
+export interface PhoneLoginChallenge {
+  /**
+   * @minLength 32
+   * @maxLength 64
+   */
+  challengeId: string;
+  /** @minimum 1 */
+  expiresInSeconds: number;
+  recognized: boolean;
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  firstName?: string;
+}
+
+export interface PhoneLoginTicket {
+  /** @minLength 1 */
+  ticket: string;
+}
+
+export interface PhoneEnrollmentState {
+  enrolled: boolean;
+  /** @pattern ^965\d{8}$ */
+  phone?: string;
+}
+
 export interface HealthStatus {
   status: string;
 }

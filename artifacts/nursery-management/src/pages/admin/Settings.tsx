@@ -59,6 +59,45 @@ export function Settings({ withShell = true }: { withShell?: boolean } = {}) {
   const [originalWorkingHours, setOriginalWorkingHours] = useState<JsonRecord>({});
   const [originalCalendar, setOriginalCalendar] = useState<JsonRecord>({});
   const [submitted, setSubmitted] = useState(false);
+  const [loginPhone, setLoginPhone] = useState('');
+  const [loginChallenge, setLoginChallenge] = useState('');
+  const [loginOtp, setLoginOtp] = useState('');
+  const [loginPhoneStatus, setLoginPhoneStatus] = useState('');
+  const [loginPhoneBusy, setLoginPhoneBusy] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/auth/phone/enrollment').then(response => response.ok ? response.json() : null)
+      .then(data => { if (data?.phone) { setLoginPhone(data.phone); setLoginPhoneStatus(t('settings.loginPhoneVerified')); } })
+      .catch(() => undefined);
+  }, [t]);
+
+  const requestLoginPhone = async () => {
+    setLoginPhoneBusy(true); setLoginPhoneStatus('');
+    try {
+      const response = await fetch('/api/auth/phone/enrollment/request', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: loginPhone }),
+      });
+      if (!response.ok) throw new Error();
+      const data = await response.json();
+      setLoginChallenge(data.challengeId);
+      setLoginPhoneStatus(t('settings.loginPhoneCodeSent'));
+    } catch { setLoginPhoneStatus(t('settings.loginPhoneError')); }
+    finally { setLoginPhoneBusy(false); }
+  };
+
+  const verifyLoginPhone = async () => {
+    setLoginPhoneBusy(true); setLoginPhoneStatus('');
+    try {
+      const response = await fetch('/api/auth/phone/enrollment/verify', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ challengeId: loginChallenge, otp: loginOtp }),
+      });
+      if (!response.ok) throw new Error();
+      setLoginChallenge(''); setLoginOtp('');
+      setLoginPhoneStatus(t('settings.loginPhoneVerified'));
+    } catch { setLoginPhoneStatus(t('settings.loginPhoneError')); }
+    finally { setLoginPhoneBusy(false); }
+  };
 
   useEffect(() => {
     if (!query.data) return;
@@ -138,6 +177,27 @@ export function Settings({ withShell = true }: { withShell?: boolean } = {}) {
       />
 
       <QueryState loading={query.isLoading} error={query.isError} empty={!query.data} onRetry={() => query.refetch()}>
+        <section className="mb-8 rounded-[2rem] border border-border bg-card p-5 shadow-sm md:p-7">
+          <h2 className="text-xl font-bold">{t('settings.loginPhone')}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{t('settings.loginPhoneHelp')}</p>
+          <div className="mt-5 flex flex-col gap-3 sm:flex-row" dir="ltr">
+            <input data-testid="input-owner-login-phone" type="tel" value={loginPhone}
+              onChange={event => setLoginPhone(event.target.value)}
+              className="min-h-11 flex-1 rounded-xl border border-input bg-background px-4" placeholder="+965 5••• ••••" />
+            <Button data-testid="button-request-owner-login-phone" type="button" onClick={requestLoginPhone} disabled={loginPhoneBusy}>
+              {t('settings.loginPhoneSend')}
+            </Button>
+          </div>
+          {loginChallenge && <div className="mt-3 flex flex-col gap-3 sm:flex-row" dir="ltr">
+            <input data-testid="input-owner-login-otp" inputMode="numeric" maxLength={6} value={loginOtp}
+              onChange={event => setLoginOtp(event.target.value.replace(/\D/g, ''))}
+              className="min-h-11 flex-1 rounded-xl border border-input bg-background px-4 text-center font-mono tracking-[.4em]" />
+            <Button data-testid="button-verify-owner-login-phone" type="button" onClick={verifyLoginPhone} disabled={loginPhoneBusy || loginOtp.length !== 6}>
+              {t('settings.loginPhoneVerify')}
+            </Button>
+          </div>}
+          {loginPhoneStatus && <p className="mt-3 text-sm font-bold text-primary">{loginPhoneStatus}</p>}
+        </section>
         <form onSubmit={submit} className="mb-8 rounded-[2rem] border border-border bg-card p-5 shadow-sm md:p-7">
           <h2 className="text-xl font-bold">{t('settings.details')}</h2>
           <p className="mt-1 text-sm text-muted-foreground">{t('settings.detailsHelp')}</p>

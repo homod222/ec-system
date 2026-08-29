@@ -6,10 +6,12 @@ import storageRouter from "./storage";
 import nurseryOperationsRouter from "./nurseryOperations";
 import task16OperationsRouter from "./task16Operations";
 import siteGalleryRouter from "./siteGallery";
+import phoneAuthRouter from "./phoneAuth";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
+router.use(phoneAuthRouter);
 router.use(siteGalleryRouter);
 router.use(applicationsRouter);
 router.use(storageRouter);

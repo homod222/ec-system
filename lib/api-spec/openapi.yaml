@@ -8,6 +8,8 @@ servers:
   - url: /api
     description: Base API path
 tags:
+  - name: phone-auth
+    description: Passwordless Kuwait phone authentication
   - name: health
     description: Health operations
   - name: dashboard
@@ -39,6 +41,90 @@ tags:
   - name: site-gallery
     description: Public website gallery management
 paths:
+  /auth/phone/request:
+    post:
+      operationId: requestPhoneLogin
+      tags: [phone-auth]
+      summary: Request a WhatsApp login code
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PhoneLoginRequest" }
+      responses:
+        "200":
+          description: Generic accepted response, with first name only when uniquely recognized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PhoneLoginChallenge" }
+        "429": { description: Too many requests }
+  /auth/phone/verify:
+    post:
+      operationId: verifyPhoneLogin
+      tags: [phone-auth]
+      summary: Verify code and issue a short-lived Clerk sign-in ticket
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PhoneLoginVerify" }
+      responses:
+        "200":
+          description: Clerk one-time sign-in ticket
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PhoneLoginTicket" }
+        "400": { description: "Invalid, expired, used, or locked challenge" }
+        "429": { description: Too many attempts }
+  /auth/phone/enrollment:
+    get:
+      operationId: getPhoneEnrollment
+      tags: [phone-auth]
+      summary: Get the authenticated owner's verified login phone
+      responses:
+        "200":
+          description: Enrollment state
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PhoneEnrollmentState" }
+        "401": { description: Authentication required }
+        "403": { description: Owner access required }
+  /auth/phone/enrollment/request:
+    post:
+      operationId: requestPhoneEnrollment
+      tags: [phone-auth]
+      summary: Send a verification code before changing an owner's login phone
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PhoneLoginRequest" }
+      responses:
+        "200":
+          description: Enrollment challenge
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PhoneLoginChallenge" }
+        "403": { description: Owner access required }
+        "409": { description: Phone already enrolled }
+  /auth/phone/enrollment/verify:
+    post:
+      operationId: verifyPhoneEnrollment
+      tags: [phone-auth]
+      summary: Verify and atomically enroll an owner's login phone
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PhoneLoginVerify" }
+      responses:
+        "200":
+          description: Verified enrollment
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PhoneEnrollmentState" }
+        "400": { description: Invalid challenge }
+        "403": { description: Owner access required }
   /healthz:
     get:
       operationId: healthCheck
@@ -1545,6 +1631,38 @@ components:
       required: true
       schema: { $ref: "#/components/schemas/OperationalResource" }
   schemas:
+    PhoneLoginRequest:
+      type: object
+      required: [phone]
+      additionalProperties: false
+      properties:
+        phone: { type: string, minLength: 8, maxLength: 30 }
+    PhoneLoginVerify:
+      type: object
+      required: [challengeId, otp]
+      additionalProperties: false
+      properties:
+        challengeId: { type: string, minLength: 32, maxLength: 64 }
+        otp: { type: string, pattern: '^\d{6}$' }
+    PhoneLoginChallenge:
+      type: object
+      required: [challengeId, expiresInSeconds, recognized]
+      properties:
+        challengeId: { type: string, minLength: 32, maxLength: 64 }
+        expiresInSeconds: { type: integer, minimum: 1 }
+        recognized: { type: boolean }
+        firstName: { type: string, minLength: 1, maxLength: 100 }
+    PhoneLoginTicket:
+      type: object
+      required: [ticket]
+      properties:
+        ticket: { type: string, minLength: 1 }
+    PhoneEnrollmentState:
+      type: object
+      required: [enrolled]
+      properties:
+        enrolled: { type: boolean }
+        phone: { type: string, pattern: '^965\d{8}$' }
     HealthStatus:
       type: object
       properties:

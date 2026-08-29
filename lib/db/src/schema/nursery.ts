@@ -25,6 +25,33 @@ export const guardiansTable = pgTable("guardians", {
   balance: numeric("balance", { precision: 10, scale: 2, mode: "number" }).notNull().default(0),
 });
 
+/** Verified owner/admin phone aliases. Login remains bound to the existing Clerk user. */
+export const phoneLoginIdentitiesTable = pgTable("phone_login_identities", {
+  id: serial("id").primaryKey(),
+  clerkUserId: text("clerk_user_id").notNull().unique(),
+  normalizedPhone: text("normalized_phone").notNull().unique(),
+  firstName: text("first_name").notNull(),
+  verifiedAt: timestamp("verified_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+});
+
+/** Durable, hashed, single-use challenges for login and authenticated enrollment. */
+export const phoneOtpChallengesTable = pgTable("phone_otp_challenges", {
+  id: text("id").primaryKey(),
+  purpose: text("purpose").notNull(),
+  normalizedPhoneHash: text("normalized_phone_hash").notNull(),
+  normalizedPhone: text("normalized_phone"),
+  ipHash: text("ip_hash").notNull(),
+  otpHash: text("otp_hash").notNull(),
+  clerkUserId: text("clerk_user_id"),
+  firstName: text("first_name"),
+  requestedBy: text("requested_by"),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  attempts: integer("attempts").notNull().default(0),
+  consumedAt: timestamp("consumed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const classroomsTable = pgTable("classrooms", {
   id: serial("id").primaryKey(),
   ownerId: text("owner_id").notNull().default("__legacy__"),

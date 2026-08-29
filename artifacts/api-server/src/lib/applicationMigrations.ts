@@ -319,6 +319,36 @@ export async function runApplicationMigrations(): Promise<void> {
     ALTER TABLE site_gallery_items ADD CONSTRAINT site_gallery_items_status_check
       CHECK (status IN ('draft', 'published', 'hidden', 'deleting'));
 
+    CREATE TABLE IF NOT EXISTS phone_login_identities (
+      id serial PRIMARY KEY,
+      clerk_user_id text NOT NULL UNIQUE,
+      normalized_phone text NOT NULL UNIQUE,
+      first_name text NOT NULL,
+      verified_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS phone_otp_challenges (
+      id text PRIMARY KEY,
+      purpose text NOT NULL,
+      normalized_phone_hash text NOT NULL,
+      normalized_phone text,
+      ip_hash text NOT NULL,
+      otp_hash text NOT NULL,
+      clerk_user_id text,
+      first_name text,
+      requested_by text,
+      expires_at timestamptz NOT NULL,
+      attempts integer NOT NULL DEFAULT 0,
+      consumed_at timestamptz,
+      created_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS phone_otp_phone_created_idx
+      ON phone_otp_challenges (normalized_phone_hash, created_at DESC);
+    CREATE INDEX IF NOT EXISTS phone_otp_ip_created_idx
+      ON phone_otp_challenges (ip_hash, created_at DESC);
+    CREATE INDEX IF NOT EXISTS phone_otp_expiry_idx
+      ON phone_otp_challenges (expires_at);
+
     CREATE INDEX IF NOT EXISTS classrooms_branch_idx ON classrooms (branch_id);
     CREATE INDEX IF NOT EXISTS classrooms_stage_idx ON classrooms (stage_id);
     CREATE INDEX IF NOT EXISTS staff_owner_branch_idx ON staff (owner_id, branch_id);

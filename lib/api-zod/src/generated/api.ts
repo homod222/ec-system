@@ -7,6 +7,107 @@
  */
 import * as zod from "zod";
 /**
+ * @summary Request a WhatsApp login code
+ */
+export const requestPhoneLoginBodyPhoneMin = 8;
+export const requestPhoneLoginBodyPhoneMax = 30;
+export const RequestPhoneLoginBody = zod.object({
+  phone: zod
+    .string()
+    .min(requestPhoneLoginBodyPhoneMin)
+    .max(requestPhoneLoginBodyPhoneMax),
+});
+export const requestPhoneLoginResponseChallengeIdMin = 32;
+export const requestPhoneLoginResponseChallengeIdMax = 64;
+export const requestPhoneLoginResponseFirstNameMax = 100;
+export const RequestPhoneLoginResponse = zod.object({
+  challengeId: zod
+    .string()
+    .min(requestPhoneLoginResponseChallengeIdMin)
+    .max(requestPhoneLoginResponseChallengeIdMax),
+  expiresInSeconds: zod.number().int().min(1),
+  recognized: zod.boolean(),
+  firstName: zod
+    .string()
+    .min(1)
+    .max(requestPhoneLoginResponseFirstNameMax)
+    .optional(),
+});
+/**
+ * @summary Verify code and issue a short-lived Clerk sign-in ticket
+ */
+export const verifyPhoneLoginBodyChallengeIdMin = 32;
+export const verifyPhoneLoginBodyChallengeIdMax = 64;
+export const verifyPhoneLoginBodyOtpRegExp = new RegExp("^\\d{6}$");
+export const VerifyPhoneLoginBody = zod.object({
+  challengeId: zod
+    .string()
+    .min(verifyPhoneLoginBodyChallengeIdMin)
+    .max(verifyPhoneLoginBodyChallengeIdMax),
+  otp: zod.string().regex(verifyPhoneLoginBodyOtpRegExp),
+});
+export const VerifyPhoneLoginResponse = zod.object({
+  ticket: zod.string().min(1),
+});
+/**
+ * @summary Get the authenticated owner's verified login phone
+ */
+export const getPhoneEnrollmentResponsePhoneRegExp = new RegExp("^965\\d{8}$");
+export const GetPhoneEnrollmentResponse = zod.object({
+  enrolled: zod.boolean(),
+  phone: zod.string().regex(getPhoneEnrollmentResponsePhoneRegExp).optional(),
+});
+/**
+ * @summary Send a verification code before changing an owner's login phone
+ */
+export const requestPhoneEnrollmentBodyPhoneMin = 8;
+export const requestPhoneEnrollmentBodyPhoneMax = 30;
+export const RequestPhoneEnrollmentBody = zod.object({
+  phone: zod
+    .string()
+    .min(requestPhoneEnrollmentBodyPhoneMin)
+    .max(requestPhoneEnrollmentBodyPhoneMax),
+});
+export const requestPhoneEnrollmentResponseChallengeIdMin = 32;
+export const requestPhoneEnrollmentResponseChallengeIdMax = 64;
+export const requestPhoneEnrollmentResponseFirstNameMax = 100;
+export const RequestPhoneEnrollmentResponse = zod.object({
+  challengeId: zod
+    .string()
+    .min(requestPhoneEnrollmentResponseChallengeIdMin)
+    .max(requestPhoneEnrollmentResponseChallengeIdMax),
+  expiresInSeconds: zod.number().int().min(1),
+  recognized: zod.boolean(),
+  firstName: zod
+    .string()
+    .min(1)
+    .max(requestPhoneEnrollmentResponseFirstNameMax)
+    .optional(),
+});
+/**
+ * @summary Verify and atomically enroll an owner's login phone
+ */
+export const verifyPhoneEnrollmentBodyChallengeIdMin = 32;
+export const verifyPhoneEnrollmentBodyChallengeIdMax = 64;
+export const verifyPhoneEnrollmentBodyOtpRegExp = new RegExp("^\\d{6}$");
+export const VerifyPhoneEnrollmentBody = zod.object({
+  challengeId: zod
+    .string()
+    .min(verifyPhoneEnrollmentBodyChallengeIdMin)
+    .max(verifyPhoneEnrollmentBodyChallengeIdMax),
+  otp: zod.string().regex(verifyPhoneEnrollmentBodyOtpRegExp),
+});
+export const verifyPhoneEnrollmentResponsePhoneRegExp = new RegExp(
+  "^965\\d{8}$",
+);
+export const VerifyPhoneEnrollmentResponse = zod.object({
+  enrolled: zod.boolean(),
+  phone: zod
+    .string()
+    .regex(verifyPhoneEnrollmentResponsePhoneRegExp)
+    .optional(),
+});
+/**
  * Returns server health status
  * @summary Health check
  */

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
-import { ClerkProvider, SignIn, SignUp, useAuth, useClerk, useUser } from '@clerk/react';
+import { ClerkProvider, SignIn, useAuth, useClerk, useUser } from '@clerk/react';
 import { arSA, enUS } from '@clerk/localizations';
 import * as ClerkInternal from '@clerk/react/internal';
 import { shadcn } from '@clerk/themes';
@@ -608,7 +608,93 @@ function AccessPending() {
     </div>
   );
 }
-function AuthPage({ type }: { type: 'in' | 'up' }) { 
+function PhoneSignIn() {
+  const { t } = useI18n();
+  const clerk = useClerk();
+  const [phone, setPhone] = useState('');
+  const [challenge, setChallenge] = useState<{ challengeId: string; recognized: boolean; firstName?: string } | null>(null);
+  const [otp, setOtp] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const requestCode = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setBusy(true); setError('');
+    try {
+      const response = await fetch('/api/auth/phone/request', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone }),
+      });
+      if (!response.ok) throw new Error();
+      setChallenge(await response.json());
+    } catch {
+      setError(t('phoneAuth.requestError'));
+    } finally { setBusy(false); }
+  };
+
+  const verifyCode = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!challenge || !clerk.loaded) return;
+    setBusy(true); setError('');
+    try {
+      const response = await fetch('/api/auth/phone/verify', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ challengeId: challenge.challengeId, otp }),
+      });
+      if (!response.ok) throw new Error();
+      const { ticket } = await response.json() as { ticket: string };
+      const attempt = await clerk.client.signIn.create({ strategy: 'ticket', ticket });
+      if (attempt.status !== 'complete' || !attempt.createdSessionId) throw new Error();
+      await clerk.setActive({ session: attempt.createdSessionId });
+      window.location.assign(`${basePath}/dashboard`);
+    } catch {
+      setError(t('phoneAuth.verifyError'));
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="rounded-[2rem] border border-border bg-card p-8 shadow-2xl">
+      <div className="mb-7 text-center">
+        <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-[#25D366]/15 text-[#128C4A]"><Phone size={25} /></span>
+        <h1 className="mt-4 text-2xl font-bold">{t('phoneAuth.title')}</h1>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">{t('phoneAuth.subtitle')}</p>
+      </div>
+      {!challenge ? (
+        <form onSubmit={requestCode}>
+          <label className="text-sm font-bold">{t('phoneAuth.phone')}
+            <div className="mt-2 flex overflow-hidden rounded-xl border border-input bg-background" dir="ltr">
+              <span className="grid place-items-center border-r border-input px-3 font-bold text-muted-foreground">+965</span>
+              <input data-testid="input-login-phone" required inputMode="numeric" autoComplete="tel" value={phone}
+                onChange={event => setPhone(event.target.value)} placeholder="5••• ••••"
+                className="min-w-0 flex-1 bg-transparent px-4 py-3 text-left outline-none" />
+            </div>
+          </label>
+          <Button data-testid="button-request-login-otp" className="mt-5 w-full" disabled={busy}>{busy ? t('common.loading') : t('phoneAuth.send')}</Button>
+        </form>
+      ) : (
+        <form onSubmit={verifyCode}>
+          <p data-testid="text-login-greeting" className="mb-5 rounded-xl bg-secondary/50 p-4 text-center text-sm font-bold leading-7">
+            {challenge.recognized && challenge.firstName
+              ? t('phoneAuth.namedGreeting', { name: challenge.firstName })
+              : t('phoneAuth.genericGreeting')}
+          </p>
+          <label className="text-sm font-bold">{t('phoneAuth.code')}
+            <input data-testid="input-login-otp" required inputMode="numeric" autoComplete="one-time-code" maxLength={6}
+              value={otp} onChange={event => setOtp(event.target.value.replace(/\D/g, ''))}
+              className="mt-2 w-full rounded-xl border border-input bg-background px-4 py-3 text-center font-mono text-2xl tracking-[.5em] outline-none focus:border-primary" dir="ltr" />
+          </label>
+          <Button data-testid="button-verify-login-otp" className="mt-5 w-full" disabled={busy || otp.length !== 6}>{busy ? t('common.loading') : t('phoneAuth.verify')}</Button>
+          <button type="button" onClick={() => { setChallenge(null); setOtp(''); setError(''); }} className="mt-4 w-full text-sm font-bold text-primary hover:underline">{t('phoneAuth.changePhone')}</button>
+        </form>
+      )}
+      {error && <p role="alert" className="mt-4 text-center text-sm font-bold text-destructive">{error}</p>}
+      <div className="mt-6 border-t border-border pt-5 text-center">
+        <Link href="/owner-recovery" className="text-xs font-bold text-muted-foreground hover:text-primary">{t('phoneAuth.ownerRecovery')}</Link>
+      </div>
+    </div>
+  );
+}
+
+function AuthPage() {
   const { dir, t } = useI18n();
   return (
     <div dir={dir} className="grid min-h-[100dvh] place-items-center bg-ec-pattern px-4 py-12 relative overflow-hidden">
@@ -622,11 +708,7 @@ function AuthPage({ type }: { type: 'in' | 'up' }) {
         <LanguageSwitcher className="bg-card/95 shadow-sm backdrop-blur" />
       </div>
       <div className="relative z-10 w-full max-w-md animate-rise">
-        {type === 'in' ? 
-          <><SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} />
-            <div className="mt-4 text-center"><Link href="/staff-password-reset" data-testid="link-forgot-password" className="text-sm font-bold text-primary hover:underline">{t('passwordReset.forgot')}</Link></div></> :
-          <SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} />
-        }
+        <PhoneSignIn />
       </div>
     </div>
   ); 
@@ -642,8 +724,13 @@ function Router() {
     <RoutedErrorBoundary>
       <Switch>
         <Route path="/" component={Landing} />
-        <Route path="/sign-in/*?" component={() => <AuthPage type="in" />} />
-        <Route path="/sign-up/*?" component={() => <AuthPage type="up" />} />
+        <Route path="/sign-in/*?" component={AuthPage} />
+        <Route path="/sign-up/*?"><Redirect to="/sign-in" /></Route>
+        <Route path="/owner-recovery/*?" component={() => (
+          <div className="grid min-h-[100dvh] place-items-center bg-background p-4">
+            <SignIn routing="path" path={`${basePath}/owner-recovery`} />
+          </div>
+        )} />
         <Route path="/staff-activate" component={StaffActivate} />
         <Route path="/staff-password-reset" component={StaffPasswordReset} />
         <Route path="/access-pending"><Protected><AccessPending /></Protected></Route>
@@ -703,6 +790,7 @@ const appearance = {
   }, 
   elements: { 
     rootBox: 'w-full flex justify-center', 
+    socialButtons: '!hidden',
     cardBox: 'bg-card border border-border rounded-[2rem] w-full max-w-[460px] overflow-hidden shadow-2xl', 
     card: '!shadow-none !border-0 !bg-transparent !p-8', 
     footer: '!shadow-none !border-0 !bg-transparent !px-8 !pb-8 !pt-0', 
@@ -738,7 +826,7 @@ function App() {
         proxyUrl={clerkProxyUrl} 
         appearance={appearance} 
         signInUrl={`${basePath}/sign-in`} 
-        signUpUrl={`${basePath}/sign-up`} 
+        signUpUrl={`${basePath}/sign-in`}
         localization={localization}
         routerPush={(to: string) => { window.history.pushState({}, '', to); window.dispatchEvent(new PopStateEvent('popstate')); }} 
         routerReplace={(to: string) => { window.history.replaceState({}, '', to); window.dispatchEvent(new PopStateEvent('popstate')); }}>

@@ -37,6 +37,10 @@ const clerkCreateUser = vi.hoisted(() => vi.fn(async (input: Record<string, any>
   clerkUsers.set(id, user);
   return user;
 }));
+const clerkSignInTokenCreate = vi.hoisted(() => vi.fn(async ({ userId }: { userId: string }) => ({
+  token: `ticket-for-${userId}`,
+})));
+const whatsappMessages = vi.hoisted(() => [] as Array<{ to: string; body: string }>);
 
 vi.mock("@clerk/express", () => ({
   clerkMiddleware: () => (req: unknown, _res: unknown, next: () => void) => next(),
@@ -45,6 +49,9 @@ vi.mock("@clerk/express", () => ({
     sessionClaims: { role: req.headers["x-test-role"] ?? "owner" },
   }),
   clerkClient: {
+    signInTokens: {
+      createSignInToken: clerkSignInTokenCreate,
+    },
     users: {
       getUser: vi.fn(async (userId: string) => {
         const users = {
@@ -135,6 +142,10 @@ vi.mock("../src/lib/exchangeRates", () => {
 });
 
 vi.mock("../src/lib/notifications", () => ({
+  sendWhatsAppText: vi.fn(async (to: string, body: string) => {
+    whatsappMessages.push({ to, body });
+    return { ok: true };
+  }),
   sendPaymentConfirmation: vi.fn(async () => undefined),
   sendInvoiceReminder: vi.fn(async () => ({ status: "skipped", message: "test" })),
   sendParentMessageNotification: vi.fn(async () => undefined),
@@ -334,6 +345,14 @@ beforeAll(async () => {
 afterAll(async () => {
   const owners = [ownerA, ownerB];
   await pool.query(
+    "delete from phone_otp_challenges where clerk_user_id = any($1::text[]) or requested_by = any($1::text[])",
+    [owners],
+  );
+  await pool.query(
+    "delete from phone_login_identities where clerk_user_id = any($1::text[])",
+    [owners],
+  );
+  await pool.query(
     "delete from staff where owner_id = '__legacy__' and name = $1",
     [legacyStaffName],
   );
@@ -380,6 +399,42 @@ afterAll(async () => {
 });
 
 describe.sequential("application registration regression flow", () => {
+  it("enrolls an owner phone and issues a single-use WhatsApp login ticket with first-name greeting", async () => {
+    const phone = "5000 8765";
+    const enrollment = await request(app).post("/api/auth/phone/enrollment/request")
+      .set(auth(ownerA)).send({ phone }).expect(200);
+    expect(enrollment.body).toMatchObject({ recognized: true, firstName: "Owner" });
+    const enrollmentMessage = whatsappMessages.at(-1);
+    expect(enrollmentMessage?.to).toBe("96550008765");
+    const enrollmentOtp = enrollmentMessage?.body.match(/\b\d{6}\b/)?.[0];
+    expect(enrollmentOtp).toBeTruthy();
+
+    await request(app).post("/api/auth/phone/enrollment/verify").set(auth(ownerA)).send({
+      challengeId: enrollment.body.challengeId,
+      otp: enrollmentOtp,
+    }).expect(200).expect(({ body }) => {
+      expect(body).toEqual({ enrolled: true, phone: "96550008765" });
+    });
+
+    const login = await request(app).post("/api/auth/phone/request").send({ phone: "+96550008765" }).expect(200);
+    expect(login.body).toMatchObject({ recognized: true, firstName: "Owner" });
+    expect(login.body.firstName).not.toContain(" ");
+    const loginOtp = whatsappMessages.at(-1)?.body.match(/\b\d{6}\b/)?.[0];
+    expect(loginOtp).toBeTruthy();
+
+    const verified = await request(app).post("/api/auth/phone/verify").send({
+      challengeId: login.body.challengeId,
+      otp: loginOtp,
+    }).expect(200);
+    expect(verified.body).toEqual({ ticket: `ticket-for-${ownerA}` });
+    expect(clerkSignInTokenCreate).toHaveBeenLastCalledWith({ userId: ownerA, expiresInSeconds: 60 });
+
+    await request(app).post("/api/auth/phone/verify").send({
+      challengeId: login.body.challengeId,
+      otp: loginOtp,
+    }).expect(400);
+  });
+
   it("atomically caps concurrent invalid OTP attempts", async () => {
     const staffId = await createStaffAccountFixture({
       accountStatus: "pending_verification",
