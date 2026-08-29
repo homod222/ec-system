@@ -1369,6 +1369,28 @@ export interface RolePermissionInput {
   allowed: boolean;
 }
 
+export interface PermissionCatalogGroup {
+  module: string;
+  page: string;
+  operations: string[];
+}
+
+export interface RolePermissionChange {
+  /** @minLength 1 */
+  role: string;
+  /** @minLength 1 */
+  operation: string;
+  allowed: boolean;
+}
+
+export interface RolePermissionBulkInput {
+  /**
+   * @minItems 1
+   * @maxItems 500
+   */
+  changes: RolePermissionChange[];
+}
+
 export interface UserPermission {
   id: number;
   userId: string;
@@ -1383,6 +1405,31 @@ export interface UserPermissionInput {
   /** @minLength 1 */
   operation: string;
   allowed: boolean;
+}
+
+export interface UserPermissionChange {
+  /** @minLength 1 */
+  operation: string;
+  /** @nullable */
+  allowed: boolean | null;
+}
+
+export interface UserPermissionBulkInput {
+  /** @minLength 1 */
+  userId: string;
+  /**
+   * @minItems 1
+   * @maxItems 500
+   */
+  changes: UserPermissionChange[];
+}
+
+export interface UserPermissionBulkResult {
+  userId: string;
+  operation: string;
+  /** @nullable */
+  allowed: boolean | null;
+  effectiveAllowed: boolean;
 }
 
 export interface PermissionPrincipal {

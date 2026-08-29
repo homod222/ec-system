@@ -14,6 +14,11 @@ import {
   ListAuditLogsQueryParams,
   ListAuditLogsResponse,
   ListPermissionPrincipalsResponse,
+  GetPermissionCatalogResponse,
+  BulkSetRolePermissionsBody,
+  BulkSetRolePermissionsResponse,
+  BulkSetUserPermissionsBody,
+  BulkSetUserPermissionsResponse,
   ListChildRecordsParams,
   ListChildRecordsResponse,
   ListOperationalRecordsParams,
@@ -48,6 +53,11 @@ import {
   staffAttendanceTable,
   staffTable,
 } from "@workspace/db";
+import {
+  configurableOperations,
+  configurableOperationSet,
+  permissionCatalog,
+} from "../lib/permissionCatalog";
 
 const router: IRouter = Router();
 type Claims = Record<string, unknown>;
@@ -85,28 +95,8 @@ const academicResources = new Set([
   "curriculum", "lesson-plan", "skill", "assessment", "progress-report", "event", "media",
 ]);
 const financialResources = new Set(["fee-plan", "discount", "refund", "expense", "revenue", "payroll"]);
-const operationalResources = [
-  "branch", "stage", "teacher-assignment", "classroom-schedule", "staff-profile", "staff-job",
-  "staff-leave", "payroll", "evaluation", "curriculum", "lesson-plan", "skill", "assessment",
-  "progress-report", "event", "media", "fee-plan", "discount", "refund", "expense", "revenue",
-  "setting", "holiday", "notification", "integration",
-] as const;
 const configurableRoles = ["admin", "manager", "supervisor", "teacher", "accountant", "receptionist", "parent"];
-export const configurableOperations = [
-  ...operationalResources.flatMap((resource) => [`read:${resource}`, `write:${resource}`, `delete:${resource}`]),
-  "read:attendance", "write:attendance",
-  "read:child-record", "read:child-confidential",
-  "write:child-health", "write:child-emergency", "write:child-allergy", "write:child-medication",
-  "write:child-document", "write:child-photo", "write:child-note", "write:child-history",
-  "read:report-operational", "read:report-academic", "read:report-financial",
-  "read:permissions", "read:audit",
-  "read:dashboard", "read:children", "write:children", "delete:children",
-  "read:invoice", "write:invoice", "write:payment",
-  "read:application", "write:application", "accept:application", "write:application-document",
-  "read:site-gallery", "create:site-gallery", "update:site-gallery",
-  "publish:site-gallery", "delete:site-gallery",
-  "reorder:site-gallery",
-];
+export { configurableOperations };
 
 export function defaultAllowed(role: string, operation: string) {
   if (["owner", "superadmin", "admin", "nursery_admin"].includes(role)) return true;
@@ -188,6 +178,71 @@ export async function auditNurseryOperation(
   await db.insert(auditLogsTable).values({
     ownerId, actorId, actorRole: role, operation, entityType, entityId, before, after,
   });
+}
+
+function ownerOnly(req: Request) {
+  return ["owner", "superadmin"].includes(nurseryContext(req).role);
+}
+
+export function validRolePermission(role: string, operation: string) {
+  return configurableRoles.includes(role) && configurableOperationSet.has(operation);
+}
+
+async function tenantPrincipal(ownerId: string, userId: string) {
+  if (userId === ownerId) return { userId, role: "owner" };
+  try {
+    const user = await clerkClient.users.getUser(userId);
+    const metadata = user.publicMetadata as Claims;
+    const userOwnerId = metadata.ownerId ?? metadata.owner_id;
+    const role = metadata.role;
+    if (userOwnerId === ownerId && typeof role === "string" && role) {
+      return { userId, role: role.toLowerCase() };
+    }
+  } catch {
+    // A guardian can have a historical Clerk ID that no longer resolves.
+    // Its tenant-scoped database association remains the fallback below.
+  }
+  const [guardian] = await db.select({ userId: guardiansTable.clerkUserId })
+    .from(guardiansTable).where(and(
+      eq(guardiansTable.ownerId, ownerId),
+      eq(guardiansTable.clerkUserId, userId),
+    )).limit(1);
+  return guardian?.userId ? { userId: guardian.userId, role: "parent" } : null;
+}
+
+function clerkPrincipalLabel(user: Record<string, unknown>) {
+  const firstName = typeof user.firstName === "string" ? user.firstName.trim() : "";
+  const lastName = typeof user.lastName === "string" ? user.lastName.trim() : "";
+  const name = [firstName, lastName].filter(Boolean).join(" ");
+  if (name) return name;
+  const primaryEmail = user.primaryEmailAddress as { emailAddress?: unknown } | null | undefined;
+  if (typeof primaryEmail?.emailAddress === "string" && primaryEmail.emailAddress) return primaryEmail.emailAddress;
+  const emails = user.emailAddresses as Array<{ emailAddress?: unknown }> | undefined;
+  const email = emails?.find(({ emailAddress }) => typeof emailAddress === "string" && emailAddress);
+  return typeof email?.emailAddress === "string" ? email.emailAddress : "مستخدم معروف";
+}
+
+async function tenantClerkPrincipals(ownerId: string) {
+  const principals: Array<{ userId: string; label: string; role: string }> = [];
+  const limit = 100;
+  let offset = 0;
+  let totalCount = Infinity;
+  while (offset < totalCount) {
+    const page = await clerkClient.users.getUserList({ limit, offset });
+    const users = page.data;
+    for (const user of users) {
+      const metadata = user.publicMetadata as Claims;
+      const userOwnerId = metadata.ownerId ?? metadata.owner_id;
+      const role = metadata.role;
+      if (userOwnerId === ownerId && typeof role === "string" && role) {
+        principals.push({ userId: user.id, label: clerkPrincipalLabel(user as unknown as Record<string, unknown>), role: role.toLowerCase() });
+      }
+    }
+    offset += users.length;
+    totalCount = typeof page.totalCount === "number" ? page.totalCount : offset;
+    if (users.length === 0) break;
+  }
+  return principals;
 }
 
 function serializeRecord<T extends { createdAt: Date; updatedAt: Date; ownerId: string }>(row: T) {
@@ -535,6 +590,60 @@ router.get("/permissions", async (req, res): Promise<void> => {
   res.json(ListRolePermissionsResponse.parse(matrix));
 });
 
+router.get("/permission-catalog", async (req, res): Promise<void> => {
+  if (!ownerOnly(req)) {
+    res.status(403).json({ error: "Owner access required" });
+    return;
+  }
+  res.json(GetPermissionCatalogResponse.parse(permissionCatalog));
+});
+
+router.put("/permissions/bulk", async (req, res): Promise<void> => {
+  const body = BulkSetRolePermissionsBody.safeParse(req.body);
+  if (!body.success) return void res.status(400).json({ error: body.error.message });
+  if (!ownerOnly(req)) return void res.status(403).json({ error: "Owner access required" });
+  const keys = body.data.changes.map(({ role, operation }) => `${role}:${operation}`);
+  if (keys.some((key, index) => keys.indexOf(key) !== index)) {
+    return void res.status(400).json({ error: "Duplicate role and operation change" });
+  }
+  if (body.data.changes.some(({ role, operation }) => !validRolePermission(role, operation))) {
+    return void res.status(400).json({ error: "Unknown configurable role or operation" });
+  }
+  const { ownerId, actorId, role: actorRole } = nurseryContext(req);
+  const records = await db.transaction(async (tx) => {
+    const before = [];
+    const after = [];
+    for (const change of body.data.changes) {
+      const [existing] = await tx.select().from(rolePermissionsTable).where(and(
+        eq(rolePermissionsTable.ownerId, ownerId),
+        eq(rolePermissionsTable.role, change.role),
+        eq(rolePermissionsTable.operation, change.operation),
+      )).limit(1);
+      before.push(existing ?? null);
+      const [record] = existing
+        ? await tx.update(rolePermissionsTable).set({ allowed: change.allowed })
+          .where(eq(rolePermissionsTable.id, existing.id)).returning()
+        : await tx.insert(rolePermissionsTable).values({ ownerId, ...change }).returning();
+      after.push(record);
+    }
+    await tx.insert(auditLogsTable).values({
+      ownerId,
+      actorId,
+      actorRole,
+      operation: "bulk-set-role-permissions",
+      entityType: "role-permission",
+      entityId: null,
+      before: { permissions: before },
+      after: { permissions: after },
+    });
+    return after;
+  });
+  res.json(BulkSetRolePermissionsResponse.parse(records.map(({ ownerId: _, updatedAt, ...record }) => ({
+    ...record,
+    updatedAt: updatedAt.toISOString(),
+  }))));
+});
+
 router.put("/permissions", async (req, res): Promise<void> => {
   const body = SetRolePermissionBody.safeParse(req.body);
   if (!body.success) {
@@ -544,6 +653,10 @@ router.put("/permissions", async (req, res): Promise<void> => {
   const { ownerId, role } = nurseryContext(req);
   if (!["owner", "superadmin"].includes(role)) {
     res.status(403).json({ error: "Owner access required" });
+    return;
+  }
+  if (!validRolePermission(body.data.role, body.data.operation)) {
+    res.status(400).json({ error: "Unknown configurable role or operation" });
     return;
   }
   const [existing] = await db.select().from(rolePermissionsTable).where(and(
@@ -567,9 +680,12 @@ router.get("/permission-principals", async (req, res): Promise<void> => {
     res.status(403).json({ error: "Administrative access required" });
     return;
   }
-  const guardians = await db.select({ userId: guardiansTable.clerkUserId, label: guardiansTable.name })
-    .from(guardiansTable).where(and(eq(guardiansTable.ownerId, ownerId), sql`${guardiansTable.clerkUserId} is not null`));
-  const principals = [{ userId: ownerId, label: "مالك الحضانة", role: "admin" }, ...guardians
+  const [clerkPrincipals, guardians] = await Promise.all([
+    tenantClerkPrincipals(ownerId),
+    db.select({ userId: guardiansTable.clerkUserId, label: guardiansTable.name })
+      .from(guardiansTable).where(and(eq(guardiansTable.ownerId, ownerId), sql`${guardiansTable.clerkUserId} is not null`)),
+  ]);
+  const principals = [{ userId: ownerId, label: "مالك الحضانة", role: "owner" }, ...clerkPrincipals, ...guardians
     .filter((guardian): guardian is { userId: string; label: string } => Boolean(guardian.userId))
     .map((guardian) => ({ userId: guardian.userId, label: guardian.label || "مستخدم معروف", role: "parent" }))];
   res.json(ListPermissionPrincipalsResponse.parse(Array.from(new Map(principals.map((principal) => [principal.userId, principal])).values())));
@@ -591,6 +707,12 @@ router.put("/user-permissions", async (req, res): Promise<void> => {
   if (!body.success) return void res.status(400).json({ error: body.error.message });
   const { ownerId, role } = nurseryContext(req);
   if (!["owner", "superadmin"].includes(role)) return void res.status(403).json({ error: "Owner access required" });
+  if (!configurableOperationSet.has(body.data.operation)) {
+    return void res.status(400).json({ error: "Unknown configurable operation" });
+  }
+  if (!await tenantPrincipal(ownerId, body.data.userId)) {
+    return void res.status(404).json({ error: "Permission principal not found in tenant" });
+  }
   const [existing] = await db.select().from(userPermissionsTable).where(and(
     eq(userPermissionsTable.ownerId, ownerId), eq(userPermissionsTable.userId, body.data.userId),
     eq(userPermissionsTable.operation, body.data.operation),
@@ -602,6 +724,82 @@ router.put("/user-permissions", async (req, res): Promise<void> => {
     existing as unknown as Record<string, unknown> | null, record as unknown as Record<string, unknown>);
   const { ownerId: _, updatedAt, ...data } = record;
   res.json(SetUserPermissionResponse.parse({ ...data, updatedAt: updatedAt.toISOString() }));
+});
+
+router.put("/user-permissions/bulk", async (req, res): Promise<void> => {
+  const body = BulkSetUserPermissionsBody.safeParse(req.body);
+  if (!body.success) return void res.status(400).json({ error: body.error.message });
+  if (!ownerOnly(req)) return void res.status(403).json({ error: "Owner access required" });
+  if (body.data.changes.some(({ operation }) => !configurableOperationSet.has(operation))) {
+    return void res.status(400).json({ error: "Unknown configurable operation" });
+  }
+  const operations = body.data.changes.map(({ operation }) => operation);
+  if (operations.some((operation, index) => operations.indexOf(operation) !== index)) {
+    return void res.status(400).json({ error: "Duplicate user operation change" });
+  }
+  const { ownerId, actorId, role: actorRole } = nurseryContext(req);
+  const principal = await tenantPrincipal(ownerId, body.data.userId);
+  if (!principal) return void res.status(404).json({ error: "Permission principal not found in tenant" });
+  const results = await db.transaction(async (tx) => {
+    const before = [];
+    const after = [];
+    const response = [];
+    for (const change of body.data.changes) {
+      const [existing] = await tx.select().from(userPermissionsTable).where(and(
+        eq(userPermissionsTable.ownerId, ownerId),
+        eq(userPermissionsTable.userId, body.data.userId),
+        eq(userPermissionsTable.operation, change.operation),
+      )).limit(1);
+      before.push(existing ?? null);
+      let overrideAllowed: boolean | null = change.allowed;
+      if (change.allowed === null) {
+        if (existing) {
+          await tx.delete(userPermissionsTable).where(and(
+            eq(userPermissionsTable.id, existing.id),
+            eq(userPermissionsTable.ownerId, ownerId),
+          ));
+        }
+        after.push(null);
+      } else {
+        const [record] = existing
+          ? await tx.update(userPermissionsTable).set({ allowed: change.allowed })
+            .where(eq(userPermissionsTable.id, existing.id)).returning()
+          : await tx.insert(userPermissionsTable).values({
+            ownerId,
+            userId: body.data.userId,
+            operation: change.operation,
+            allowed: change.allowed,
+          }).returning();
+        after.push(record);
+        overrideAllowed = record.allowed;
+      }
+      const [configuredRole] = await tx.select({ allowed: rolePermissionsTable.allowed })
+        .from(rolePermissionsTable).where(and(
+          eq(rolePermissionsTable.ownerId, ownerId),
+          eq(rolePermissionsTable.role, principal.role),
+          eq(rolePermissionsTable.operation, change.operation),
+        )).limit(1);
+      response.push({
+        userId: body.data.userId,
+        operation: change.operation,
+        allowed: overrideAllowed,
+        effectiveAllowed: overrideAllowed ?? configuredRole?.allowed
+          ?? defaultAllowed(principal.role, change.operation),
+      });
+    }
+    await tx.insert(auditLogsTable).values({
+      ownerId,
+      actorId,
+      actorRole,
+      operation: "bulk-set-user-permissions",
+      entityType: "user-permission",
+      entityId: body.data.userId,
+      before: { permissions: before },
+      after: { permissions: after },
+    });
+    return response;
+  });
+  res.json(BulkSetUserPermissionsResponse.parse(results));
 });
 
 router.get("/audit-logs", async (req, res): Promise<void> => {

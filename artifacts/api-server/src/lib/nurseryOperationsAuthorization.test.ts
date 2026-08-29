@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultAllowed } from "../routes/nurseryOperations";
+import { defaultAllowed, validRolePermission } from "../routes/nurseryOperations";
 
 describe("nursery operations default authorization", () => {
   it("keeps administrative roles fully operational", () => {
@@ -30,5 +30,11 @@ describe("nursery operations default authorization", () => {
     expect(defaultAllowed("parent", "read:child-record")).toBe(false);
     expect(defaultAllowed("staff", "read:branch")).toBe(false);
     expect(defaultAllowed("unknown", "write:expense")).toBe(false);
+  });
+
+  it("rejects unknown roles and operations from configurable mutations", () => {
+    expect(validRolePermission("teacher", "read:curriculum")).toBe(true);
+    expect(validRolePermission("unknown", "read:curriculum")).toBe(false);
+    expect(validRolePermission("teacher", "read:not-real")).toBe(false);
   });
 });

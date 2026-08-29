@@ -1202,6 +1202,40 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/RolePermission" }
         "403": { description: Owner access required }
+  /permission-catalog:
+    get:
+      operationId: getPermissionCatalog
+      tags: [permissions]
+      summary: Get the fixed configurable permission catalog (owner only)
+      responses:
+        "200":
+          description: Operations grouped by module and page
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/PermissionCatalogGroup" }
+        "403": { description: Owner access required }
+  /permissions/bulk:
+    put:
+      operationId: bulkSetRolePermissions
+      tags: [permissions]
+      summary: Atomically set multiple role permissions (owner only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RolePermissionBulkInput" }
+      responses:
+        "200":
+          description: Updated role permissions
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/RolePermission" }
+        "400": { description: "Unknown, duplicate, or invalid role permission" }
+        "403": { description: Owner access required }
   /user-permissions:
     get:
       operationId: listUserPermissions
@@ -1222,6 +1256,27 @@ paths:
         "200":
           description: Updated user permission
           content: { application/json: { schema: { $ref: "#/components/schemas/UserPermission" } } }
+  /user-permissions/bulk:
+    put:
+      operationId: bulkSetUserPermissions
+      tags: [permissions]
+      summary: Atomically set or remove multiple user permission overrides (owner only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UserPermissionBulkInput" }
+      responses:
+        "200":
+          description: Override and effective permission states after the update
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/UserPermissionBulkResult" }
+        "400": { description: "Unknown, duplicate, or invalid operation" }
+        "403": { description: Owner access required }
+        "404": { description: Permission principal not found in tenant }
   /permission-principals:
     get:
       operationId: listPermissionPrincipals
@@ -2188,6 +2243,33 @@ components:
         role: { type: string, minLength: 1 }
         operation: { type: string, minLength: 1 }
         allowed: { type: boolean }
+    PermissionCatalogGroup:
+      type: object
+      required: [module, page, operations]
+      properties:
+        module: { type: string }
+        page: { type: string }
+        operations:
+          type: array
+          items: { type: string }
+    RolePermissionChange:
+      type: object
+      additionalProperties: false
+      required: [role, operation, allowed]
+      properties:
+        role: { type: string, minLength: 1 }
+        operation: { type: string, minLength: 1 }
+        allowed: { type: boolean }
+    RolePermissionBulkInput:
+      type: object
+      additionalProperties: false
+      required: [changes]
+      properties:
+        changes:
+          type: array
+          minItems: 1
+          maxItems: 500
+          items: { $ref: "#/components/schemas/RolePermissionChange" }
     UserPermission:
       type: object
       required: [id, userId, operation, allowed, updatedAt]
@@ -2204,6 +2286,32 @@ components:
         userId: { type: string, minLength: 1 }
         operation: { type: string, minLength: 1 }
         allowed: { type: boolean }
+    UserPermissionChange:
+      type: object
+      additionalProperties: false
+      required: [operation, allowed]
+      properties:
+        operation: { type: string, minLength: 1 }
+        allowed: { type: [boolean, "null"] }
+    UserPermissionBulkInput:
+      type: object
+      additionalProperties: false
+      required: [userId, changes]
+      properties:
+        userId: { type: string, minLength: 1 }
+        changes:
+          type: array
+          minItems: 1
+          maxItems: 500
+          items: { $ref: "#/components/schemas/UserPermissionChange" }
+    UserPermissionBulkResult:
+      type: object
+      required: [userId, operation, allowed, effectiveAllowed]
+      properties:
+        userId: { type: string }
+        operation: { type: string }
+        allowed: { type: [boolean, "null"] }
+        effectiveAllowed: { type: boolean }
     PermissionPrincipal:
       type: object
       required: [userId, label, role]

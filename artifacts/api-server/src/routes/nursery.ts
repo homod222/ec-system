@@ -255,7 +255,9 @@ router.get("/session/context", resolveNurseryContext, async (req, res, next): Pr
     const identity = await clerkIdentity(req);
     const effectivePermissions = await Promise.all(configurableOperations.map(async (operation) =>
       await permitted(req, operation) ? operation : null,
-    )).then((operations) => operations.filter((operation): operation is string => operation !== null));
+    )).then((operations) => operations.filter(
+      (operation): operation is NonNullable<typeof operation> => operation !== null,
+    ));
     const administrativeRoles = new Set([
       "admin", "nursery_admin", "manager", "supervisor", "teacher", "accountant",
       "receptionist", "owner", "superadmin",

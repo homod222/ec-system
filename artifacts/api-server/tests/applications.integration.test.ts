@@ -11,6 +11,12 @@ const stripeSessionCreate = vi.hoisted(() => vi.fn(async (input: Record<string, 
   stripeSessions.set(id, session);
   return session;
 }));
+const clerkFixtures = vi.hoisted(() => ({
+  ownerA: `integration-owner-a-${Math.random().toString(36).slice(2)}`,
+  ownerB: `integration-owner-b-${Math.random().toString(36).slice(2)}`,
+  staffA: `integration-staff-a-${Math.random().toString(36).slice(2)}`,
+  staffB: `integration-staff-b-${Math.random().toString(36).slice(2)}`,
+}));
 
 vi.mock("@clerk/express", () => ({
   clerkMiddleware: () => (req: unknown, _res: unknown, next: () => void) => next(),
@@ -20,14 +26,27 @@ vi.mock("@clerk/express", () => ({
   }),
   clerkClient: {
     users: {
-      getUser: vi.fn(async () => ({
-        publicMetadata: { role: "owner" },
-        privateMetadata: {},
-        emailAddresses: [{
-          emailAddress: "integration@example.test",
-          verification: { status: "verified" },
-        }],
-      })),
+      getUser: vi.fn(async (userId: string) => {
+        const users = {
+          [clerkFixtures.ownerA]: { id: clerkFixtures.ownerA, publicMetadata: { role: "owner" }, firstName: "Owner", lastName: "A", emailAddresses: [] },
+          [clerkFixtures.ownerB]: { id: clerkFixtures.ownerB, publicMetadata: { role: "owner" }, firstName: "Owner", lastName: "B", emailAddresses: [] },
+          [clerkFixtures.staffA]: { id: clerkFixtures.staffA, publicMetadata: { ownerId: clerkFixtures.ownerA, role: "Teacher" }, firstName: "Tenant", lastName: "A", emailAddresses: [] },
+          [clerkFixtures.staffB]: { id: clerkFixtures.staffB, publicMetadata: { owner_id: clerkFixtures.ownerB, role: "Manager" }, emailAddresses: [{ emailAddress: "tenant-b@example.test" }] },
+        };
+        return users[userId as keyof typeof users] ?? {
+          id: userId, publicMetadata: { role: "owner" }, privateMetadata: {},
+          emailAddresses: [{ emailAddress: "integration@example.test", verification: { status: "verified" } }],
+        };
+      }),
+      getUserList: vi.fn(async ({ limit = 100, offset = 0 }: { limit?: number; offset?: number }) => {
+        const data = [
+          { id: clerkFixtures.ownerA, publicMetadata: { role: "owner" }, firstName: "Owner", lastName: "A" },
+          { id: clerkFixtures.ownerB, publicMetadata: { role: "owner" }, firstName: "Owner", lastName: "B" },
+          { id: clerkFixtures.staffA, publicMetadata: { ownerId: clerkFixtures.ownerA, role: "Teacher" }, firstName: "Tenant", lastName: "A" },
+          { id: clerkFixtures.staffB, publicMetadata: { owner_id: clerkFixtures.ownerB, role: "Manager" }, emailAddresses: [{ emailAddress: "tenant-b@example.test" }] },
+        ];
+        return { data: data.slice(offset, offset + limit), totalCount: data.length };
+      }),
     },
   },
 }));
@@ -139,8 +158,10 @@ vi.mock("../src/lib/objectStorage", () => {
   };
 });
 
-const ownerA = `integration-owner-a-${randomUUID()}`;
-const ownerB = `integration-owner-b-${randomUUID()}`;
+const ownerA = clerkFixtures.ownerA;
+const ownerB = clerkFixtures.ownerB;
+const staffA = clerkFixtures.staffA;
+const staffB = clerkFixtures.staffB;
 const parentA = `integration-parent-a-${randomUUID()}`;
 const parentB = `integration-parent-b-${randomUUID()}`;
 const operationsParent = `integration-parent-operations-${randomUUID()}`;
@@ -248,6 +269,53 @@ afterAll(async () => {
 });
 
 describe.sequential("application registration regression flow", () => {
+  it("limits permission principals and overrides to the authenticated tenant", async () => {
+    await request(app).get("/api/permission-principals").set(auth(ownerA)).expect(200)
+      .expect(({ body }) => {
+        expect(body).toEqual(expect.arrayContaining([
+          expect.objectContaining({ userId: ownerA, role: "owner" }),
+          expect.objectContaining({ userId: staffA, role: "teacher", label: "Tenant A" }),
+        ]));
+        expect(body).not.toEqual(expect.arrayContaining([
+          expect.objectContaining({ userId: ownerB }),
+          expect.objectContaining({ userId: staffB }),
+        ]));
+      });
+
+    await request(app).put("/api/user-permissions/bulk").set(auth(ownerA)).send({
+      userId: staffA,
+      changes: [{ operation: "read:dashboard", allowed: false }],
+    }).expect(200).expect(({ body }) => expect(body).toEqual([
+      expect.objectContaining({ userId: staffA, allowed: false, effectiveAllowed: false }),
+    ]));
+
+    await request(app).put("/api/user-permissions/bulk").set(auth(ownerA)).send({
+      userId: staffA,
+      changes: [{ operation: "read:dashboard", allowed: null }],
+    }).expect(200).expect(({ body }) => expect(body).toEqual([
+      expect.objectContaining({ userId: staffA, allowed: null, effectiveAllowed: true }),
+    ]));
+
+    await request(app).put("/api/user-permissions/bulk").set(auth(ownerA)).send({
+      userId: staffB,
+      changes: [{ operation: "read:dashboard", allowed: true }],
+    }).expect(404);
+
+    await request(app).put("/api/permissions").set(auth(ownerA)).send({
+      role: "admin", operation: "read:dashboard", allowed: false,
+    }).expect(200);
+    await request(app).put("/api/user-permissions/bulk").set(auth(ownerA)).send({
+      userId: ownerA,
+      changes: [{ operation: "read:dashboard", allowed: true }],
+    }).expect(200);
+    await request(app).put("/api/user-permissions/bulk").set(auth(ownerA)).send({
+      userId: ownerA,
+      changes: [{ operation: "read:dashboard", allowed: null }],
+    }).expect(200).expect(({ body }) => expect(body).toEqual([
+      expect.objectContaining({ userId: ownerA, allowed: null, effectiveAllowed: true }),
+    ]));
+  });
+
   it("backfills legacy paid invoices into the settled ledger idempotently", async () => {
     const cash = await createLegacyInvoice(ownerA, `paid-cash-${randomUUID()}`);
     const stripe = await createLegacyInvoice(ownerA, `paid-stripe-${randomUUID()}`);
@@ -587,6 +655,78 @@ describe.sequential("application registration regression flow", () => {
       .post(`/api/applications/${protectedApplication.body.id}/accept`)
       .set(auth(ownerA, "manager"))
       .expect(403);
+  });
+
+  it("serves the catalog and applies tenant-isolated bulk permission changes", async () => {
+    await request(app)
+      .get("/api/permission-catalog")
+      .set(auth(ownerA))
+      .expect(200)
+      .expect(({ body }) => {
+        const operations = body.flatMap((group: { operations: string[] }) => group.operations);
+        expect(operations).toContain("read:dashboard");
+        expect(new Set(operations).size).toBe(operations.length);
+      });
+
+    await request(app)
+      .put("/api/permissions/bulk")
+      .set(auth(ownerA))
+      .send({
+        changes: [
+          { role: "teacher", operation: "read:dashboard", allowed: false },
+          { role: "teacher", operation: "read:curriculum", allowed: true },
+        ],
+      })
+      .expect(200)
+      .expect(({ body }) => expect(body).toHaveLength(2));
+
+    await request(app)
+      .put("/api/permissions/bulk")
+      .set(auth(ownerA))
+      .send({ changes: [{ role: "teacher", operation: "read:not-real", allowed: true }] })
+      .expect(400);
+
+    await request(app)
+      .put("/api/user-permissions/bulk")
+      .set(auth(ownerA))
+      .send({
+        userId: ownerA,
+        changes: [{ operation: "read:dashboard", allowed: false }],
+      })
+      .expect(200)
+      .expect(({ body }) => expect(body[0]).toMatchObject({
+        allowed: false,
+        effectiveAllowed: false,
+      }));
+
+    await request(app)
+      .put("/api/user-permissions/bulk")
+      .set(auth(ownerA))
+      .send({
+        userId: ownerA,
+        changes: [{ operation: "read:dashboard", allowed: null }],
+      })
+      .expect(200)
+      .expect(({ body }) => expect(body[0]).toMatchObject({
+        allowed: null,
+        effectiveAllowed: true,
+      }));
+
+    await request(app)
+      .get("/api/user-permissions")
+      .query({ userId: ownerA })
+      .set(auth(ownerA))
+      .expect(200)
+      .expect(({ body }) => expect(body).toEqual([]));
+
+    await request(app)
+      .put("/api/user-permissions/bulk")
+      .set(auth(ownerA))
+      .send({
+        userId: ownerB,
+        changes: [{ operation: "read:dashboard", allowed: false }],
+      })
+      .expect(404);
   });
 
   it("creates, edits, uploads, reviews and accepts an application, then renews the active child", async () => {

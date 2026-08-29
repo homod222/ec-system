@@ -2207,6 +2207,43 @@ export const SetRolePermissionResponse = zod.object({
   allowed: zod.boolean(),
   updatedAt: zod.string(),
 });
+/**
+ * @summary Get the fixed configurable permission catalog (owner only)
+ */
+export const GetPermissionCatalogResponseItem = zod.object({
+  module: zod.string(),
+  page: zod.string(),
+  operations: zod.array(zod.string()),
+});
+export const GetPermissionCatalogResponse = zod.array(
+  GetPermissionCatalogResponseItem,
+);
+/**
+ * @summary Atomically set multiple role permissions (owner only)
+ */
+export const bulkSetRolePermissionsBodyChangesMax = 500;
+export const BulkSetRolePermissionsBody = zod.object({
+  changes: zod
+    .array(
+      zod.object({
+        role: zod.string().min(1),
+        operation: zod.string().min(1),
+        allowed: zod.boolean(),
+      }),
+    )
+    .min(1)
+    .max(bulkSetRolePermissionsBodyChangesMax),
+});
+export const BulkSetRolePermissionsResponseItem = zod.object({
+  id: zod.number(),
+  role: zod.string(),
+  operation: zod.string(),
+  allowed: zod.boolean(),
+  updatedAt: zod.string(),
+});
+export const BulkSetRolePermissionsResponse = zod.array(
+  BulkSetRolePermissionsResponseItem,
+);
 export const ListUserPermissionsQueryParams = zod.object({
   userId: zod.coerce.string().min(1),
 });
@@ -2232,6 +2269,31 @@ export const SetUserPermissionResponse = zod.object({
   allowed: zod.boolean(),
   updatedAt: zod.string(),
 });
+/**
+ * @summary Atomically set or remove multiple user permission overrides (owner only)
+ */
+export const bulkSetUserPermissionsBodyChangesMax = 500;
+export const BulkSetUserPermissionsBody = zod.object({
+  userId: zod.string().min(1),
+  changes: zod
+    .array(
+      zod.object({
+        operation: zod.string().min(1),
+        allowed: zod.boolean().nullable(),
+      }),
+    )
+    .min(1)
+    .max(bulkSetUserPermissionsBodyChangesMax),
+});
+export const BulkSetUserPermissionsResponseItem = zod.object({
+  userId: zod.string(),
+  operation: zod.string(),
+  allowed: zod.boolean().nullable(),
+  effectiveAllowed: zod.boolean(),
+});
+export const BulkSetUserPermissionsResponse = zod.array(
+  BulkSetUserPermissionsResponseItem,
+);
 /**
  * @summary List trustworthy owner-scoped permission principals
  */

@@ -79,12 +79,14 @@ import type {
   ParentMessage,
   ParentMessageInput,
   ParentOverview,
+  PermissionCatalogGroup,
   PermissionPrincipal,
   ProgressReport,
   PublicSiteGalleryItem,
   Receipt,
   RefundInput,
   RolePermission,
+  RolePermissionBulkInput,
   RolePermissionInput,
   SessionContext,
   SiteGalleryAttachInput,
@@ -98,6 +100,8 @@ import type {
   UploadUrlRequest,
   UploadUrlResponse,
   UserPermission,
+  UserPermissionBulkInput,
+  UserPermissionBulkResult,
   UserPermissionInput,
 } from "./api.schemas";
 
@@ -6904,6 +6908,168 @@ export const useSetRolePermission = <
   return useMutation(getSetRolePermissionMutationOptions(options));
 };
 
+export const getGetPermissionCatalogUrl = () => {
+  return `/api/permission-catalog`;
+};
+
+/**
+ * @summary Get the fixed configurable permission catalog (owner only)
+ */
+export const getPermissionCatalog = async (
+  options?: Parameters<typeof customFetch>[1],
+): Promise<PermissionCatalogGroup[]> => {
+  return customFetch<PermissionCatalogGroup[]>(getGetPermissionCatalogUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetPermissionCatalogQueryKey = () => {
+  return [`/api/permission-catalog`] as const;
+};
+
+export const getGetPermissionCatalogQueryOptions = <
+  TData = Awaited<ReturnType<typeof getPermissionCatalog>>,
+  TError = ErrorType<void>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getPermissionCatalog>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetPermissionCatalogQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getPermissionCatalog>>
+  > = ({ signal }) => getPermissionCatalog({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getPermissionCatalog>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetPermissionCatalogQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getPermissionCatalog>>
+>;
+export type GetPermissionCatalogQueryError = ErrorType<void>;
+
+/**
+ * @summary Get the fixed configurable permission catalog (owner only)
+ */
+
+export function useGetPermissionCatalog<
+  TData = Awaited<ReturnType<typeof getPermissionCatalog>>,
+  TError = ErrorType<void>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getPermissionCatalog>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetPermissionCatalogQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getBulkSetRolePermissionsUrl = () => {
+  return `/api/permissions/bulk`;
+};
+
+/**
+ * @summary Atomically set multiple role permissions (owner only)
+ */
+export const bulkSetRolePermissions = async (
+  rolePermissionBulkInput: RolePermissionBulkInput,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<RolePermission[]> => {
+  return customFetch<RolePermission[]>(getBulkSetRolePermissionsUrl(), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(rolePermissionBulkInput),
+  });
+};
+
+export const getBulkSetRolePermissionsMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof bulkSetRolePermissions>>,
+    TError,
+    { data: BodyType<RolePermissionBulkInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof bulkSetRolePermissions>>,
+  TError,
+  { data: BodyType<RolePermissionBulkInput> },
+  TContext
+> => {
+  const mutationKey = ["bulkSetRolePermissions"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof bulkSetRolePermissions>>,
+    { data: BodyType<RolePermissionBulkInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return bulkSetRolePermissions(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type BulkSetRolePermissionsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof bulkSetRolePermissions>>
+>;
+export type BulkSetRolePermissionsMutationBody =
+  BodyType<RolePermissionBulkInput>;
+export type BulkSetRolePermissionsMutationError = ErrorType<void>;
+
+/**
+ * @summary Atomically set multiple role permissions (owner only)
+ */
+export const useBulkSetRolePermissions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof bulkSetRolePermissions>>,
+    TError,
+    { data: BodyType<RolePermissionBulkInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof bulkSetRolePermissions>>,
+  TError,
+  { data: BodyType<RolePermissionBulkInput> },
+  TContext
+> => {
+  return useMutation(getBulkSetRolePermissionsMutationOptions(options));
+};
+
 export const getListUserPermissionsUrl = (
   params: ListUserPermissionsParams,
 ) => {
@@ -7075,6 +7241,96 @@ export const useSetUserPermission = <
   TContext
 > => {
   return useMutation(getSetUserPermissionMutationOptions(options));
+};
+
+export const getBulkSetUserPermissionsUrl = () => {
+  return `/api/user-permissions/bulk`;
+};
+
+/**
+ * @summary Atomically set or remove multiple user permission overrides (owner only)
+ */
+export const bulkSetUserPermissions = async (
+  userPermissionBulkInput: UserPermissionBulkInput,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<UserPermissionBulkResult[]> => {
+  return customFetch<UserPermissionBulkResult[]>(
+    getBulkSetUserPermissionsUrl(),
+    {
+      ...options,
+      method: "PUT",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(userPermissionBulkInput),
+    },
+  );
+};
+
+export const getBulkSetUserPermissionsMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof bulkSetUserPermissions>>,
+    TError,
+    { data: BodyType<UserPermissionBulkInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof bulkSetUserPermissions>>,
+  TError,
+  { data: BodyType<UserPermissionBulkInput> },
+  TContext
+> => {
+  const mutationKey = ["bulkSetUserPermissions"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof bulkSetUserPermissions>>,
+    { data: BodyType<UserPermissionBulkInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return bulkSetUserPermissions(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type BulkSetUserPermissionsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof bulkSetUserPermissions>>
+>;
+export type BulkSetUserPermissionsMutationBody =
+  BodyType<UserPermissionBulkInput>;
+export type BulkSetUserPermissionsMutationError = ErrorType<void>;
+
+/**
+ * @summary Atomically set or remove multiple user permission overrides (owner only)
+ */
+export const useBulkSetUserPermissions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof bulkSetUserPermissions>>,
+    TError,
+    { data: BodyType<UserPermissionBulkInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof bulkSetUserPermissions>>,
+  TError,
+  { data: BodyType<UserPermissionBulkInput> },
+  TContext
+> => {
+  return useMutation(getBulkSetUserPermissionsMutationOptions(options));
 };
 
 export const getListPermissionPrincipalsUrl = () => {
