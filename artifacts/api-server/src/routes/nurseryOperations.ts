@@ -733,7 +733,22 @@ router.get("/reports/export", async (req, res): Promise<void> => {
   }
 
   try {
-  const doc = new PDFDocument({ size: "A4", margin: 48, info: { Title: `${nurseryName} - تقرير الحضانة` } });
+  const doc = new PDFDocument({
+    size: "A4",
+    margin: 48,
+    info: {
+      Title: `${nurseryName} - تقرير الحضانة`,
+      Subject: nurseryName,
+      Keywords: [
+        `domain=${filters.domain}`,
+        `dateFrom=${filters.dateFrom ?? "all"}`,
+        `dateTo=${filters.dateTo ?? "all"}`,
+        `branchId=${filters.branchId ?? "all"}`,
+        `classroomId=${filters.classroomId ?? "all"}`,
+        `status=${filters.status ?? "all"}`,
+      ].join(";"),
+    },
+  });
   const chunks: Buffer[] = [];
   doc.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
   const completed = new Promise<Buffer>((resolve, reject) => {

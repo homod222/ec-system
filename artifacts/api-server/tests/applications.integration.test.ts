@@ -1,5 +1,6 @@
 import { createHmac, randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import ExcelJS from "exceljs";
 import request from "supertest";
 
 const storageObjects = vi.hoisted(() => new Map<string, { size: number; contentType: string; bytes: Uint8Array }>());
@@ -250,6 +251,30 @@ function staffOtpDigest(staffId: number, otp: string) {
   return createHmac("sha256", process.env.SESSION_SECRET!)
     .update(`${staffId}:${otp}`)
     .digest("hex");
+}
+
+function readPdfInfoValue(bytes: Uint8Array, key: string) {
+  const source = Buffer.from(bytes).toString("latin1");
+  const infoReference = /\/Info\s+(\d+)\s+0\s+R/.exec(source);
+  expect(infoReference, "PDF trailer must reference an Info dictionary").not.toBeNull();
+  const infoObject = new RegExp(`${infoReference![1]}\\s+0\\s+obj\\s*([\\s\\S]*?)\\s*endobj`).exec(source);
+  expect(infoObject, "PDF Info dictionary must be readable").not.toBeNull();
+  const valueReference = new RegExp(`/${key}\\s+(\\d+)\\s+0\\s+R`).exec(infoObject![1]);
+  expect(valueReference, `PDF Info dictionary must contain ${key}`).not.toBeNull();
+  const valueObject = new RegExp(`${valueReference![1]}\\s+0\\s+obj\\s*([\\s\\S]*?)\\s*endobj`).exec(source);
+  expect(valueObject, `PDF ${key} object must be readable`).not.toBeNull();
+  const value = valueObject![1].trim();
+  if (value.startsWith("<") && value.endsWith(">")) {
+    const raw = Buffer.from(value.slice(1, -1), "hex");
+    if (raw[0] === 0xfe && raw[1] === 0xff) {
+      const codeUnits = [];
+      for (let index = 2; index < raw.length; index += 2) codeUnits.push(raw.readUInt16BE(index));
+      return String.fromCharCode(...codeUnits);
+    }
+    return raw.toString("utf8");
+  }
+  expect(value.startsWith("(") && value.endsWith(")"), `PDF ${key} must be a string`).toBe(true);
+  return value.slice(1, -1).replace(/\\([\\()])/g, "$1");
 }
 
 async function createStaffAccountFixture(input: {
@@ -653,6 +678,168 @@ describe.sequential("application registration regression flow", () => {
       .set(auth(ownerA, "teacher")).expect(403);
     await request(app).get("/api/finance/summary").set(auth(ownerA)).expect(200)
       .expect(({ body }) => expect(body.collectedThisMonth).toBeGreaterThanOrEqual(50));
+  });
+
+  it("validates exported report contents, filter boundaries, and tenant isolation", async () => {
+    const suffix = randomUUID();
+    const nurseryName = `Integration Nursery ${suffix}`;
+    const branchId = 710001;
+    const otherBranchId = 710002;
+    const classroom = await pool.query<{ id: number }>(
+      `insert into classrooms (owner_id, name, level, teacher_name, capacity, branch_id)
+       values ($1, $2, 'integration', 'teacher', 10, $3) returning id`,
+      [ownerA, `Report classroom ${suffix}`, branchId],
+    );
+    const otherClassroom = await pool.query<{ id: number }>(
+      `insert into classrooms (owner_id, name, level, teacher_name, capacity, branch_id)
+       values ($1, $2, 'integration', 'teacher', 10, $3) returning id`,
+      [ownerA, `Other report classroom ${suffix}`, otherBranchId],
+    );
+    await pool.query(
+      `insert into nursery_settings (owner_id, nursery_name, updated_by)
+       values ($1, $2, $1)
+       on conflict (owner_id) do update set nursery_name = excluded.nursery_name, updated_by = excluded.updated_by`,
+      [ownerA, nurseryName],
+    );
+
+    const operationalToken = `operational-included-${suffix}`;
+    const academicToken = `academic-included-${suffix}`;
+    const excludedTokens = [
+      `wrong-date-${suffix}`,
+      `wrong-branch-${suffix}`,
+      `wrong-classroom-${suffix}`,
+      `wrong-status-${suffix}`,
+      `other-tenant-${suffix}`,
+    ];
+    await pool.query(
+      `insert into operational_records
+         (owner_id, resource, subject_id, branch_id, title, status, occurred_on, amount, data, created_by)
+       values
+         ($1, 'setting', $2, $3, $4, 'active', '2026-02-01', 11, '{}', $1),
+         ($1, 'curriculum', $2, $3, $5, 'active', '2026-02-28', 12, '{}', $1),
+         ($1, 'setting', $2, $3, $6, 'active', '2026-01-31', 13, '{}', $1),
+         ($1, 'setting', $2, $7, $8, 'active', '2026-02-10', 14, '{}', $1),
+         ($1, 'setting', $9, $3, $10, 'active', '2026-02-10', 15, '{}', $1),
+         ($1, 'setting', $2, $3, $11, 'inactive', '2026-02-10', 16, '{}', $1),
+         ($12, 'setting', $2, $3, $13, 'active', '2026-02-10', 17, '{}', $12)`,
+      [
+        ownerA, classroom.rows[0].id, branchId, operationalToken, academicToken,
+        excludedTokens[0], otherBranchId, excludedTokens[1], otherClassroom.rows[0].id,
+        excludedTokens[2], excludedTokens[3], ownerB, excludedTokens[4],
+      ],
+    );
+
+    const guardian = await pool.query<{ id: number }>(
+      `insert into guardians (owner_id, name, phone) values ($1, $2, $3) returning id`,
+      [ownerA, `Report guardian ${suffix}`, `report-${suffix}`],
+    );
+    const child = await pool.query<{ id: number }>(
+      `insert into children
+         (owner_id, first_name, last_name, gender, birth_date, guardian_id, classroom_id, level)
+       values ($1, 'Report', $2, 'female', '2021-01-01', $3, $4, 'integration') returning id`,
+      [ownerA, suffix, guardian.rows[0].id, classroom.rows[0].id],
+    );
+    const financialToken = `FIN-INCLUDED-${suffix}`;
+    const invoice = await pool.query<{ id: number }>(
+      `insert into invoices
+         (owner_id, invoice_number, guardian_id, child_id, amount, due_date, status)
+       values ($1, $2, $3, $4, 21, '2026-12-31', 'paid') returning id`,
+      [ownerA, financialToken, guardian.rows[0].id, child.rows[0].id],
+    );
+    await pool.query(
+      `insert into invoice_payments
+         (owner_id, invoice_id, method, amount, status, reference, recorded_by, created_at)
+       values
+         ($1, $2, 'cash', 21, 'completed', 'boundary-start', $1, '2026-02-01T00:00:00.000Z'),
+         ($1, $2, 'cash', 22, 'completed', 'boundary-end', $1, '2026-02-28T23:59:59.999Z'),
+         ($1, $2, 'cash', 23, 'completed', 'outside-date', $1, '2026-03-01T00:00:00.000Z')`,
+      [ownerA, invoice.rows[0].id],
+    );
+
+    const commonFilters = `branchId=${branchId}&classroomId=${classroom.rows[0].id}&status=active`
+      + "&dateFrom=2026-02-01&dateTo=2026-02-28";
+    const operational = await request(app)
+      .get(`/api/reports?domain=operational&${commonFilters}`)
+      .set(auth(ownerA))
+      .expect(200);
+    expect(operational.body).toMatchObject({ count: 2, totalAmount: 23 });
+    expect(operational.body.records.map((record: { title: string }) => record.title).sort())
+      .toEqual([academicToken, operationalToken].sort());
+
+    const academic = await request(app)
+      .get(`/api/reports?domain=academic&${commonFilters}`)
+      .set(auth(ownerA))
+      .expect(200);
+    expect(academic.body).toMatchObject({ count: 1, totalAmount: 12 });
+    expect(academic.body.records.map((record: { title: string }) => record.title)).toEqual([academicToken]);
+
+    const financialFilters = `branchId=${branchId}&classroomId=${classroom.rows[0].id}&status=paid`
+      + "&dateFrom=2026-02-01&dateTo=2026-02-28";
+    const financial = await request(app)
+      .get(`/api/reports?domain=financial&${financialFilters}`)
+      .set(auth(ownerA))
+      .expect(200);
+    expect(financial.body).toMatchObject({ count: 2, totalAmount: 43, byStatus: { payment: 2 } });
+    expect(financial.body.records.every((record: { title: string }) => record.title === financialToken)).toBe(true);
+    expect(financial.body.records.map((record: { amount: number }) => record.amount).sort()).toEqual([21, 22]);
+
+    const workbookResponse = await request(app)
+      .get(`/api/reports/export?domain=financial&format=xlsx&${financialFilters}`)
+      .set(auth(ownerA))
+      .buffer(true)
+      .parse((response, callback) => {
+        const chunks: Buffer[] = [];
+        response.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+        response.on("end", () => callback(null, Buffer.concat(chunks)));
+      })
+      .expect(200);
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(workbookResponse.body);
+    expect(workbook.worksheets.map(({ name }) => name)).toEqual(["ملخص التقرير", "البيانات"]);
+    const summary = workbook.getWorksheet("ملخص التقرير")!;
+    expect(summary.getCell("A1").value).toBe(nurseryName);
+    expect(summary.getColumn(1).values).toEqual(expect.arrayContaining([
+      "نوع التقرير", "الفترة", "الفرع", "الفصل", "الحالة", "إجمالي السجلات", "الإجمالي المالي",
+    ]));
+    expect(summary.getRow(3).values).toEqual([undefined, "نوع التقرير", "financial"]);
+    expect(summary.getRow(4).values).toEqual([undefined, "الفترة", "2026-02-01 — 2026-02-28"]);
+    expect(summary.getRow(5).values).toEqual([undefined, "الفرع", String(branchId)]);
+    expect(summary.getRow(6).values).toEqual([undefined, "الفصل", String(classroom.rows[0].id)]);
+    expect(summary.getRow(7).values).toEqual([undefined, "الحالة", "paid"]);
+    expect(summary.getRow(9).values).toEqual([undefined, "إجمالي السجلات", 2]);
+    expect(summary.getRow(10).values).toEqual([undefined, "الإجمالي المالي", 43]);
+    const records = workbook.getWorksheet("البيانات")!;
+    expect(records.getRow(1).values).toEqual([
+      undefined, "المعرف", "النوع", "العنوان", "الحالة", "التاريخ", "المبلغ",
+      "معرف الفرع", "معرف الطفل", "معرف الفصل",
+    ]);
+    expect(records.rowCount).toBe(3);
+    expect([records.getCell("B2").value, records.getCell("B3").value]).toEqual(["revenue", "revenue"]);
+    expect([records.getCell("C2").value, records.getCell("C3").value]).toEqual([financialToken, financialToken]);
+    expect([records.getCell("F2").value, records.getCell("F3").value].sort()).toEqual([21, 22]);
+    expect([records.getCell("G2").value, records.getCell("G3").value]).toEqual([branchId, branchId]);
+    expect([records.getCell("I2").value, records.getCell("I3").value])
+      .toEqual([classroom.rows[0].id, classroom.rows[0].id]);
+
+    const pdfResponse = await request(app)
+      .get(`/api/reports/export?domain=academic&format=pdf&${commonFilters}`)
+      .set(auth(ownerA))
+      .buffer(true)
+      .parse((response, callback) => {
+        const chunks: Buffer[] = [];
+        response.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+        response.on("end", () => callback(null, Buffer.concat(chunks)));
+      })
+      .expect(200);
+    expect(readPdfInfoValue(pdfResponse.body, "Subject")).toBe(nurseryName);
+    expect(readPdfInfoValue(pdfResponse.body, "Keywords")).toBe([
+      "domain=academic",
+      "dateFrom=2026-02-01",
+      "dateTo=2026-02-28",
+      `branchId=${branchId}`,
+      `classroomId=${classroom.rows[0].id}`,
+      "status=active",
+    ].join(";"));
   });
 
   it("enforces operational role permissions and owner isolation", async () => {
