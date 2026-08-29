@@ -141,7 +141,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
     <div className="app-noise min-h-[100dvh] bg-background selection:bg-primary/20" dir={dir}>
       <aside className={`fixed inset-y-0 z-40 flex w-[280px] flex-col bg-sidebar px-5 py-6 text-sidebar-foreground shadow-2xl transition-transform duration-300 lg:translate-x-0 ${dir === 'rtl' ? `right-0 ${open ? 'translate-x-0' : 'translate-x-full'}` : `left-0 ${open ? 'translate-x-0' : '-translate-x-full'}`}`}>
         <div className="mb-10 flex items-center justify-between px-2">
-          <img src={`${basePath}/ec-official-logo.png`} alt={t('admin.brand')} className="h-28 w-28 rounded-xl bg-white/95 p-1 object-contain shadow-sm" />
+          <img src={`${basePath}/ec-official-logo-v2.png`} alt={t('admin.brand')} className="h-28 w-36 rounded-xl bg-white/95 p-1 object-contain shadow-sm" />
           <button data-testid="button-close-menu" className="rounded-xl p-2 text-sidebar-foreground/60 hover:bg-sidebar-accent lg:hidden" onClick={() => setOpen(false)}><X size={20} /></button>
         </div>
         
@@ -196,7 +196,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
                <p className="text-[11px] font-medium text-muted-foreground">{t('admin.seniorManagement')}</p>
             </div>
              <img
-               src={`${basePath}/ec-official-logo.png`}
+               src={`${basePath}/ec-official-logo-v2.png`}
                alt={t('admin.brand')}
                data-testid="image-admin-mobile-logo"
                className="h-11 w-11 rounded-lg bg-white object-contain p-1 shadow-sm sm:hidden"
@@ -615,7 +615,7 @@ function AuthPage({ type }: { type: 'in' | 'up' }) {
       <div className="absolute inset-0 bg-background/90 backdrop-blur-3xl" />
       <div className={`absolute top-4 z-10 sm:top-8 ${dir === 'rtl' ? 'right-5 sm:right-8' : 'left-5 sm:left-8'}`}>
         <Link href="/" data-testid="link-auth-logo" className="block hover:opacity-80 transition-opacity">
-          <img src={`${basePath}/ec-official-logo.png`} alt={t('admin.brand')} className="mx-auto h-20 w-20 object-contain drop-shadow-sm sm:h-28 sm:w-28" />
+          <img src={`${basePath}/ec-official-logo-v2.png`} alt={t('admin.brand')} className="mx-auto h-20 w-24 object-contain drop-shadow-sm sm:h-28 sm:w-36" />
         </Link>
       </div>
       <div className={`absolute top-8 z-10 ${dir === 'rtl' ? 'left-8' : 'right-8'}`}>
@@ -687,7 +687,7 @@ const appearance = {
   options: { 
     logoPlacement: 'inside' as const, 
     logoLinkUrl: basePath || '/', 
-    logoImageUrl: `${window.location.origin}${basePath}/ec-official-logo.png` 
+    logoImageUrl: `${window.location.origin}${basePath}/ec-official-logo-v2.png`
   }, 
   variables: { 
     colorPrimary: '#165032', 

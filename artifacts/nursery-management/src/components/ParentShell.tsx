@@ -46,7 +46,7 @@ export function ParentShell({ children }: { children: React.ReactNode }) {
             <Menu size={20} />
           </button>
         </div>
-        <img src={`${basePath}/ec-official-logo.png`} alt={t('admin.brand')} className="h-9 w-9 object-contain" />
+        <img src={`${basePath}/ec-official-logo-v2.png`} alt={t('admin.brand')} className="h-9 w-11 object-contain" />
          <div className="flex items-center gap-2">
            <LanguageSwitcher className="max-sm:[&>svg]:hidden max-sm:[&>button]:px-1.5" />
            <Link href="/parent/messages" data-testid="link-parent-notifications" aria-label={t('parent.openMessages')} className="relative rounded-xl border border-[#165032]/10 bg-white p-2.5 text-[#165032]/70">
@@ -58,7 +58,7 @@ export function ParentShell({ children }: { children: React.ReactNode }) {
       {/* Sidebar */}
       <aside className={`fixed inset-y-0 z-40 flex w-[280px] flex-col bg-white px-6 py-8 shadow-[0_0_40px_rgba(22,80,50,0.05)] transition-transform duration-300 lg:translate-x-0 ${dir === 'rtl' ? `right-0 ${open ? 'translate-x-0' : 'translate-x-full'}` : `left-0 ${open ? 'translate-x-0' : '-translate-x-full'}`}`}>
         <div className="mb-10 flex items-center justify-between">
-          <img src={`${basePath}/ec-official-logo.png`} alt={t('admin.brand')} className="h-11 w-11 object-contain" />
+          <img src={`${basePath}/ec-official-logo-v2.png`} alt={t('admin.brand')} className="h-11 w-14 object-contain" />
           <button data-testid="button-close-parent-menu" className="rounded-xl p-2 text-[#165032]/60 hover:bg-[#FDFBF7] lg:hidden" onClick={() => setOpen(false)}>
             <X size={20} />
           </button>
