@@ -2,6 +2,27 @@ import { describe, expect, it } from "vitest";
 import { defaultAllowed, validRolePermission } from "../routes/nurseryOperations";
 
 describe("nursery operations default authorization", () => {
+  const sensitiveCrudMatrix = [
+    { role: "admin", resource: "expense", allowed: [true, true, true, true] },
+    { role: "supervisor", resource: "expense", allowed: [true, true, true, true] },
+    { role: "teacher", resource: "curriculum", allowed: [true, true, true, false] },
+    { role: "accountant", resource: "expense", allowed: [true, true, true, false] },
+    { role: "receptionist", resource: "branch", allowed: [true, false, false, false] },
+    { role: "parent", resource: "expense", allowed: [false, false, false, false] },
+  ] as const;
+
+  it.each(sensitiveCrudMatrix)(
+    "keeps the sensitive CRUD baseline stable for $role",
+    ({ role, resource, allowed }) => {
+      expect([
+        defaultAllowed(role, `read:${resource}`),
+        defaultAllowed(role, `write:${resource}`),
+        defaultAllowed(role, `write:${resource}`),
+        defaultAllowed(role, `delete:${resource}`),
+      ]).toEqual(allowed);
+    },
+  );
+
   it("keeps administrative roles fully operational", () => {
     expect(defaultAllowed("owner", "read:permissions")).toBe(true);
     expect(defaultAllowed("admin", "write:payroll")).toBe(true);

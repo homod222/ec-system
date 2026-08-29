@@ -994,6 +994,99 @@ describe.sequential("application registration regression flow", () => {
       .expect(404);
   });
 
+  it("enforces the six-role sensitive CRUD matrix, audits success, and leaves denied writes unchanged", async () => {
+    const matrix = [
+      { role: "admin", resource: "expense", allowed: { read: true, create: true, update: true, delete: true } },
+      { role: "supervisor", resource: "expense", allowed: { read: true, create: true, update: true, delete: true } },
+      { role: "teacher", resource: "curriculum", allowed: { read: true, create: true, update: true, delete: false } },
+      { role: "accountant", resource: "expense", allowed: { read: true, create: true, update: true, delete: false } },
+      { role: "receptionist", resource: "branch", allowed: { read: true, create: false, update: false, delete: false } },
+      { role: "parent", resource: "expense", allowed: { read: false, create: false, update: false, delete: false } },
+    ] as const;
+
+    for (const { role, resource, allowed } of matrix) {
+      const token = `${role}-${randomUUID()}`;
+      const seeded = await request(app)
+        .post(`/api/operations/${resource}`)
+        .set(auth(ownerA))
+        .send({ title: `seed-${token}`, status: "active", data: { token } })
+        .expect(201);
+      const seededId = seeded.body.id as number;
+
+      await request(app)
+        .get(`/api/operations/${resource}`)
+        .set(auth(ownerA, role))
+        .expect(allowed.read ? 200 : 403);
+
+      const beforeCreate = await pool.query<{ count: string }>(
+        "select count(*) from operational_records where owner_id = $1 and resource = $2",
+        [ownerA, resource],
+      );
+      const createResponse = await request(app)
+        .post(`/api/operations/${resource}`)
+        .set(auth(ownerA, role))
+        .send({ title: `created-${token}`, status: "active", data: { token } })
+        .expect(allowed.create ? 201 : 403);
+      const afterCreate = await pool.query<{ count: string }>(
+        "select count(*) from operational_records where owner_id = $1 and resource = $2",
+        [ownerA, resource],
+      );
+      expect(Number(afterCreate.rows[0].count) - Number(beforeCreate.rows[0].count))
+        .toBe(allowed.create ? 1 : 0);
+
+      const updateTitle = `updated-${token}`;
+      await request(app)
+        .patch(`/api/operations/${resource}/${seededId}`)
+        .set(auth(ownerA, role))
+        .send({ title: updateTitle })
+        .expect(allowed.update ? 200 : 403);
+      const afterUpdate = await pool.query<{ title: string }>(
+        "select title from operational_records where id = $1 and owner_id = $2",
+        [seededId, ownerA],
+      );
+      expect(afterUpdate.rows[0].title).toBe(allowed.update ? updateTitle : `seed-${token}`);
+
+      await request(app)
+        .delete(`/api/operations/${resource}/${seededId}`)
+        .set(auth(ownerA, role))
+        .expect(allowed.delete ? 204 : 403);
+      const afterDelete = await pool.query<{ count: string }>(
+        "select count(*) from operational_records where id = $1 and owner_id = $2",
+        [seededId, ownerA],
+      );
+      expect(Number(afterDelete.rows[0].count)).toBe(allowed.delete ? 0 : 1);
+
+      const actorAudit = await pool.query<{
+        operation: string;
+        actor_role: string;
+        before: Record<string, unknown> | null;
+        after: Record<string, unknown> | null;
+      }>(
+        `select operation, actor_role, before, after
+           from audit_logs
+          where owner_id = $1 and actor_id = $1 and actor_role = $2
+            and (
+              entity_id = $3
+              or entity_id = $4
+            )
+          order by id`,
+        [ownerA, role, String(seededId), allowed.create ? String(createResponse.body.id) : ""],
+      );
+      const expectedOperations = [
+        ...(allowed.create ? ["create"] : []),
+        ...(allowed.update ? ["update"] : []),
+        ...(allowed.delete ? ["delete"] : []),
+      ];
+      expect(actorAudit.rows.map(({ operation }) => operation)).toEqual(expectedOperations);
+      expect(actorAudit.rows.every(({ actor_role }) => actor_role === role)).toBe(true);
+      for (const row of actorAudit.rows) {
+        if (row.operation === "create") expect(row).toMatchObject({ before: null, after: expect.any(Object) });
+        if (row.operation === "update") expect(row).toMatchObject({ before: expect.any(Object), after: expect.any(Object) });
+        if (row.operation === "delete") expect(row).toMatchObject({ before: expect.any(Object), after: null });
+      }
+    }
+  });
+
   it("creates, edits, uploads, reviews and accepts an application, then renews the active child", async () => {
     const created = await request(app)
       .post("/api/applications")
