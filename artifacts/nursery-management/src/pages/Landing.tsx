@@ -219,13 +219,10 @@ export function Landing() {
             <p className="mt-6 text-lg leading-relaxed text-primary-foreground/80">
                {t('landing.heroBody')}
             </p>
-            <div className="mt-10 flex flex-wrap gap-4">
-              <Link href="/sign-up" className="inline-flex items-center gap-2 rounded-2xl bg-accent px-6 py-4 text-base font-bold text-accent-foreground shadow-lg hover:-translate-y-1 hover:shadow-xl transition-all">
+             <div className="mt-10">
+               <Link href="/sign-up" className="inline-flex items-center gap-2 rounded-2xl bg-accent px-8 py-4 text-base font-bold text-accent-foreground shadow-lg transition-all hover:-translate-y-1 hover:shadow-xl">
                  {t('landing.start')} <ArrowUpRight size={18} />
               </Link>
-              <a href="#about" className="inline-flex items-center gap-2 rounded-2xl border-2 border-primary-foreground/20 px-6 py-4 text-base font-bold text-primary-foreground hover:bg-primary-foreground/10 transition-all">
-                 {t('landing.discover')}
-              </a>
             </div>
             
             <div className="mt-12 flex items-center gap-6 text-primary-foreground/70">
