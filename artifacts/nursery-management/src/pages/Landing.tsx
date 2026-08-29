@@ -191,7 +191,7 @@ export function Landing() {
       {/* Navbar */}
       <nav className="mx-auto flex max-w-7xl items-center justify-between px-5 py-6 sm:px-8">
         <div className="flex items-center gap-3">
-           <img src={`${basePath}/ec-official-logo.png`} alt={t('landing.logoAlt')} className="h-auto w-40 object-contain sm:w-48" />
+           <img src={`${basePath}/ec-official-logo.png`} alt={t('landing.logoAlt')} className="h-24 w-24 object-contain sm:h-28 sm:w-28" />
         </div>
         <div className="hidden items-center gap-8 text-sm font-bold text-muted-foreground md:flex">
            <a href="#about" className="hover:text-primary transition-colors">{t('landing.about')}</a>
@@ -342,7 +342,7 @@ export function Landing() {
 
       {/* Footer */}
       <footer className="border-t border-border bg-white px-5 py-12 sm:px-8 text-center text-sm font-medium text-muted-foreground">
-         <img src={`${basePath}/ec-official-logo.png`} alt={t('landing.logoAlt')} className="mx-auto mb-6 h-auto w-48 object-contain sm:w-56" />
+         <img src={`${basePath}/ec-official-logo.png`} alt={t('landing.logoAlt')} className="mx-auto mb-6 h-32 w-32 object-contain sm:h-36 sm:w-36" />
          <p>{t('landing.copyright', { year: new Date().getFullYear() })}</p>
       </footer>
     </div>

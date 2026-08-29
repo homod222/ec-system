@@ -139,7 +139,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
     <div className="app-noise min-h-[100dvh] bg-background selection:bg-primary/20" dir={dir}>
       <aside className={`fixed inset-y-0 z-40 flex w-[280px] flex-col bg-sidebar px-5 py-6 text-sidebar-foreground shadow-2xl transition-transform duration-300 lg:translate-x-0 ${dir === 'rtl' ? `right-0 ${open ? 'translate-x-0' : 'translate-x-full'}` : `left-0 ${open ? 'translate-x-0' : '-translate-x-full'}`}`}>
         <div className="mb-10 flex items-center justify-between px-2">
-          <img src={`${basePath}/ec-official-logo.png`} alt={t('admin.brand')} className="h-auto w-44 rounded-xl bg-white/95 px-2 py-1 object-contain shadow-sm" />
+          <img src={`${basePath}/ec-official-logo.png`} alt={t('admin.brand')} className="h-28 w-28 rounded-xl bg-white/95 p-1 object-contain shadow-sm" />
           <button data-testid="button-close-menu" className="rounded-xl p-2 text-sidebar-foreground/60 hover:bg-sidebar-accent lg:hidden" onClick={() => setOpen(false)}><X size={20} /></button>
         </div>
         
@@ -197,7 +197,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
                src={`${basePath}/ec-official-logo.png`}
                alt={t('admin.brand')}
                data-testid="image-admin-mobile-logo"
-               className="h-11 w-14 rounded-lg bg-white object-contain p-1 shadow-sm sm:hidden"
+               className="h-11 w-11 rounded-lg bg-white object-contain p-1 shadow-sm sm:hidden"
              />
              <Avatar name={user?.firstName || t('admin.defaultUser')} className="hidden bg-primary text-primary-foreground sm:inline-flex" />
           </div>
@@ -611,9 +611,9 @@ function AuthPage({ type }: { type: 'in' | 'up' }) {
   return (
     <div dir={dir} className="grid min-h-[100dvh] place-items-center bg-ec-pattern px-4 py-12 relative overflow-hidden">
       <div className="absolute inset-0 bg-background/90 backdrop-blur-3xl" />
-      <div className={`absolute top-8 z-10 ${dir === 'rtl' ? 'right-8' : 'left-8'}`}>
+      <div className={`absolute top-4 z-10 sm:top-8 ${dir === 'rtl' ? 'right-5 sm:right-8' : 'left-5 sm:left-8'}`}>
         <Link href="/" data-testid="link-auth-logo" className="block hover:opacity-80 transition-opacity">
-          <img src={`${basePath}/ec-official-logo.png`} alt={t('admin.brand')} className="h-auto w-52 object-contain drop-shadow-sm" />
+          <img src={`${basePath}/ec-official-logo.png`} alt={t('admin.brand')} className="mx-auto h-20 w-20 object-contain drop-shadow-sm sm:h-28 sm:w-28" />
         </Link>
       </div>
       <div className={`absolute top-8 z-10 ${dir === 'rtl' ? 'left-8' : 'right-8'}`}>
