@@ -1174,7 +1174,7 @@ router.patch("/staff/:id/account", async (req, res): Promise<void> => {
         role: null,
         accountStatus: "unlinked",
       },
-      privateMetadata: { ...(user.privateMetadata as Claims), staffId: null },
+      privateMetadata: { ...(user.privateMetadata as Claims), staffId: member.id },
     });
     const [updated] = await db.update(staffTable).set({
       clerkUserId: null,

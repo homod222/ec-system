@@ -263,10 +263,28 @@ export const resolveNurseryContext: RequestHandler = async (req, res, next) => {
     const fallback = nurseryContext(req);
     const user = await clerkClient.users.getUser(fallback.actorId);
     const metadata = user.publicMetadata as Claims;
+    const privateMetadataValue = user.privateMetadata;
+    const privateMetadata = privateMetadataValue && typeof privateMetadataValue === "object"
+      ? privateMetadataValue as Claims
+      : {};
     const metadataRole = metadata.role;
     const metadataOwnerId = metadata.ownerId ?? metadata.owner_id;
-    const managedStaffAccount = typeof metadata.accountStatus === "string";
-    const activeManagedStaffAccount = metadata.accountStatus === "active";
+    const staffId = privateMetadata.staffId;
+    const hasStaffMarker = (typeof staffId === "number" && Number.isInteger(staffId))
+      || (typeof staffId === "string" && staffId.length > 0);
+    const managedAccountStatuses = new Set([
+      "active", "disabled", "unlinked", "pending_verification", "provisioning", "issuing_otp",
+    ]);
+    const hasTenantStaffMetadata = typeof metadataOwnerId === "string"
+      && metadataOwnerId.length > 0
+      && metadataOwnerId !== fallback.actorId
+      && typeof metadata.accountStatus === "string"
+      && managedAccountStatuses.has(metadata.accountStatus);
+    const managedStaffAccount = hasStaffMarker || hasTenantStaffMetadata;
+    const activeManagedStaffAccount = managedStaffAccount
+      && metadata.accountStatus === "active"
+      && typeof metadataOwnerId === "string"
+      && metadataOwnerId.length > 0;
     res.locals.operationsContext = {
       actorId: fallback.actorId,
       ownerId: managedStaffAccount

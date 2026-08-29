@@ -14,6 +14,7 @@ const stripeSessionCreate = vi.hoisted(() => vi.fn(async (input: Record<string, 
 const clerkFixtures = vi.hoisted(() => ({
   ownerA: `integration-owner-a-${Math.random().toString(36).slice(2)}`,
   ownerB: `integration-owner-b-${Math.random().toString(36).slice(2)}`,
+  legacyOwner: `integration-legacy-owner-${Math.random().toString(36).slice(2)}`,
   staffA: `integration-staff-a-${Math.random().toString(36).slice(2)}`,
   staffB: `integration-staff-b-${Math.random().toString(36).slice(2)}`,
 }));
@@ -48,6 +49,14 @@ vi.mock("@clerk/express", () => ({
         const users = {
           [clerkFixtures.ownerA]: { id: clerkFixtures.ownerA, publicMetadata: { role: "owner" }, firstName: "Owner", lastName: "A", emailAddresses: [] },
           [clerkFixtures.ownerB]: { id: clerkFixtures.ownerB, publicMetadata: { role: "owner" }, firstName: "Owner", lastName: "B", emailAddresses: [] },
+          [clerkFixtures.legacyOwner]: {
+            id: clerkFixtures.legacyOwner,
+            publicMetadata: { role: "owner", accountStatus: "legacy" },
+            privateMetadata: {},
+            firstName: "Legacy",
+            lastName: "Owner",
+            emailAddresses: [],
+          },
           [clerkFixtures.staffA]: { id: clerkFixtures.staffA, publicMetadata: { ownerId: clerkFixtures.ownerA, role: "Teacher" }, firstName: "Tenant", lastName: "A", emailAddresses: [] },
           [clerkFixtures.staffB]: { id: clerkFixtures.staffB, publicMetadata: { owner_id: clerkFixtures.ownerB, role: "Manager" }, emailAddresses: [{ emailAddress: "tenant-b@example.test" }] },
         };
@@ -516,6 +525,13 @@ describe.sequential("application registration regression flow", () => {
       status: "unlinked",
     }).expect(200);
     await request(app).get("/api/dashboard/summary").set(auth(userId, "teacher")).expect(403);
+  });
+
+  it("does not disable an owner because unrelated legacy metadata contains accountStatus", async () => {
+    await request(app)
+      .get("/api/permission-catalog")
+      .set(auth(clerkFixtures.legacyOwner))
+      .expect(200);
   });
 
   it("limits permission principals and overrides to the authenticated tenant", async () => {
