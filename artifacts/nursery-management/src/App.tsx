@@ -193,7 +193,13 @@ export function Shell({ children }: { children: React.ReactNode }) {
                <p data-testid="text-user-name" className="text-sm font-bold text-foreground">{user?.firstName || t('admin.defaultUser')}</p>
                <p className="text-[11px] font-medium text-muted-foreground">{t('admin.seniorManagement')}</p>
             </div>
-             <Avatar name={user?.firstName || t('admin.defaultUser')} className="bg-primary text-primary-foreground" />
+             <img
+               src={`${basePath}/ec-official-logo.png`}
+               alt={t('admin.brand')}
+               data-testid="image-admin-mobile-logo"
+               className="h-11 w-14 rounded-lg bg-white object-contain p-1 shadow-sm sm:hidden"
+             />
+             <Avatar name={user?.firstName || t('admin.defaultUser')} className="hidden bg-primary text-primary-foreground sm:inline-flex" />
           </div>
         </header>
         <div className="mx-auto max-w-[1500px] p-5 sm:p-8 lg:p-10 animate-rise">{children}</div>
