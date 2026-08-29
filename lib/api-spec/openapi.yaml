@@ -476,6 +476,78 @@ paths:
         "201":
           description: Created staff member
           content: { application/json: { schema: { $ref: "#/components/schemas/StaffMember" } } }
+  /staff/{id}/account:
+    post:
+      operationId: startStaffAccount
+      tags: [staff]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/StaffAccountActionInput" } } }
+      responses:
+        "200":
+          description: OTP sent or an existing Clerk user linked
+          content: { application/json: { schema: { $ref: "#/components/schemas/StaffAccountResult" } } }
+        "400": { description: Invalid account action or missing email/phone }
+        "403": { description: Owner access required }
+        "404": { description: Staff member or Clerk user not found }
+        "409": { description: Clerk user belongs to another nursery or staff record is already linked }
+        "503": { description: WhatsApp delivery is unavailable }
+    patch:
+      operationId: updateStaffAccount
+      tags: [staff]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/StaffAccountUpdateInput" } } }
+      responses:
+        "200":
+          description: Updated staff account
+          content: { application/json: { schema: { $ref: "#/components/schemas/StaffAccountResult" } } }
+        "403": { description: Owner access required }
+        "404": { description: Staff member or linked account not found }
+        "409": { description: Account lifecycle conflict }
+  /staff/{id}/account/verify:
+    post:
+      operationId: verifyStaffAccount
+      tags: [staff]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/StaffAccountVerifyInput" } } }
+      responses:
+        "200":
+          description: Clerk account created after WhatsApp verification
+          content: { application/json: { schema: { $ref: "#/components/schemas/StaffAccountResult" } } }
+        "400": { description: Invalid or expired OTP/password }
+        "404": { description: Account verification not found }
+        "409": { description: Verification is already being completed }
+        "429": { description: Too many verification attempts }
+  /staff/password-reset/request:
+    post:
+      operationId: requestStaffPasswordReset
+      security: []
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/StaffPasswordResetRequest" } } }
+      responses:
+        "200":
+          description: Generic acknowledgement regardless of account existence
+          content: { application/json: { schema: { $ref: "#/components/schemas/StaffPasswordResetRequestResult" } } }
+        "429": { description: Too many requests }
+  /staff/password-reset/complete:
+    post:
+      operationId: completeStaffPasswordReset
+      security: []
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/StaffPasswordResetComplete" } } }
+      responses:
+        "200":
+          description: Password updated
+          content: { application/json: { schema: { $ref: "#/components/schemas/StaffPasswordResetCompleteResult" } } }
+        "400": { description: Invalid or expired reset link or password }
+        "429": { description: Too many requests }
   /attendance/today:
     get:
       operationId: getTodayAttendance
@@ -1676,7 +1748,7 @@ components:
         schedule: { type: object, additionalProperties: true }
     StaffMember:
       type: object
-      required: [id, name, role, phone, status, attendanceRate]
+      required: [id, name, role, phone, status, attendanceRate, accountStatus]
       properties:
         id: { type: number }
         name: { type: string }
@@ -1687,6 +1759,13 @@ components:
           enum: [present, absent, leave]
         attendanceRate: { type: number }
         avatarUrl: { type: ["string", "null"] }
+        email: { type: ["string", "null"] }
+        jobTitle: { type: ["string", "null"] }
+        hireDate: { type: ["string", "null"] }
+        clerkUserId: { type: ["string", "null"] }
+        accountStatus:
+          type: string
+          enum: [unlinked, pending_verification, active, disabled]
     StaffInput:
       type: object
       required: [name, role, phone, status]
@@ -1698,6 +1777,63 @@ components:
         email: { type: ["string", "null"] }
         jobTitle: { type: ["string", "null"] }
         hireDate: { type: ["string", "null"] }
+    StaffAccountActionInput:
+      type: object
+      required: [mode, role]
+      properties:
+        mode: { type: string, enum: [invite, link] }
+        clerkUserId: { type: ["string", "null"], minLength: 1 }
+        role:
+          type: string
+          enum: [admin, manager, supervisor, teacher, accountant, receptionist]
+    StaffAccountVerifyInput:
+      type: object
+      required: [otp, password]
+      properties:
+        otp: { type: string, minLength: 6, maxLength: 6 }
+        password: { type: string, minLength: 8, maxLength: 128 }
+    StaffAccountUpdateInput:
+      type: object
+      minProperties: 1
+      properties:
+        role:
+          type: string
+          enum: [admin, manager, supervisor, teacher, accountant, receptionist]
+        status: { type: string, enum: [active, disabled, unlinked] }
+    StaffAccountResult:
+      type: object
+      required: [staffId, accountStatus, role, setupComplete]
+      properties:
+        staffId: { type: number }
+        clerkUserId: { type: ["string", "null"] }
+        accountStatus:
+          type: string
+          enum: [unlinked, pending_verification, active, disabled]
+        role: { type: string }
+        setupComplete: { type: boolean }
+    StaffPasswordResetRequest:
+      type: object
+      required: [email]
+      properties:
+        email: { type: string, format: email }
+    StaffPasswordResetRequestResult:
+      type: object
+      required: [accepted]
+      properties:
+        accepted: { type: boolean }
+    StaffPasswordResetComplete:
+      type: object
+      required: [staffId, token, password]
+      properties:
+        staffId: { type: integer, minimum: 1 }
+        token: { type: string, minLength: 32, maxLength: 256 }
+        password: { type: string, minLength: 8, maxLength: 128 }
+    StaffPasswordResetCompleteResult:
+      type: object
+      required: [updated]
+      properties:
+        updated: { type: boolean }
+        otpSent: { type: boolean }
     AttendanceRecord:
       type: object
       required: [id, childId, childName, date, status, checkIn, checkOut, source]

@@ -16,7 +16,16 @@ export async function runApplicationMigrations(): Promise<void> {
       ADD COLUMN IF NOT EXISTS email text,
       ADD COLUMN IF NOT EXISTS hire_date date,
       ADD COLUMN IF NOT EXISTS salary numeric(12,2),
-      ADD COLUMN IF NOT EXISTS profile jsonb NOT NULL DEFAULT '{}'::jsonb;
+      ADD COLUMN IF NOT EXISTS profile jsonb NOT NULL DEFAULT '{}'::jsonb,
+      ADD COLUMN IF NOT EXISTS clerk_user_id text,
+      ADD COLUMN IF NOT EXISTS account_status text NOT NULL DEFAULT 'unlinked',
+      ADD COLUMN IF NOT EXISTS otp_hash text,
+      ADD COLUMN IF NOT EXISTS otp_expires_at timestamptz,
+      ADD COLUMN IF NOT EXISTS otp_attempts integer NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS password_reset_hash text,
+      ADD COLUMN IF NOT EXISTS password_reset_expires_at timestamptz,
+      ADD COLUMN IF NOT EXISTS password_reset_requested_at timestamptz;
+    CREATE UNIQUE INDEX IF NOT EXISTS staff_clerk_user_id_unique ON staff (clerk_user_id);
     ALTER TABLE attendance
       ADD COLUMN IF NOT EXISTS departure_type text,
       ADD COLUMN IF NOT EXISTS source text NOT NULL DEFAULT 'manual',

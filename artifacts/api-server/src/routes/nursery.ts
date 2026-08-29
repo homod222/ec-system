@@ -1,3 +1,4 @@
+import { createHmac, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 import { Router, type IRouter, type RequestHandler } from "express";
 import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { clerkClient, getAuth } from "@clerk/express";
@@ -6,6 +7,8 @@ import {
   CreateChildResponse,
   CreateClassroomBody,
   CreateClassroomResponse,
+  CreateStaffBody,
+  CreateStaffResponse,
   CreateInvoiceCheckoutSessionBody,
   CreateInvoiceCheckoutSessionParams,
   CreateInvoiceCheckoutSessionResponse,
@@ -47,14 +50,32 @@ import {
   SendInvoiceReminderResponse,
   SendParentMessageBody,
   SendParentMessageResponse,
+  StartStaffAccountBody,
+  StartStaffAccountParams,
+  StartStaffAccountResponse,
+  UpdateStaffAccountBody,
+  UpdateStaffAccountParams,
+  UpdateStaffAccountResponse,
   UpdateChildBody,
   UpdateChildParams,
   UpdateChildResponse,
+  UpdateStaffBody,
+  UpdateStaffParams,
+  UpdateStaffResponse,
+  DeleteStaffParams,
+  VerifyStaffAccountBody,
+  VerifyStaffAccountParams,
+  VerifyStaffAccountResponse,
+  RequestStaffPasswordResetBody,
+  RequestStaffPasswordResetResponse,
+  CompleteStaffPasswordResetBody,
+  CompleteStaffPasswordResetResponse,
 } from "@workspace/api-zod";
 import {
   activitiesTable,
   announcementsTable,
   attendanceTable,
+  auditLogsTable,
   childrenTable,
   classroomsTable,
   childActivitiesTable,
@@ -77,7 +98,7 @@ import {
   PaymentProviderConfigurationError,
 } from "../lib/financePayments";
 import { InvoiceNotPayableError, requireCheckoutPayable } from "../lib/invoiceLedger";
-import { sendDueReminder } from "../lib/notifications";
+import { sendDueReminder, sendWhatsAppText } from "../lib/notifications";
 import {
   auditNurseryOperation,
   configurableOperations,
@@ -88,6 +109,310 @@ import {
 
 const router: IRouter = Router();
 const today = () => new Date().toISOString().slice(0, 10);
+const staffAccountRoles = new Set(["admin", "manager", "supervisor", "teacher", "accountant", "receptionist"]);
+const otpLifetimeMs = 10 * 60 * 1000;
+const maxOtpAttempts = 5;
+const verificationRate = new Map<string, { count: number; resetAt: number }>();
+
+function staffResponse(member: typeof staffTable.$inferSelect) {
+  return {
+    ...member,
+    accountStatus: ["provisioning", "issuing_otp"].includes(member.accountStatus) ? "pending_verification" : member.accountStatus,
+    attendanceRate: member.status === "present" ? 100 : member.status === "leave" ? 85 : 70,
+  };
+}
+
+function staffAuditSnapshot(member: typeof staffTable.$inferSelect) {
+  const {
+    otpHash: _otpHash,
+    otpExpiresAt: _otpExpiresAt,
+    otpAttempts: _otpAttempts,
+    passwordResetHash: _passwordResetHash,
+    passwordResetExpiresAt: _passwordResetExpiresAt,
+    passwordResetRequestedAt: _passwordResetRequestedAt,
+    ownerId: _ownerId,
+    ...safe
+  } = member;
+  return safe as Record<string, unknown>;
+}
+
+function otpDigest(staffId: number, otp: string) {
+  const secret = process.env.SESSION_SECRET;
+  if (!secret) throw new Error("SESSION_SECRET is required for staff OTP verification");
+  return createHmac("sha256", secret).update(`${staffId}:${otp}`).digest("hex");
+}
+
+function otpMatches(staffId: number, otp: string, expected: string) {
+  const actual = Buffer.from(otpDigest(staffId, otp), "hex");
+  const stored = Buffer.from(expected, "hex");
+  return actual.length === stored.length && timingSafeEqual(actual, stored);
+}
+
+function passwordResetDigest(staffId: number, token: string) {
+  const secret = process.env.SESSION_SECRET;
+  if (!secret) throw new Error("SESSION_SECRET is required for staff password reset");
+  return createHmac("sha256", secret).update(`password-reset:${staffId}:${token}`).digest("hex");
+}
+
+function passwordResetMatches(staffId: number, token: string, expected: string) {
+  const actual = Buffer.from(passwordResetDigest(staffId, token), "hex");
+  const stored = Buffer.from(expected, "hex");
+  return actual.length === stored.length && timingSafeEqual(actual, stored);
+}
+
+function canonicalAppOrigin() {
+  const configured = process.env.PUBLIC_APP_URL?.trim().replace(/\/+$/, "");
+  if (configured) {
+    const url = new URL(configured);
+    if (url.protocol !== "https:" && url.hostname !== "localhost") {
+      throw new Error("PUBLIC_APP_URL must use HTTPS");
+    }
+    return url.origin;
+  }
+  if (process.env.NODE_ENV !== "production" && process.env.REPLIT_DEV_DOMAIN) {
+    return `https://${process.env.REPLIT_DEV_DOMAIN}`;
+  }
+  return null;
+}
+
+function accountResult(member: typeof staffTable.$inferSelect, otpSent = false) {
+  const accountStatus = ["provisioning", "issuing_otp"].includes(member.accountStatus) ? "pending_verification" : member.accountStatus;
+  return {
+    staffId: member.id,
+    clerkUserId: member.clerkUserId,
+    accountStatus,
+    role: member.role.toLowerCase(),
+    setupComplete: accountStatus === "active",
+    otpSent,
+  };
+}
+
+function ownerAccountManager(req: Parameters<typeof nurseryContext>[0]) {
+  return ["owner", "superadmin"].includes(nurseryContext(req).role);
+}
+
+router.post("/staff/:id/account/verify", async (req, res, next): Promise<void> => {
+  const now = Date.now();
+  const rateKey = req.ip || req.socket.remoteAddress || "unknown";
+  const rate = verificationRate.get(rateKey);
+  if (rate && rate.resetAt > now && rate.count >= 20) {
+    res.status(429).json({ error: "Too many verification requests; try again later" });
+    return;
+  }
+  verificationRate.set(rateKey, rate && rate.resetAt > now
+    ? { ...rate, count: rate.count + 1 }
+    : { count: 1, resetAt: now + 60_000 });
+  const params = VerifyStaffAccountParams.safeParse(req.params);
+  const body = VerifyStaffAccountBody.safeParse(req.body);
+  if (!params.success || !body.success) {
+    res.status(400).json({ error: params.success ? body.error?.message : params.error.message });
+    return;
+  }
+  try {
+    const [member] = await db.select().from(staffTable).where(eq(staffTable.id, params.data.id)).limit(1);
+    if (!member || member.accountStatus !== "pending_verification" || !member.otpHash || !member.otpExpiresAt) {
+      res.status(404).json({ error: "Account verification not found" });
+      return;
+    }
+    if (member.otpAttempts >= maxOtpAttempts) {
+      res.status(429).json({ error: "Too many verification attempts; request a new code" });
+      return;
+    }
+    if (member.otpExpiresAt.getTime() <= Date.now()) {
+      res.status(400).json({ error: "Verification code expired" });
+      return;
+    }
+    if (!otpMatches(member.id, body.data.otp, member.otpHash)) {
+      const [attempted] = await db.update(staffTable)
+        .set({ otpAttempts: sql`${staffTable.otpAttempts} + 1` })
+        .where(and(
+          eq(staffTable.id, member.id),
+          eq(staffTable.accountStatus, "pending_verification"),
+          sql`${staffTable.otpAttempts} < ${maxOtpAttempts}`,
+        )).returning({ otpAttempts: staffTable.otpAttempts });
+      if (!attempted || attempted.otpAttempts >= maxOtpAttempts) {
+        res.status(429).json({ error: "Too many verification attempts; request a new code" });
+        return;
+      }
+      res.status(400).json({ error: "Invalid verification code" });
+      return;
+    }
+    if (!member.email || !staffAccountRoles.has(member.role.toLowerCase())) {
+      res.status(400).json({ error: "A valid email and supported account role are required" });
+      return;
+    }
+    const [claimed] = await db.update(staffTable).set({
+      accountStatus: "provisioning",
+      otpHash: null,
+    }).where(and(
+      eq(staffTable.id, member.id),
+      eq(staffTable.accountStatus, "pending_verification"),
+      eq(staffTable.otpHash, member.otpHash),
+    )).returning();
+    if (!claimed) {
+      res.status(409).json({ error: "Verification is already being completed" });
+      return;
+    }
+    const names = member.name.trim().split(/\s+/);
+    let created;
+    try {
+      created = await clerkClient.users.createUser({
+        emailAddress: [member.email.trim().toLowerCase()],
+        password: body.data.password,
+        firstName: names[0] || member.name,
+        lastName: names.slice(1).join(" ") || undefined,
+        publicMetadata: { ownerId: member.ownerId, role: member.role.toLowerCase(), accountStatus: "active" },
+        privateMetadata: { staffId: member.id },
+      });
+    } catch (error) {
+      await db.update(staffTable).set({
+        accountStatus: "pending_verification",
+        otpHash: member.otpHash,
+      }).where(and(eq(staffTable.id, member.id), eq(staffTable.accountStatus, "provisioning")));
+      throw error;
+    }
+    const [updated] = await db.update(staffTable).set({
+      clerkUserId: created.id,
+      accountStatus: "active",
+      otpHash: null,
+      otpExpiresAt: null,
+      otpAttempts: 0,
+    }).where(eq(staffTable.id, member.id)).returning();
+    await db.insert(auditLogsTable).values({
+      ownerId: member.ownerId,
+      actorId: created.id,
+      actorRole: member.role.toLowerCase(),
+      operation: "verify-staff-account",
+      entityType: "staff-account",
+      entityId: String(member.id),
+      before: { accountStatus: member.accountStatus, clerkUserId: null },
+      after: { accountStatus: updated.accountStatus, clerkUserId: updated.clerkUserId, role: updated.role },
+    });
+    res.json(VerifyStaffAccountResponse.parse(accountResult(updated)));
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/staff/password-reset/request", async (req, res, next): Promise<void> => {
+  const requestStartedAt = Date.now();
+  const body = RequestStaffPasswordResetBody.safeParse(req.body);
+  if (!body.success) {
+    res.status(400).json({ error: body.error.message });
+    return;
+  }
+  const now = Date.now();
+  const rateKey = `password-reset:${req.ip || req.socket.remoteAddress || "unknown"}`;
+  const rate = verificationRate.get(rateKey);
+  if (rate && rate.resetAt > now && rate.count >= 5) {
+    res.status(429).json({ error: "Too many password reset requests; try again later" });
+    return;
+  }
+  verificationRate.set(rateKey, rate && rate.resetAt > now
+    ? { ...rate, count: rate.count + 1 }
+    : { count: 1, resetAt: now + 10 * 60_000 });
+  try {
+    let pendingDispatch: { staffId: number; phone: string; tokenHash: string; message: string } | null = null;
+    const [member] = await db.select().from(staffTable).where(and(
+      sql`lower(${staffTable.email}) = ${body.data.email.trim().toLowerCase()}`,
+      eq(staffTable.accountStatus, "active"),
+      sql`${staffTable.clerkUserId} is not null`,
+    )).limit(1);
+    const appOrigin = canonicalAppOrigin();
+    if (member?.clerkUserId && appOrigin) {
+      const token = randomBytes(32).toString("base64url");
+      const tokenHash = passwordResetDigest(member.id, token);
+      const [reserved] = await db.update(staffTable).set({
+        passwordResetHash: tokenHash,
+        passwordResetExpiresAt: new Date(now + 10 * 60_000),
+        passwordResetRequestedAt: new Date(now),
+      }).where(and(
+        eq(staffTable.id, member.id),
+        eq(staffTable.clerkUserId, member.clerkUserId),
+        sql`(${staffTable.passwordResetRequestedAt} is null or ${staffTable.passwordResetRequestedAt} < ${new Date(now - 60_000)})`,
+      )).returning({ id: staffTable.id });
+      if (reserved) {
+        const link = `${appOrigin}/staff-password-reset?staffId=${member.id}&token=${encodeURIComponent(token)}`;
+        pendingDispatch = {
+          staffId: member.id,
+          phone: member.phone,
+          tokenHash,
+          message: `لإعادة تعيين كلمة المرور في نظام الحضانة افتحي الرابط التالي:\n${link}\nالرابط صالح لمدة 10 دقائق ولمرة واحدة فقط.`,
+        };
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, Math.max(0, 100 - (Date.now() - requestStartedAt))));
+    res.json(RequestStaffPasswordResetResponse.parse({ accepted: true }));
+    if (pendingDispatch) {
+      const sendResult = await sendWhatsAppText(pendingDispatch.phone, pendingDispatch.message);
+      if (!sendResult.ok) {
+        await db.update(staffTable).set({ passwordResetHash: null, passwordResetExpiresAt: null })
+          .where(and(
+            eq(staffTable.id, pendingDispatch.staffId),
+            eq(staffTable.passwordResetHash, pendingDispatch.tokenHash),
+          ));
+      }
+    }
+  } catch (error) {
+    if (!res.headersSent) next(error);
+    else req.log.error({ err: error }, "Password reset WhatsApp dispatch failed after acknowledgement");
+  }
+});
+
+router.post("/staff/password-reset/complete", async (req, res, next): Promise<void> => {
+  const now = Date.now();
+  const rateKey = `password-reset-complete:${req.ip || req.socket.remoteAddress || "unknown"}`;
+  const rate = verificationRate.get(rateKey);
+  if (rate && rate.resetAt > now && rate.count >= 20) {
+    res.status(429).json({ error: "Too many password reset attempts; try again later" });
+    return;
+  }
+  verificationRate.set(rateKey, rate && rate.resetAt > now
+    ? { ...rate, count: rate.count + 1 }
+    : { count: 1, resetAt: now + 60_000 });
+  const body = CompleteStaffPasswordResetBody.safeParse(req.body);
+  if (!body.success) {
+    res.status(400).json({ error: body.error.message });
+    return;
+  }
+  try {
+    const [member] = await db.select().from(staffTable).where(eq(staffTable.id, body.data.staffId)).limit(1);
+    if (!member?.clerkUserId || member.accountStatus !== "active" || !member.passwordResetHash ||
+        !member.passwordResetExpiresAt || member.passwordResetExpiresAt.getTime() <= Date.now() ||
+        !passwordResetMatches(member.id, body.data.token, member.passwordResetHash)) {
+      res.status(400).json({ error: "Invalid or expired password reset link" });
+      return;
+    }
+    const [claimed] = await db.update(staffTable).set({
+      passwordResetHash: null,
+      passwordResetExpiresAt: null,
+    }).where(and(
+      eq(staffTable.id, member.id),
+      eq(staffTable.passwordResetHash, member.passwordResetHash),
+      eq(staffTable.accountStatus, "active"),
+    )).returning({ id: staffTable.id });
+    if (!claimed) {
+      res.status(400).json({ error: "Invalid or already used password reset link" });
+      return;
+    }
+    // The token remains consumed on every Clerk outcome. A network error can be
+    // ambiguous after Clerk commits, so restoring it would violate single use.
+    await clerkClient.users.updateUser(member.clerkUserId, { password: body.data.password });
+    await db.insert(auditLogsTable).values({
+      ownerId: member.ownerId,
+      actorId: member.clerkUserId,
+      actorRole: member.role,
+      operation: "reset-staff-password",
+      entityType: "staff-account",
+      entityId: String(member.id),
+      before: { passwordResetRequested: true },
+      after: { passwordResetCompleted: true },
+    });
+    res.json(CompleteStaffPasswordResetResponse.parse({ updated: true }));
+  } catch (error) {
+    next(error);
+  }
+});
 
 const requireAuth: RequestHandler = (req, res, next) => {
   const auth = getAuth(req);
@@ -296,7 +621,10 @@ router.use(async (req, res, next) => {
           : req.method === "DELETE" ? "delete:children" : "write:children";
       }
       if (req.path === "/classrooms") return req.method === "GET" ? "read:classroom" : "write:classroom";
-      if (req.path === "/staff") return "read:staff-profile";
+      if (req.path.startsWith("/staff")) {
+        return req.method === "GET" ? "read:staff-profile"
+          : req.method === "DELETE" ? "delete:staff-profile" : "write:staff-profile";
+      }
       if (req.path.startsWith("/attendance")) return req.method === "GET" ? "read:attendance" : "write:attendance";
       if (req.path === "/finance/summary") return "read:report-financial";
       if (req.path === "/invoices") return "read:invoice";
@@ -601,10 +929,280 @@ router.get("/classrooms", async (req, res): Promise<void> => {
 
 router.get("/staff", async (req, res): Promise<void> => {
   const staff = await db.select().from(staffTable).where(eq(staffTable.ownerId, nurseryContext(req).ownerId));
-  res.json(ListStaffResponse.parse(staff.map((member) => ({
-    ...member,
-    attendanceRate: member.status === "present" ? 100 : member.status === "leave" ? 85 : 70,
-  }))));
+  res.json(ListStaffResponse.parse(staff.map(staffResponse)));
+});
+
+router.post("/staff", async (req, res): Promise<void> => {
+  const body = CreateStaffBody.safeParse(req.body);
+  if (!body.success) {
+    res.status(400).json({ error: body.error.message });
+    return;
+  }
+  const { ownerId } = nurseryContext(req);
+  const [created] = await db.insert(staffTable).values({ ownerId, ...body.data }).returning();
+  await auditNurseryOperation(req, "create-staff", "staff", String(created.id), null, {
+    id: created.id, name: created.name, role: created.role, accountStatus: created.accountStatus,
+  });
+  res.status(201).json(CreateStaffResponse.parse(staffResponse(created)));
+});
+
+router.patch("/staff/:id", async (req, res): Promise<void> => {
+  const params = UpdateStaffParams.safeParse(req.params);
+  const body = UpdateStaffBody.safeParse(req.body);
+  if (!params.success || !body.success) {
+    res.status(400).json({ error: params.success ? body.error?.message : params.error.message });
+    return;
+  }
+  const { ownerId } = nurseryContext(req);
+  const [existing] = await db.select().from(staffTable).where(and(
+    eq(staffTable.id, params.data.id), eq(staffTable.ownerId, ownerId),
+  )).limit(1);
+  if (!existing) {
+    res.status(404).json({ error: "Staff member not found" });
+    return;
+  }
+  if (existing.clerkUserId && body.data.role !== existing.role) {
+    res.status(409).json({ error: "Use staff account management to change a linked account role" });
+    return;
+  }
+  const [updated] = await db.update(staffTable).set(body.data).where(and(
+    eq(staffTable.id, existing.id), eq(staffTable.ownerId, ownerId),
+  )).returning();
+  await auditNurseryOperation(req, "update-staff", "staff", String(updated.id),
+    staffAuditSnapshot(existing), staffAuditSnapshot(updated));
+  res.json(UpdateStaffResponse.parse(staffResponse(updated)));
+});
+
+router.delete("/staff/:id", async (req, res): Promise<void> => {
+  const params = DeleteStaffParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  const { ownerId } = nurseryContext(req);
+  const [existing] = await db.select().from(staffTable).where(and(
+    eq(staffTable.id, params.data.id), eq(staffTable.ownerId, ownerId),
+  )).limit(1);
+  if (!existing) {
+    res.status(404).json({ error: "Staff member not found" });
+    return;
+  }
+  if (existing.clerkUserId) {
+    res.status(409).json({ error: "Disable and unlink the staff account before deleting the record" });
+    return;
+  }
+  await db.delete(staffTable).where(and(eq(staffTable.id, existing.id), eq(staffTable.ownerId, ownerId)));
+  await auditNurseryOperation(req, "delete-staff", "staff", String(existing.id),
+    staffAuditSnapshot(existing), null);
+  res.sendStatus(204);
+});
+
+router.post("/staff/:id/account", async (req, res): Promise<void> => {
+  const params = StartStaffAccountParams.safeParse(req.params);
+  const body = StartStaffAccountBody.safeParse(req.body);
+  if (!params.success || !body.success) {
+    res.status(400).json({ error: params.success ? body.error?.message : params.error.message });
+    return;
+  }
+  if (!ownerAccountManager(req)) {
+    res.status(403).json({ error: "Owner access required" });
+    return;
+  }
+  const { ownerId } = nurseryContext(req);
+  const [member] = await db.select().from(staffTable).where(and(
+    eq(staffTable.id, params.data.id), eq(staffTable.ownerId, ownerId),
+  )).limit(1);
+  if (!member) {
+    res.status(404).json({ error: "Staff member not found" });
+    return;
+  }
+  const role = body.data.role.toLowerCase();
+  if (!staffAccountRoles.has(role)) {
+    res.status(400).json({ error: "Select a supported account role first" });
+    return;
+  }
+  if (body.data.mode === "link") {
+    if (member.clerkUserId || !["unlinked", "pending_verification"].includes(member.accountStatus)) {
+      res.status(409).json({ error: "Unlink the current account before linking another user" });
+      return;
+    }
+    if (!body.data.clerkUserId) {
+      res.status(400).json({ error: "clerkUserId is required for linking" });
+      return;
+    }
+    const user = await clerkClient.users.getUser(body.data.clerkUserId);
+    const metadata = user.publicMetadata as Claims;
+    const existingOwnerId = metadata.ownerId ?? metadata.owner_id;
+    if (existingOwnerId && existingOwnerId !== ownerId) {
+      res.status(409).json({ error: "Clerk user already belongs to another nursery" });
+      return;
+    }
+    const [linkedElsewhere] = await db.select({ id: staffTable.id }).from(staffTable)
+      .where(eq(staffTable.clerkUserId, user.id)).limit(1);
+    if (linkedElsewhere && linkedElsewhere.id !== member.id) {
+      res.status(409).json({ error: "Clerk user is already linked to another staff record" });
+      return;
+    }
+    let [reserved] = await db.update(staffTable).set({
+      clerkUserId: user.id, role, accountStatus: "provisioning", otpHash: null, otpExpiresAt: null, otpAttempts: 0,
+    }).where(and(
+      eq(staffTable.id, member.id),
+      eq(staffTable.ownerId, ownerId),
+      sql`${staffTable.clerkUserId} is null`,
+      inArray(staffTable.accountStatus, ["unlinked", "pending_verification"]),
+    )).returning();
+    if (!reserved) {
+      res.status(409).json({ error: "Staff account state changed; reload and try again" });
+      return;
+    }
+    try {
+      await clerkClient.users.updateUserMetadata(user.id, {
+        publicMetadata: { ...metadata, ownerId, role, accountStatus: "active" },
+        privateMetadata: { ...(user.privateMetadata as Claims), staffId: member.id },
+      });
+    } catch (error) {
+      await db.update(staffTable).set({ clerkUserId: null, accountStatus: member.accountStatus })
+        .where(and(
+          eq(staffTable.id, member.id),
+          eq(staffTable.clerkUserId, user.id),
+          eq(staffTable.accountStatus, "provisioning"),
+        ));
+      throw error;
+    }
+    [reserved] = await db.update(staffTable).set({ accountStatus: "active" })
+      .where(and(
+        eq(staffTable.id, member.id),
+        eq(staffTable.clerkUserId, user.id),
+        eq(staffTable.accountStatus, "provisioning"),
+      )).returning();
+    if (!reserved) {
+      res.status(409).json({ error: "Unable to finalize staff account link" });
+      return;
+    }
+    const updated = reserved;
+    await auditNurseryOperation(req, "link-staff-account", "staff-account", String(member.id),
+      { clerkUserId: member.clerkUserId, accountStatus: member.accountStatus },
+      { clerkUserId: updated.clerkUserId, accountStatus: updated.accountStatus, role });
+    res.json(StartStaffAccountResponse.parse(accountResult(updated)));
+    return;
+  }
+  if (!member.email) {
+    res.status(400).json({ error: "Staff email is required before sending verification" });
+    return;
+  }
+  if (member.clerkUserId || !["unlinked", "pending_verification"].includes(member.accountStatus)) {
+    res.status(409).json({ error: "Unlink the current account before issuing a new invitation" });
+    return;
+  }
+  const [reservedInvitation] = await db.update(staffTable).set({
+    accountStatus: "issuing_otp",
+  }).where(and(
+    eq(staffTable.id, member.id),
+    eq(staffTable.ownerId, ownerId),
+    sql`${staffTable.clerkUserId} is null`,
+    inArray(staffTable.accountStatus, ["unlinked", "pending_verification"]),
+  )).returning({ id: staffTable.id });
+  if (!reservedInvitation) {
+    res.status(409).json({ error: "Staff account state changed; reload and try again" });
+    return;
+  }
+  const otp = randomInt(100000, 1000000).toString();
+  const sendResult = await sendWhatsAppText(
+    member.phone,
+    `رمز التحقق لإنشاء حسابك في نظام الحضانة هو: ${otp}\nرقم الموظفة: ${member.id}\nافتحي صفحة تفعيل حساب الموظفة في النظام. الرمز صالح لمدة 10 دقائق. لا تشاركيه مع أي شخص.`,
+  );
+  if (!sendResult.ok) {
+    await db.update(staffTable).set({
+      accountStatus: member.accountStatus,
+      role: member.role,
+      otpHash: member.otpHash,
+      otpExpiresAt: member.otpExpiresAt,
+      otpAttempts: member.otpAttempts,
+    }).where(and(eq(staffTable.id, member.id), eq(staffTable.accountStatus, "issuing_otp")));
+    res.status(503).json({ error: sendResult.error });
+    return;
+  }
+  const [updated] = await db.update(staffTable).set({
+    role,
+    accountStatus: "pending_verification",
+    otpHash: otpDigest(member.id, otp),
+    otpExpiresAt: new Date(Date.now() + otpLifetimeMs),
+    otpAttempts: 0,
+  }).where(and(
+    eq(staffTable.id, member.id),
+    eq(staffTable.ownerId, ownerId),
+    sql`${staffTable.clerkUserId} is null`,
+    eq(staffTable.accountStatus, "issuing_otp"),
+  )).returning();
+  if (!updated) {
+    res.status(409).json({ error: "Unable to finalize staff invitation" });
+    return;
+  }
+  await auditNurseryOperation(req, "send-staff-account-otp", "staff-account", String(member.id),
+    { accountStatus: member.accountStatus }, { accountStatus: updated.accountStatus, expiresInMinutes: 10 });
+  res.json(StartStaffAccountResponse.parse(accountResult(updated, true)));
+});
+
+router.patch("/staff/:id/account", async (req, res): Promise<void> => {
+  const params = UpdateStaffAccountParams.safeParse(req.params);
+  const body = UpdateStaffAccountBody.safeParse(req.body);
+  if (!params.success || !body.success) {
+    res.status(400).json({ error: params.success ? body.error?.message : params.error.message });
+    return;
+  }
+  if (!ownerAccountManager(req)) {
+    res.status(403).json({ error: "Owner access required" });
+    return;
+  }
+  const { ownerId } = nurseryContext(req);
+  const [member] = await db.select().from(staffTable).where(and(
+    eq(staffTable.id, params.data.id), eq(staffTable.ownerId, ownerId),
+  )).limit(1);
+  if (!member || !member.clerkUserId) {
+    res.status(404).json({ error: "Linked staff account not found" });
+    return;
+  }
+  const role = body.data.role ?? member.role.toLowerCase();
+  const accountStatus = body.data.status ?? member.accountStatus;
+  const user = await clerkClient.users.getUser(member.clerkUserId);
+  if (accountStatus === "unlinked") {
+    await clerkClient.users.updateUserMetadata(user.id, {
+      publicMetadata: {
+        ...(user.publicMetadata as Claims),
+        ownerId: null,
+        owner_id: null,
+        role: null,
+        accountStatus: "unlinked",
+      },
+      privateMetadata: { ...(user.privateMetadata as Claims), staffId: null },
+    });
+    const [updated] = await db.update(staffTable).set({
+      clerkUserId: null,
+      accountStatus: "unlinked",
+      otpHash: null,
+      otpExpiresAt: null,
+      otpAttempts: 0,
+    }).where(eq(staffTable.id, member.id)).returning();
+    await auditNurseryOperation(req, "unlink-staff-account", "staff-account", String(member.id),
+      { role: member.role, accountStatus: member.accountStatus, clerkUserId: member.clerkUserId },
+      { role: updated.role, accountStatus: updated.accountStatus, clerkUserId: null });
+    res.json(UpdateStaffAccountResponse.parse(accountResult(updated)));
+    return;
+  }
+  await clerkClient.users.updateUserMetadata(user.id, {
+    publicMetadata: { ...(user.publicMetadata as Claims), ownerId, role, accountStatus },
+  });
+  const [updated] = await db.update(staffTable).set({
+    role,
+    accountStatus,
+    otpHash: null,
+    otpExpiresAt: null,
+    otpAttempts: 0,
+  }).where(eq(staffTable.id, member.id)).returning();
+  await auditNurseryOperation(req, "update-staff-account", "staff-account", String(member.id),
+    { role: member.role, accountStatus: member.accountStatus },
+    { role: updated.role, accountStatus: updated.accountStatus });
+  res.json(UpdateStaffAccountResponse.parse(accountResult(updated)));
 });
 
 router.get("/attendance/today", async (req, res): Promise<void> => {

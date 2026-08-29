@@ -68,6 +68,14 @@ export const staffTable = pgTable("staff", {
   status: text("status").notNull().default("present"),
   avatarUrl: text("avatar_url"),
   profile: jsonb("profile").$type<Record<string, unknown>>().notNull().default({}),
+  clerkUserId: text("clerk_user_id").unique(),
+  accountStatus: text("account_status").notNull().default("unlinked"),
+  otpHash: text("otp_hash"),
+  otpExpiresAt: timestamp("otp_expires_at", { withTimezone: true }),
+  otpAttempts: integer("otp_attempts").notNull().default(0),
+  passwordResetHash: text("password_reset_hash"),
+  passwordResetExpiresAt: timestamp("password_reset_expires_at", { withTimezone: true }),
+  passwordResetRequestedAt: timestamp("password_reset_requested_at", { withTimezone: true }),
 });
 
 export const attendanceTable = pgTable("attendance", {

@@ -622,6 +622,16 @@ export const ListStaffResponseItem = zod.object({
   status: zod.enum(["present", "absent", "leave"]),
   attendanceRate: zod.number(),
   avatarUrl: zod.string().nullish(),
+  email: zod.string().nullish(),
+  jobTitle: zod.string().nullish(),
+  hireDate: zod.string().nullish(),
+  clerkUserId: zod.string().nullish(),
+  accountStatus: zod.enum([
+    "unlinked",
+    "pending_verification",
+    "active",
+    "disabled",
+  ]),
 });
 export const ListStaffResponse = zod.array(ListStaffResponseItem);
 export const createStaffBodyPhoneMin = 5;
@@ -642,6 +652,125 @@ export const CreateStaffResponse = zod.object({
   status: zod.enum(["present", "absent", "leave"]),
   attendanceRate: zod.number(),
   avatarUrl: zod.string().nullish(),
+  email: zod.string().nullish(),
+  jobTitle: zod.string().nullish(),
+  hireDate: zod.string().nullish(),
+  clerkUserId: zod.string().nullish(),
+  accountStatus: zod.enum([
+    "unlinked",
+    "pending_verification",
+    "active",
+    "disabled",
+  ]),
+});
+export const StartStaffAccountParams = zod.object({
+  id: zod.coerce.number(),
+});
+export const StartStaffAccountBody = zod.object({
+  mode: zod.enum(["invite", "link"]),
+  clerkUserId: zod.string().min(1).nullish(),
+  role: zod.enum([
+    "admin",
+    "manager",
+    "supervisor",
+    "teacher",
+    "accountant",
+    "receptionist",
+  ]),
+});
+export const StartStaffAccountResponse = zod.object({
+  staffId: zod.number(),
+  clerkUserId: zod.string().nullish(),
+  accountStatus: zod.enum([
+    "unlinked",
+    "pending_verification",
+    "active",
+    "disabled",
+  ]),
+  role: zod.string(),
+  setupComplete: zod.boolean(),
+});
+export const UpdateStaffAccountParams = zod.object({
+  id: zod.coerce.number(),
+});
+export const UpdateStaffAccountBody = zod.object({
+  role: zod
+    .enum([
+      "admin",
+      "manager",
+      "supervisor",
+      "teacher",
+      "accountant",
+      "receptionist",
+    ])
+    .optional(),
+  status: zod.enum(["active", "disabled", "unlinked"]).optional(),
+});
+export const UpdateStaffAccountResponse = zod.object({
+  staffId: zod.number(),
+  clerkUserId: zod.string().nullish(),
+  accountStatus: zod.enum([
+    "unlinked",
+    "pending_verification",
+    "active",
+    "disabled",
+  ]),
+  role: zod.string(),
+  setupComplete: zod.boolean(),
+});
+export const VerifyStaffAccountParams = zod.object({
+  id: zod.coerce.number(),
+});
+export const verifyStaffAccountBodyOtpMin = 6;
+export const verifyStaffAccountBodyOtpMax = 6;
+export const verifyStaffAccountBodyPasswordMin = 8;
+export const verifyStaffAccountBodyPasswordMax = 128;
+export const VerifyStaffAccountBody = zod.object({
+  otp: zod
+    .string()
+    .min(verifyStaffAccountBodyOtpMin)
+    .max(verifyStaffAccountBodyOtpMax),
+  password: zod
+    .string()
+    .min(verifyStaffAccountBodyPasswordMin)
+    .max(verifyStaffAccountBodyPasswordMax),
+});
+export const VerifyStaffAccountResponse = zod.object({
+  staffId: zod.number(),
+  clerkUserId: zod.string().nullish(),
+  accountStatus: zod.enum([
+    "unlinked",
+    "pending_verification",
+    "active",
+    "disabled",
+  ]),
+  role: zod.string(),
+  setupComplete: zod.boolean(),
+});
+export const RequestStaffPasswordResetBody = zod.object({
+  email: zod.string().email(),
+});
+export const RequestStaffPasswordResetResponse = zod.object({
+  accepted: zod.boolean(),
+});
+export const completeStaffPasswordResetBodyTokenMin = 32;
+export const completeStaffPasswordResetBodyTokenMax = 256;
+export const completeStaffPasswordResetBodyPasswordMin = 8;
+export const completeStaffPasswordResetBodyPasswordMax = 128;
+export const CompleteStaffPasswordResetBody = zod.object({
+  staffId: zod.number().int().min(1),
+  token: zod
+    .string()
+    .min(completeStaffPasswordResetBodyTokenMin)
+    .max(completeStaffPasswordResetBodyTokenMax),
+  password: zod
+    .string()
+    .min(completeStaffPasswordResetBodyPasswordMin)
+    .max(completeStaffPasswordResetBodyPasswordMax),
+});
+export const CompleteStaffPasswordResetResponse = zod.object({
+  updated: zod.boolean(),
+  otpSent: zod.boolean().optional(),
 });
 /**
  * @summary Get today's child attendance
@@ -1758,6 +1887,16 @@ export const UpdateStaffResponse = zod.object({
   status: zod.enum(["present", "absent", "leave"]),
   attendanceRate: zod.number(),
   avatarUrl: zod.string().nullish(),
+  email: zod.string().nullish(),
+  jobTitle: zod.string().nullish(),
+  hireDate: zod.string().nullish(),
+  clerkUserId: zod.string().nullish(),
+  accountStatus: zod.enum([
+    "unlinked",
+    "pending_verification",
+    "active",
+    "disabled",
+  ]),
 });
 export const DeleteStaffParams = zod.object({
   id: zod.coerce.number(),

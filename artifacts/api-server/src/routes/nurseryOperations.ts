@@ -138,6 +138,7 @@ export function defaultAllowed(role: string, operation: string) {
 
 export async function permitted(req: Request, operation: string) {
   const { ownerId, role, actorId } = nurseryContext(req);
+  if (role === "disabled") return false;
   const [userConfigured] = await db.select().from(userPermissionsTable).where(and(
     eq(userPermissionsTable.ownerId, ownerId),
     eq(userPermissionsTable.userId, actorId),
@@ -195,7 +196,8 @@ async function tenantPrincipal(ownerId: string, userId: string) {
     const metadata = user.publicMetadata as Claims;
     const userOwnerId = metadata.ownerId ?? metadata.owner_id;
     const role = metadata.role;
-    if (userOwnerId === ownerId && typeof role === "string" && role) {
+    if (metadata.accountStatus !== "disabled"
+        && userOwnerId === ownerId && typeof role === "string" && role) {
       return { userId, role: role.toLowerCase() };
     }
   } catch {
@@ -234,7 +236,8 @@ async function tenantClerkPrincipals(ownerId: string) {
       const metadata = user.publicMetadata as Claims;
       const userOwnerId = metadata.ownerId ?? metadata.owner_id;
       const role = metadata.role;
-      if (userOwnerId === ownerId && typeof role === "string" && role) {
+      if (metadata.accountStatus !== "disabled"
+          && userOwnerId === ownerId && typeof role === "string" && role) {
         principals.push({ userId: user.id, label: clerkPrincipalLabel(user as unknown as Record<string, unknown>), role: role.toLowerCase() });
       }
     }
@@ -260,22 +263,22 @@ export const resolveNurseryContext: RequestHandler = async (req, res, next) => {
     const fallback = nurseryContext(req);
     const user = await clerkClient.users.getUser(fallback.actorId);
     const metadata = user.publicMetadata as Claims;
-    const claims = (getAuth(req).sessionClaims ?? {}) as Claims;
-    const claimMetadataValue = claims.publicMetadata ?? claims.public_metadata;
-    const claimMetadata = claimMetadataValue && typeof claimMetadataValue === "object"
-      ? claimMetadataValue as Claims
-      : {};
-    const hasExplicitRoleClaim = typeof (claimMetadata.role ?? claims.role) === "string";
     const metadataRole = metadata.role;
     const metadataOwnerId = metadata.ownerId ?? metadata.owner_id;
+    const managedStaffAccount = typeof metadata.accountStatus === "string";
+    const activeManagedStaffAccount = metadata.accountStatus === "active";
     res.locals.operationsContext = {
       actorId: fallback.actorId,
-      ownerId: fallback.ownerId !== fallback.actorId
-        ? fallback.ownerId
-        : typeof metadataOwnerId === "string" && metadataOwnerId ? metadataOwnerId : fallback.ownerId,
-      role: hasExplicitRoleClaim || fallback.role !== "staff"
-        ? fallback.role
-        : typeof metadataRole === "string" && metadataRole ? metadataRole.toLowerCase() : fallback.role,
+      ownerId: managedStaffAccount
+        ? typeof metadataOwnerId === "string" && metadataOwnerId ? metadataOwnerId : fallback.actorId
+        : fallback.ownerId !== fallback.actorId
+          ? fallback.ownerId
+          : typeof metadataOwnerId === "string" && metadataOwnerId ? metadataOwnerId : fallback.ownerId,
+      role: managedStaffAccount
+        ? activeManagedStaffAccount && typeof metadataRole === "string" && metadataRole
+          ? metadataRole.toLowerCase()
+          : "disabled"
+        : fallback.role,
     };
     next();
   } catch (error) {
@@ -680,12 +683,23 @@ router.get("/permission-principals", async (req, res): Promise<void> => {
     res.status(403).json({ error: "Administrative access required" });
     return;
   }
-  const [clerkPrincipals, guardians] = await Promise.all([
+  const [clerkPrincipals, linkedStaff, guardians] = await Promise.all([
     tenantClerkPrincipals(ownerId),
+    db.select({
+      userId: staffTable.clerkUserId,
+      label: staffTable.name,
+      role: staffTable.role,
+    }).from(staffTable).where(and(
+      eq(staffTable.ownerId, ownerId),
+      eq(staffTable.accountStatus, "active"),
+      sql`${staffTable.clerkUserId} is not null`,
+    )),
     db.select({ userId: guardiansTable.clerkUserId, label: guardiansTable.name })
       .from(guardiansTable).where(and(eq(guardiansTable.ownerId, ownerId), sql`${guardiansTable.clerkUserId} is not null`)),
   ]);
-  const principals = [{ userId: ownerId, label: "مالك الحضانة", role: "owner" }, ...clerkPrincipals, ...guardians
+  const principals = [{ userId: ownerId, label: "مالك الحضانة", role: "owner" }, ...linkedStaff
+    .filter((member): member is { userId: string; label: string; role: string } => Boolean(member.userId))
+    .map((member) => ({ ...member, role: member.role.toLowerCase() })), ...clerkPrincipals, ...guardians
     .filter((guardian): guardian is { userId: string; label: string } => Boolean(guardian.userId))
     .map((guardian) => ({ userId: guardian.userId, label: guardian.label || "مستخدم معروف", role: "parent" }))];
   res.json(ListPermissionPrincipalsResponse.parse(Array.from(new Map(principals.map((principal) => [principal.userId, principal])).values())));

@@ -374,6 +374,16 @@ export const StaffMemberStatus = {
   leave: "leave",
 } as const;
 
+export type StaffMemberAccountStatus =
+  (typeof StaffMemberAccountStatus)[keyof typeof StaffMemberAccountStatus];
+
+export const StaffMemberAccountStatus = {
+  unlinked: "unlinked",
+  pending_verification: "pending_verification",
+  active: "active",
+  disabled: "disabled",
+} as const;
+
 export interface StaffMember {
   id: number;
   name: string;
@@ -383,6 +393,15 @@ export interface StaffMember {
   attendanceRate: number;
   /** @nullable */
   avatarUrl?: string | null;
+  /** @nullable */
+  email?: string | null;
+  /** @nullable */
+  jobTitle?: string | null;
+  /** @nullable */
+  hireDate?: string | null;
+  /** @nullable */
+  clerkUserId?: string | null;
+  accountStatus: StaffMemberAccountStatus;
 }
 
 export type StaffInputStatus =
@@ -408,6 +427,122 @@ export interface StaffInput {
   jobTitle?: string | null;
   /** @nullable */
   hireDate?: string | null;
+}
+
+export type StaffAccountActionInputMode =
+  (typeof StaffAccountActionInputMode)[keyof typeof StaffAccountActionInputMode];
+
+export const StaffAccountActionInputMode = {
+  invite: "invite",
+  link: "link",
+} as const;
+
+export type StaffAccountActionInputRole =
+  (typeof StaffAccountActionInputRole)[keyof typeof StaffAccountActionInputRole];
+
+export const StaffAccountActionInputRole = {
+  admin: "admin",
+  manager: "manager",
+  supervisor: "supervisor",
+  teacher: "teacher",
+  accountant: "accountant",
+  receptionist: "receptionist",
+} as const;
+
+export interface StaffAccountActionInput {
+  mode: StaffAccountActionInputMode;
+  /**
+   * @minLength 1
+   * @nullable
+   */
+  clerkUserId?: string | null;
+  role: StaffAccountActionInputRole;
+}
+
+export interface StaffAccountVerifyInput {
+  /**
+   * @minLength 6
+   * @maxLength 6
+   */
+  otp: string;
+  /**
+   * @minLength 8
+   * @maxLength 128
+   */
+  password: string;
+}
+
+export type StaffAccountUpdateInputRole =
+  (typeof StaffAccountUpdateInputRole)[keyof typeof StaffAccountUpdateInputRole];
+
+export const StaffAccountUpdateInputRole = {
+  admin: "admin",
+  manager: "manager",
+  supervisor: "supervisor",
+  teacher: "teacher",
+  accountant: "accountant",
+  receptionist: "receptionist",
+} as const;
+
+export type StaffAccountUpdateInputStatus =
+  (typeof StaffAccountUpdateInputStatus)[keyof typeof StaffAccountUpdateInputStatus];
+
+export const StaffAccountUpdateInputStatus = {
+  active: "active",
+  disabled: "disabled",
+  unlinked: "unlinked",
+} as const;
+
+export interface StaffAccountUpdateInput {
+  role?: StaffAccountUpdateInputRole;
+  status?: StaffAccountUpdateInputStatus;
+}
+
+export type StaffAccountResultAccountStatus =
+  (typeof StaffAccountResultAccountStatus)[keyof typeof StaffAccountResultAccountStatus];
+
+export const StaffAccountResultAccountStatus = {
+  unlinked: "unlinked",
+  pending_verification: "pending_verification",
+  active: "active",
+  disabled: "disabled",
+} as const;
+
+export interface StaffAccountResult {
+  staffId: number;
+  /** @nullable */
+  clerkUserId?: string | null;
+  accountStatus: StaffAccountResultAccountStatus;
+  role: string;
+  setupComplete: boolean;
+}
+
+export interface StaffPasswordResetRequest {
+  email: string;
+}
+
+export interface StaffPasswordResetRequestResult {
+  accepted: boolean;
+}
+
+export interface StaffPasswordResetComplete {
+  /** @minimum 1 */
+  staffId: number;
+  /**
+   * @minLength 32
+   * @maxLength 256
+   */
+  token: string;
+  /**
+   * @minLength 8
+   * @maxLength 128
+   */
+  password: string;
+}
+
+export interface StaffPasswordResetCompleteResult {
+  updated: boolean;
+  otpSent?: boolean;
 }
 
 export type AttendanceRecordStatus =

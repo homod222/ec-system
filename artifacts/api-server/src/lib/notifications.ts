@@ -51,7 +51,7 @@ type WhatsAppSendResult = { ok: true } | { ok: false; error: string };
  * to have sent the message -- the caller records that outcome on the invoice
  * and in the notifications log so nothing is silently dropped.
  */
-async function sendWhatsAppMessage(to: string, body: string): Promise<WhatsAppSendResult> {
+export async function sendWhatsAppText(to: string, body: string): Promise<WhatsAppSendResult> {
   const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
   const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
 
@@ -92,6 +92,8 @@ async function sendWhatsAppMessage(to: string, body: string): Promise<WhatsAppSe
     return { ok: false, error: err instanceof Error ? err.message : "WhatsApp request failed" };
   }
 }
+
+const sendWhatsAppMessage = sendWhatsAppText;
 
 async function dispatchAndRecord(params: {
   invoice: Invoice;

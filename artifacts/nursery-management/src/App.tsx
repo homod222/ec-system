@@ -35,6 +35,8 @@ import { ChildProfileExpanded } from './pages/admin/ChildProfileExpanded';
 import { ClassroomsExpanded } from './pages/admin/ClassroomsExpanded';
 import { AttendanceExpanded } from './pages/admin/AttendanceExpanded';
 import { StaffExpanded } from './pages/admin/StaffExpanded';
+import { StaffActivate } from './pages/StaffActivate';
+import { StaffPasswordReset } from './pages/StaffPasswordReset';
 import FinanceExpanded from './pages/admin/FinanceExpanded';
 import { Education } from './pages/admin/Education';
 import { Activities } from './pages/admin/Activities';
@@ -621,7 +623,8 @@ function AuthPage({ type }: { type: 'in' | 'up' }) {
       </div>
       <div className="relative z-10 w-full max-w-md animate-rise">
         {type === 'in' ? 
-          <SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} /> : 
+          <><SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} />
+            <div className="mt-4 text-center"><Link href="/staff-password-reset" data-testid="link-forgot-password" className="text-sm font-bold text-primary hover:underline">{t('passwordReset.forgot')}</Link></div></> :
           <SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} />
         }
       </div>
@@ -641,6 +644,8 @@ function Router() {
         <Route path="/" component={Landing} />
         <Route path="/sign-in/*?" component={() => <AuthPage type="in" />} />
         <Route path="/sign-up/*?" component={() => <AuthPage type="up" />} />
+        <Route path="/staff-activate" component={StaffActivate} />
+        <Route path="/staff-password-reset" component={StaffPasswordReset} />
         <Route path="/access-pending"><Protected><AccessPending /></Protected></Route>
 
         {/* Parent Portal Routes */}

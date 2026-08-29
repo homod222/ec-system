@@ -5,6 +5,7 @@
  * API for the nursery management platform
  * OpenAPI spec version: 0.1.0
  */
+import type { StaffMemberAccountStatus } from './staffMemberAccountStatus';
 import type { StaffMemberStatus } from './staffMemberStatus';
 
 export interface StaffMember {
@@ -16,4 +17,13 @@ export interface StaffMember {
   attendanceRate: number;
   /** @nullable */
   avatarUrl?: string | null;
+  /** @nullable */
+  email?: string | null;
+  /** @nullable */
+  jobTitle?: string | null;
+  /** @nullable */
+  hireDate?: string | null;
+  /** @nullable */
+  clerkUserId?: string | null;
+  accountStatus: StaffMemberAccountStatus;
 }
