@@ -17,7 +17,7 @@ import {
   GetPhoneEnrollmentResponse,
 } from "@workspace/api-zod";
 
-type Sender = (to: string, body: string) => Promise<{ ok: true } | { ok: false; error: string }>;
+type Sender = (to: string, otp: string) => Promise<{ ok: true } | { ok: false; error: string }>;
 type Identity = { clerkUserId: string; firstName: string };
 
 const OTP_SECONDS = 5 * 60;
@@ -112,9 +112,9 @@ async function isEnrollmentAdmin(userId: string) {
   return (!scopedOwner && privateMetadata.staffId == null) ? user : null;
 }
 
-const defaultSender: Sender = async (to, body) => {
-  const { sendWhatsAppText } = await import("../lib/notifications");
-  return sendWhatsAppText(to, body);
+const defaultSender: Sender = async (to, otp) => {
+  const { sendWhatsAppOtp } = await import("../lib/notifications");
+  return sendWhatsAppOtp(to, otp);
 };
 
 export function createPhoneAuthRouter(sender: Sender = defaultSender): IRouter {
@@ -160,7 +160,7 @@ export function createPhoneAuthRouter(sender: Sender = defaultSender): IRouter {
     });
     if (!inserted) return null;
     if (options.identity || options.purpose === "enrollment") {
-      const result = await sender(options.phone, `رمز تسجيل الدخول إلى حضانة EC هو: ${otp}\nصالح لمدة 5 دقائق. لا تشارك الرمز مع أي شخص.`);
+      const result = await sender(options.phone, otp);
       if (!result.ok) {
         await db.delete(phoneOtpChallengesTable).where(eq(phoneOtpChallengesTable.id, id));
         throw new Error("WhatsApp delivery failed");
@@ -195,17 +195,31 @@ export function createPhoneAuthRouter(sender: Sender = defaultSender): IRouter {
         eq(phoneOtpChallengesTable.id, body.data.challengeId),
         eq(phoneOtpChallengesTable.purpose, "login"),
         isNull(phoneOtpChallengesTable.consumedAt),
+        sql`${phoneOtpChallengesTable.expiresAt} > now()`,
+        sql`${phoneOtpChallengesTable.attempts} < ${MAX_ATTEMPTS}`,
       )).limit(1);
-      if (!challenge || challenge.expiresAt <= new Date() || challenge.attempts >= MAX_ATTEMPTS || !challenge.clerkUserId) {
+      if (!challenge || !challenge.clerkUserId) {
         return void res.status(400).json({ error: "Invalid or expired code" });
       }
       if (!secureDigestEqual(challenge.otpHash, digest(`otp:${challenge.id}:${body.data.otp}`))) {
-        await db.update(phoneOtpChallengesTable).set({ attempts: sql`${phoneOtpChallengesTable.attempts} + 1` })
-          .where(and(eq(phoneOtpChallengesTable.id, challenge.id), isNull(phoneOtpChallengesTable.consumedAt)));
-        return void res.status(challenge.attempts + 1 >= MAX_ATTEMPTS ? 429 : 400).json({ error: "Invalid or expired code" });
+        const [attempted] = await db.update(phoneOtpChallengesTable)
+          .set({ attempts: sql`${phoneOtpChallengesTable.attempts} + 1` })
+          .where(and(
+            eq(phoneOtpChallengesTable.id, challenge.id),
+            eq(phoneOtpChallengesTable.purpose, "login"),
+            isNull(phoneOtpChallengesTable.consumedAt),
+            sql`${phoneOtpChallengesTable.expiresAt} > now()`,
+            sql`${phoneOtpChallengesTable.attempts} < ${MAX_ATTEMPTS}`,
+          ))
+          .returning({ attempts: phoneOtpChallengesTable.attempts });
+        return void res.status(attempted?.attempts === MAX_ATTEMPTS ? 429 : 400).json({ error: "Invalid or expired code" });
       }
       const [consumed] = await db.update(phoneOtpChallengesTable).set({ consumedAt: new Date() }).where(and(
-        eq(phoneOtpChallengesTable.id, challenge.id), isNull(phoneOtpChallengesTable.consumedAt),
+        eq(phoneOtpChallengesTable.id, challenge.id),
+        eq(phoneOtpChallengesTable.purpose, "login"),
+        isNull(phoneOtpChallengesTable.consumedAt),
+        sql`${phoneOtpChallengesTable.expiresAt} > now()`,
+        sql`${phoneOtpChallengesTable.attempts} < ${MAX_ATTEMPTS}`,
       )).returning({ id: phoneOtpChallengesTable.id });
       if (!consumed) return void res.status(400).json({ error: "Invalid or expired code" });
       const signInTokens = clerkClient.signInTokens as unknown as {
@@ -261,18 +275,34 @@ export function createPhoneAuthRouter(sender: Sender = defaultSender): IRouter {
         eq(phoneOtpChallengesTable.purpose, "enrollment"),
         eq(phoneOtpChallengesTable.requestedBy, userId),
         isNull(phoneOtpChallengesTable.consumedAt),
+        sql`${phoneOtpChallengesTable.expiresAt} > now()`,
+        sql`${phoneOtpChallengesTable.attempts} < ${MAX_ATTEMPTS}`,
       )).limit(1);
-      if (!challenge || !challenge.normalizedPhone || challenge.expiresAt <= new Date() || challenge.attempts >= MAX_ATTEMPTS) {
+      if (!challenge || !challenge.normalizedPhone) {
         return void res.status(400).json({ error: "Invalid or expired code" });
       }
       if (!secureDigestEqual(challenge.otpHash, digest(`otp:${challenge.id}:${body.data.otp}`))) {
-        await db.update(phoneOtpChallengesTable).set({ attempts: sql`${phoneOtpChallengesTable.attempts} + 1` })
-          .where(eq(phoneOtpChallengesTable.id, challenge.id));
-        return void res.status(400).json({ error: "Invalid or expired code" });
+        const [attempted] = await db.update(phoneOtpChallengesTable)
+          .set({ attempts: sql`${phoneOtpChallengesTable.attempts} + 1` })
+          .where(and(
+            eq(phoneOtpChallengesTable.id, challenge.id),
+            eq(phoneOtpChallengesTable.purpose, "enrollment"),
+            eq(phoneOtpChallengesTable.requestedBy, userId),
+            isNull(phoneOtpChallengesTable.consumedAt),
+            sql`${phoneOtpChallengesTable.expiresAt} > now()`,
+            sql`${phoneOtpChallengesTable.attempts} < ${MAX_ATTEMPTS}`,
+          ))
+          .returning({ attempts: phoneOtpChallengesTable.attempts });
+        return void res.status(attempted?.attempts === MAX_ATTEMPTS ? 429 : 400).json({ error: "Invalid or expired code" });
       }
       await db.transaction(async tx => {
         const [consumed] = await tx.update(phoneOtpChallengesTable).set({ consumedAt: new Date() }).where(and(
-          eq(phoneOtpChallengesTable.id, challenge.id), isNull(phoneOtpChallengesTable.consumedAt),
+          eq(phoneOtpChallengesTable.id, challenge.id),
+          eq(phoneOtpChallengesTable.purpose, "enrollment"),
+          eq(phoneOtpChallengesTable.requestedBy, userId),
+          isNull(phoneOtpChallengesTable.consumedAt),
+          sql`${phoneOtpChallengesTable.expiresAt} > now()`,
+          sql`${phoneOtpChallengesTable.attempts} < ${MAX_ATTEMPTS}`,
         )).returning({ id: phoneOtpChallengesTable.id });
         if (!consumed) throw new Error("Challenge already consumed");
         await tx.insert(phoneLoginIdentitiesTable).values({

@@ -8,7 +8,7 @@ vi.mock("@workspace/db", () => ({
   staffTable: {},
 }));
 vi.mock("@clerk/express", () => ({ clerkClient: {}, getAuth: vi.fn() }));
-vi.mock("./notifications", () => ({ sendWhatsAppText: vi.fn() }));
+vi.mock("./notifications", () => ({ sendWhatsAppOtp: vi.fn() }));
 
 describe("phone authentication", async () => {
   const { createPhoneAuthRouter, normalizeKuwaitPhone } = await import("../routes/phoneAuth");

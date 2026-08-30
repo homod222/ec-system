@@ -44,23 +44,29 @@ export function normalizePhoneForWhatsApp(phone: string): { ok: true; value: str
 
 type WhatsAppSendResult = { ok: true } | { ok: false; error: string };
 
-/**
- * Sends a WhatsApp message via Meta's WhatsApp Business Cloud API.
- * Requires WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID to be configured
- * as secrets. Until they're set, this fails explicitly rather than pretending
- * to have sent the message -- the caller records that outcome on the invoice
- * and in the notifications log so nothing is silently dropped.
- */
-export async function sendWhatsAppText(to: string, body: string): Promise<WhatsAppSendResult> {
-  const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
-  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
-
-  if (!accessToken || !phoneNumberId) {
+function ultraMsgConfiguration() {
+  const instanceId = process.env.ULTRAMSG_INSTANCE_ID?.trim();
+  const token = process.env.ULTRAMSG_TOKEN;
+  if (!instanceId || !token) {
     return {
       ok: false,
-      error: "لم يتم إعداد بيانات اعتماد واتساب بعد (WHATSAPP_ACCESS_TOKEN / WHATSAPP_PHONE_NUMBER_ID).",
-    };
+      error: "لم يتم إعداد اتصال UltraMsg (ULTRAMSG_INSTANCE_ID / ULTRAMSG_TOKEN).",
+    } as const;
   }
+
+  if (!/^instance\d+$/i.test(instanceId)) {
+    return {
+      ok: false,
+      error: "معرّف UltraMsg غير صالح.",
+    } as const;
+  }
+
+  return { ok: true, instanceId, token } as const;
+}
+
+export async function sendWhatsAppText(to: string, body: string): Promise<WhatsAppSendResult> {
+  const configuration = ultraMsgConfiguration();
+  if (!configuration.ok) return configuration;
 
   const normalized = normalizePhoneForWhatsApp(to);
   if (!normalized.ok) {
@@ -68,29 +74,41 @@ export async function sendWhatsAppText(to: string, body: string): Promise<WhatsA
   }
 
   try {
-    const resp = await fetch(`https://graph.facebook.com/v20.0/${phoneNumberId}/messages`, {
+    const form = new URLSearchParams({
+      token: configuration.token,
+      to: `+${normalized.value}`,
+      body,
+    });
+    const resp = await fetch(`https://api.ultramsg.com/${configuration.instanceId}/messages/chat`, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
+        "Content-Type": "application/x-www-form-urlencoded",
       },
-      body: JSON.stringify({
-        messaging_product: "whatsapp",
-        to: normalized.value,
-        type: "text",
-        text: { body },
-      }),
+      body: form,
       signal: AbortSignal.timeout(10_000),
     });
 
     if (!resp.ok) {
-      const errorBody = await resp.text().catch(() => "");
-      return { ok: false, error: `WhatsApp API ${resp.status}: ${errorBody.slice(0, 300)}` };
+      return { ok: false, error: `UltraMsg rejected the message (HTTP ${resp.status})` };
     }
+
+    const response = await resp.json().catch(() => null) as { sent?: string | boolean; error?: string } | null;
+    if (response?.sent === false || response?.sent === "false" || response?.error) {
+      return { ok: false, error: "UltraMsg did not accept the message" };
+    }
+
     return { ok: true };
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : "WhatsApp request failed" };
+    const name = err instanceof Error ? err.name : "UnknownError";
+    return { ok: false, error: `UltraMsg request failed (${name})` };
   }
+}
+
+export async function sendWhatsAppOtp(to: string, otp: string): Promise<WhatsAppSendResult> {
+  return sendWhatsAppText(
+    to,
+    `رمز تسجيل الدخول إلى حضانة EC هو: ${otp}\nصالح لمدة 5 دقائق. لا تشارك الرمز مع أي شخص.`,
+  );
 }
 
 const sendWhatsAppMessage = sendWhatsAppText;
