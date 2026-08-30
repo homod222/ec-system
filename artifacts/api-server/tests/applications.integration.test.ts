@@ -406,13 +406,14 @@ afterAll(async () => {
 });
 
 describe.sequential("application registration regression flow", () => {
-  it("enrolls an owner phone and issues a single-use WhatsApp login ticket with first-name greeting", async () => {
-    const phone = "5000 8765";
+  it("enrolls an owner recovery phone while keeping legacy phone login retired", async () => {
+    const phone = `5${Math.floor(1_000_000 + Math.random() * 9_000_000)}`;
+    const normalizedPhone = `965${phone}`;
     const enrollment = await request(app).post("/api/auth/phone/enrollment/request")
       .set(auth(ownerA)).send({ phone }).expect(200);
     expect(enrollment.body).toMatchObject({ recognized: true, firstName: "Owner" });
     const enrollmentMessage = whatsappMessages.at(-1);
-    expect(enrollmentMessage?.to).toBe("96550008765");
+    expect(enrollmentMessage?.to).toBe(normalizedPhone);
     const enrollmentOtp = enrollmentMessage?.body.match(/\b\d{6}\b/)?.[0];
     expect(enrollmentOtp).toBeTruthy();
 
@@ -420,134 +421,50 @@ describe.sequential("application registration regression flow", () => {
       challengeId: enrollment.body.challengeId,
       otp: enrollmentOtp,
     }).expect(200).expect(({ body }) => {
-      expect(body).toEqual({ enrolled: true, phone: "96550008765" });
+      expect(body).toEqual({ enrolled: true, phone: normalizedPhone });
     });
 
-    const login = await request(app).post("/api/auth/phone/request").send({ phone: "+96550008765" }).expect(200);
-    expect(login.body).toMatchObject({ recognized: true, firstName: "Owner" });
-    expect(login.body.firstName).not.toContain(" ");
-    const loginOtp = whatsappMessages.at(-1)?.body.match(/\b\d{6}\b/)?.[0];
-    expect(loginOtp).toBeTruthy();
-
-    const verified = await request(app).post("/api/auth/phone/verify").send({
-      challengeId: login.body.challengeId,
-      otp: loginOtp,
-    }).expect(200);
-    expect(verified.body).toEqual({ ticket: `ticket-for-${ownerA}` });
-    expect(clerkSignInTokenCreate).toHaveBeenLastCalledWith({ userId: ownerA, expiresInSeconds: 60 });
-
-    await request(app).post("/api/auth/phone/verify").send({
-      challengeId: login.body.challengeId,
-      otp: loginOtp,
-    }).expect(400);
-  });
-
-  it("atomically limits concurrent phone login requests", async () => {
-    const phone = `5${Math.floor(Math.random() * 10_000_000).toString().padStart(7, "0")}`;
-    const responses = await Promise.all(Array.from({ length: 8 }, () =>
-      request(app).post("/api/auth/phone/request")
-        .set("x-forwarded-for", "203.0.113.10")
-        .send({ phone }),
-    ));
-    const accepted = responses.filter(response => response.status === 200);
-    const limited = responses.filter(response => response.status === 429);
-    expect(accepted).toHaveLength(4);
-    expect(limited).toHaveLength(4);
-    await pool.query(
-      "delete from phone_otp_challenges where id = any($1::text[])",
-      [accepted.map(response => response.body.challengeId)],
-    );
-  });
-
-  it("atomically limits concurrent phone login requests from one source", async () => {
-    const base = Math.floor(Math.random() * 9_000_000);
-    const responses = await Promise.all(Array.from({ length: 16 }, (_, index) => {
-      const phone = `5${(base + index).toString().padStart(7, "0")}`;
-      return request(app).post("/api/auth/phone/request")
-        .set("x-forwarded-for", "203.0.113.11")
-        .send({ phone });
-    }));
-    const accepted = responses.filter(response => response.status === 200);
-    const limited = responses.filter(response => response.status === 429);
-    expect(accepted).toHaveLength(12);
-    expect(limited).toHaveLength(4);
-    await pool.query(
-      "delete from phone_otp_challenges where id = any($1::text[])",
-      [accepted.map(response => response.body.challengeId)],
-    );
-  });
-
-  it("recognizes active staff and linked guardians without exposing full names", async () => {
-    const staffClerkId = `phone-staff-${randomUUID()}`;
-    const guardianClerkId = `phone-guardian-${randomUUID()}`;
-    const staffPhone = `6${Math.floor(1_000_000 + Math.random() * 9_000_000)}`;
-    const guardianPhone = `9${Math.floor(1_000_000 + Math.random() * 9_000_000)}`;
-    await pool.query(
-      `insert into staff (owner_id, name, role, email, phone, clerk_user_id, account_status)
-       values ($1, 'أحمد الاختبار', 'teacher', $2, $3, $4, 'active')`,
-      [ownerA, `phone-staff-${randomUUID()}@example.test`, staffPhone, staffClerkId],
-    );
-    await pool.query(
-      `insert into guardians (owner_id, name, phone, clerk_user_id)
-       values ($1, 'سارة الاختبار', $2, $3)`,
-      [ownerA, `+965 ${guardianPhone.slice(0, 4)} ${guardianPhone.slice(4)}`, guardianClerkId],
-    );
-
-    const staffLogin = await request(app).post("/api/auth/phone/request").send({ phone: staffPhone }).expect(200);
-    expect(staffLogin.body).toMatchObject({ recognized: true, firstName: "أحمد" });
-    expect(whatsappMessages.at(-1)?.to).toBe(`965${staffPhone}`);
-
-    const guardianLogin = await request(app).post("/api/auth/phone/request").send({ phone: guardianPhone }).expect(200);
-    expect(guardianLogin.body).toMatchObject({ recognized: true, firstName: "سارة" });
-    expect(whatsappMessages.at(-1)?.to).toBe(`965${guardianPhone}`);
-
-    await pool.query("delete from phone_otp_challenges where id = any($1::text[])", [[
-      staffLogin.body.challengeId,
-      guardianLogin.body.challengeId,
-    ]]);
-  });
-
-  it("atomically caps concurrent invalid phone OTP attempts", async () => {
-    const login = await request(app).post("/api/auth/phone/request").send({ phone: "+96550008765" }).expect(200);
     const tokenCallsBefore = clerkSignInTokenCreate.mock.calls.length;
-    const responses = await Promise.all(Array.from({ length: 10 }, () =>
-      request(app).post("/api/auth/phone/verify").send({
-        challengeId: login.body.challengeId,
-        otp: "000000",
-      }),
-    ));
-    expect(responses.filter(response => response.status === 429)).toHaveLength(1);
-    expect(responses.filter(response => response.status === 400)).toHaveLength(9);
-    const attempts = await pool.query<{ attempts: number }>(
-      "select attempts from phone_otp_challenges where id = $1",
-      [login.body.challengeId],
-    );
-    expect(attempts.rows[0]?.attempts).toBe(5);
+    await request(app).post("/api/auth/phone/request").send({ phone: normalizedPhone })
+      .expect(410).expect({ error: "Phone login retired" });
+    await request(app).post("/api/auth/phone/verify").send({ challengeId: randomUUID(), otp: "000000" })
+      .expect(410).expect({ error: "Phone login retired" });
     expect(clerkSignInTokenCreate).toHaveBeenCalledTimes(tokenCallsBefore);
   });
 
-  it("atomically caps concurrent invalid OTP attempts", async () => {
+  it("does not resolve cross-tenant records through retired phone login", async () => {
+    const crossTenantPhone = `6${Math.floor(1_000_000 + Math.random() * 9_000_000)}`;
+    await pool.query(
+      `insert into staff (owner_id, name, role, email, phone, clerk_user_id, account_status)
+       values ($1, 'Cross Tenant Staff', 'teacher', $2, $3, $4, 'active')`,
+      [ownerB, `cross-tenant-${randomUUID()}@example.test`, crossTenantPhone, `cross-tenant-${randomUUID()}`],
+    );
+    const messagesBefore = whatsappMessages.length;
+    const tokenCallsBefore = clerkSignInTokenCreate.mock.calls.length;
+    await request(app).post("/api/auth/phone/request").send({ phone: crossTenantPhone })
+      .expect(410).expect({ error: "Phone login retired" });
+    expect(whatsappMessages).toHaveLength(messagesBefore);
+    expect(clerkSignInTokenCreate).toHaveBeenCalledTimes(tokenCallsBefore);
+  });
+
+  it("retires unauthenticated legacy staff verification without consuming OTP attempts", async () => {
     const staffId = await createStaffAccountFixture({
       accountStatus: "pending_verification",
       otp: "123456",
     });
 
-    const responses = await Promise.all(Array.from({ length: 6 }, () =>
-      request(app)
-        .post(`/api/staff/${staffId}/account/verify`)
-        .send({ otp: "000000", password: "ValidPassword123!" }),
-    ));
-
-    expect(responses.filter(({ status }) => status === 400)).toHaveLength(4);
-    expect(responses.filter(({ status }) => status === 429)).toHaveLength(2);
+    const response = await request(app)
+      .post(`/api/staff/${staffId}/account/verify`)
+      .send({ otp: "000000", password: "ValidPassword123!" });
+    expect(response.status).toBe(401);
     const stored = await pool.query<{ otp_attempts: number }>(
       "select otp_attempts from staff where id = $1",
       [staffId],
     );
-    expect(stored.rows[0].otp_attempts).toBe(5);
+    expect(stored.rows[0].otp_attempts).toBe(0);
   });
 
-  it("creates only one Clerk account for concurrent valid OTP verification", async () => {
+  it("never provisions through concurrent calls to the retired legacy verification handler", async () => {
     clerkCreateUser.mockClear();
     const staffId = await createStaffAccountFixture({
       accountStatus: "pending_verification",
@@ -560,22 +477,20 @@ describe.sequential("application registration regression flow", () => {
         .send({ otp: "654321", password: "ValidPassword123!" }),
     ));
 
-    expect(responses.filter(({ status }) => status === 200)).toHaveLength(1);
-    expect(responses.filter(({ status }) => [404, 409].includes(status))).toHaveLength(1);
-    expect(clerkCreateUser).toHaveBeenCalledTimes(1);
+    expect(responses.map(({ status }) => status)).toEqual([401, 401]);
+    expect(clerkCreateUser).not.toHaveBeenCalled();
     const stored = await pool.query<{ clerk_user_id: string | null; account_status: string }>(
       "select clerk_user_id, account_status from staff where id = $1",
       [staffId],
     );
     expect(stored.rows[0]).toMatchObject({
-      clerk_user_id: expect.stringMatching(/^integration-created-staff-/),
-      account_status: "active",
+      clerk_user_id: null,
+      account_status: "pending_verification",
     });
   });
 
-  it("restores a valid OTP after Clerk provisioning fails and succeeds on retry without duplicates", async () => {
+  it("leaves legacy OTP state untouched because verification is retired before Clerk provisioning", async () => {
     clerkCreateUser.mockClear();
-    clerkCreateUser.mockRejectedValueOnce(new Error("Simulated Clerk provisioning failure"));
     const otp = "246810";
     const staffId = await createStaffAccountFixture({
       accountStatus: "pending_verification",
@@ -586,7 +501,7 @@ describe.sequential("application registration regression flow", () => {
       .post(`/api/staff/${staffId}/account/verify`)
       .send({ otp, password: "ValidPassword123!" });
 
-    expect(failed.status).toBe(500);
+    expect(failed.status).toBe(401);
     const restored = await pool.query<{
       account_status: string;
       clerk_user_id: string | null;
@@ -613,33 +528,7 @@ describe.sequential("application registration regression flow", () => {
       [String(staffId)],
     );
     expect(failedAudit.rows[0].count).toBe("0");
-
-    const retried = await request(app)
-      .post(`/api/staff/${staffId}/account/verify`)
-      .send({ otp, password: "ValidPassword123!" });
-
-    expect(retried.status).toBe(200);
-    expect(clerkCreateUser).toHaveBeenCalledTimes(2);
-    const createdAccounts = [...clerkUsers.values()].filter(
-      (user) => user.privateMetadata?.staffId === staffId,
-    );
-    expect(createdAccounts).toHaveLength(1);
-
-    const activated = await pool.query<{ account_status: string; clerk_user_id: string | null }>(
-      "select account_status, clerk_user_id from staff where id = $1",
-      [staffId],
-    );
-    expect(activated.rows[0]).toMatchObject({
-      account_status: "active",
-      clerk_user_id: createdAccounts[0].id,
-    });
-    const successfulAudit = await pool.query<{ count: string }>(
-      `select count(*)::text as count
-         from audit_logs
-        where operation = 'verify-staff-account' and entity_id = $1`,
-      [String(staffId)],
-    );
-    expect(successfulAudit.rows[0].count).toBe("1");
+    expect(clerkCreateUser).not.toHaveBeenCalled();
   });
 
   it("rejects relinking an active record or a Clerk user linked elsewhere", async () => {

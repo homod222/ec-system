@@ -10,4 +10,4 @@
 - [Permission override semantics](permission-override-semantics.md) — user overrides take precedence; UIs must show the real role baseline and distinguish inherited access.
 - [Clerk E2E user provisioning](clerk-e2e-user-provisioning.md) — this managed Clerk instance requires a password when backend tests create temporary users.
 - [Managed staff identity marker](managed-staff-identity-marker.md) — never classify Clerk users as managed staff from a generic public accountStatus field alone.
-- [Phone login over Clerk](phone-login-over-clerk.md) — WhatsApp OTP is the public entry; Clerk remains the session and authorization authority behind it.
+- [Password accounts over Clerk](phone-login-over-clerk.md) — password login is daily; WhatsApp OTP is limited to onboarding/recovery; Clerk remains authoritative.

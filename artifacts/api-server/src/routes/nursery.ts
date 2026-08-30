@@ -1,6 +1,6 @@
 import { createHmac, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 import { Router, type IRouter, type RequestHandler } from "express";
-import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { clerkClient, getAuth } from "@clerk/express";
 import {
   CreateChildBody,
@@ -192,6 +192,10 @@ function ownerAccountManager(req: Parameters<typeof nurseryContext>[0]) {
 }
 
 router.post("/staff/:id/account/verify", async (req, res, next): Promise<void> => {
+  if (req.method === "POST") {
+    res.status(410).json({ error: "This endpoint is retired; use /auth/registration/staff/activation/request" });
+    return;
+  }
   const now = Date.now();
   const rateKey = req.ip || req.socket.remoteAddress || "unknown";
   const rate = verificationRate.get(rateKey);
@@ -295,6 +299,10 @@ router.post("/staff/:id/account/verify", async (req, res, next): Promise<void> =
 });
 
 router.post("/staff/password-reset/request", async (req, res, next): Promise<void> => {
+  if (req.method === "POST") {
+    res.status(410).json({ error: "This endpoint is retired; use /auth/password-reset/request" });
+    return;
+  }
   const requestStartedAt = Date.now();
   const body = RequestStaffPasswordResetBody.safeParse(req.body);
   if (!body.success) {
@@ -360,6 +368,10 @@ router.post("/staff/password-reset/request", async (req, res, next): Promise<voi
 });
 
 router.post("/staff/password-reset/complete", async (req, res, next): Promise<void> => {
+  if (req.method === "POST") {
+    res.status(410).json({ error: "This endpoint is retired; use /auth/password-reset/complete" });
+    return;
+  }
   const now = Date.now();
   const rateKey = `password-reset-complete:${req.ip || req.socket.remoteAddress || "unknown"}`;
   const rate = verificationRate.get(rateKey);
@@ -494,19 +506,11 @@ async function resolveGuardian(req: Parameters<typeof getAuth>[0], emails: strin
   const [linked] = await db.select().from(guardiansTable)
     .where(eq(guardiansTable.clerkUserId, auth.userId)).limit(1);
   if (linked) return linked;
-
-  if (!emails.length) return null;
-  const matches = await db.select().from(guardiansTable)
-    .where(inArray(sql<string>`lower(${guardiansTable.email})`, emails)).limit(2);
-  if (matches.length !== 1 || (matches[0].clerkUserId && matches[0].clerkUserId !== auth.userId)) return null;
-  const [claimed] = await db.update(guardiansTable)
-    .set({ clerkUserId: auth.userId })
-    .where(and(eq(guardiansTable.id, matches[0].id), sql`${guardiansTable.clerkUserId} is null`))
-    .returning();
-  if (claimed) return claimed;
-  const [raced] = await db.select().from(guardiansTable)
-    .where(eq(guardiansTable.clerkUserId, auth.userId)).limit(1);
-  return raced ?? null;
+  // Email alone is not a tenant-scoped proof of guardian identity. Public
+  // registration links a guardian only after its WhatsApp challenge succeeds.
+  // Keeping this lookup link-only prevents cross-tenant email auto-linking.
+  void emails;
+  return null;
 }
 
 const requireParentGuardian: RequestHandler = async (req, res, next) => {
@@ -1084,6 +1088,16 @@ router.post("/staff/:id/account", async (req, res): Promise<void> => {
       { clerkUserId: member.clerkUserId, accountStatus: member.accountStatus },
       { clerkUserId: updated.clerkUserId, accountStatus: updated.accountStatus, role });
     res.json(StartStaffAccountResponse.parse(accountResult(updated)));
+    return;
+  }
+  // Invitations now use the public activation challenge. No legacy OTP is
+  // generated or sent from this authenticated management action.
+  if (req.method === "POST") {
+    const [approved] = await db.update(staffTable).set({ role, accountStatus: "approved", otpHash: null, otpExpiresAt: null, otpAttempts: 0 })
+      .where(and(eq(staffTable.id, member.id), eq(staffTable.ownerId, ownerId), isNull(staffTable.clerkUserId), inArray(staffTable.accountStatus, ["unlinked", "pending_verification", "provisioning", "issuing_otp"]))).returning();
+    if (!approved) return void res.status(409).json({ error: "Staff account state changed; reload and try again" });
+    await auditNurseryOperation(req, "approve-staff-account", "staff-account", String(member.id), { accountStatus: member.accountStatus }, { accountStatus: "approved", role });
+    res.json(StartStaffAccountResponse.parse(accountResult(approved)));
     return;
   }
   if (!member.email) {

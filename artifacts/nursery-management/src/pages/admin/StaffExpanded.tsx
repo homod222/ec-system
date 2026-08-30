@@ -9,12 +9,14 @@ import {
   useStartStaffAccount,
   useUpdateStaff,
   useUpdateStaffAccount,
+  useApproveStaffRegistration,
+  useRejectStaffRegistration,
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Shell, Button, Pill, Avatar, QueryState, PageHeader } from '../../App';
 import {
   Briefcase, DollarSign, Edit3, GraduationCap, KeyRound, Plane, Plus,
-  Search, ShieldCheck, Star, Trash2, UserCheck, UserX, X,
+  Search, ShieldCheck, Star, Trash2, UserCheck, UserX, X, CheckCircle2
 } from 'lucide-react';
 import type { StaffAccountUpdateInputRole, StaffMember } from '@workspace/api-client-react';
 import { OperationalManager } from '../../components/OperationalManager';
@@ -74,7 +76,7 @@ export function StaffExpanded() {
               <div className="text-sm font-bold text-foreground">{accountRoleValues.includes(member.role as StaffAccountUpdateInputRole) ? t(`staffAccounts.role.${member.role}` as never) : member.role}</div>
               <div className="text-sm font-medium text-muted-foreground">{member.phone}</div>
               <div>
-                <Pill tone={member.accountStatus === 'active' ? 'green' : member.accountStatus === 'disabled' ? 'red' : member.accountStatus === 'pending_verification' ? 'blue' : 'neutral'}>
+                <Pill tone={member.accountStatus === 'active' ? 'green' : member.accountStatus === 'disabled' ? 'red' : (member.accountStatus === 'pending_verification' || member.accountStatus === 'pending_approval' || member.accountStatus === 'approved') ? 'blue' : 'neutral'}>
                   {t(`staffAccounts.status.${member.accountStatus}` as never)}
                 </Pill>
                 <p className="mt-2 text-[11px] text-muted-foreground">{formatNumber(member.attendanceRate / 100, { style: 'percent', maximumFractionDigits: 0 })} {t('staffAccounts.attendance')}</p>
@@ -188,9 +190,11 @@ function StaffAccountDialog({ member, onClose }: { member: StaffMember; onClose:
   const [message, setMessage] = useState('');
   const start = useStartStaffAccount();
   const update = useUpdateStaffAccount();
+  const approveReq = useApproveStaffRegistration();
+  const rejectReq = useRejectStaffRegistration();
   const principals = useListPermissionPrincipals();
   const queryClient = useQueryClient();
-  const pending = start.isPending || update.isPending;
+  const pending = start.isPending || update.isPending || approveReq.isPending || rejectReq.isPending;
   const refresh = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: getListStaffQueryKey() }),
@@ -224,7 +228,27 @@ function StaffAccountDialog({ member, onClose }: { member: StaffMember; onClose:
           </select>
         </label>
 
-        {member.accountStatus === 'unlinked' || member.accountStatus === 'pending_verification' ? (
+        {member.accountStatus === 'pending_approval' ? (
+          <div className="mt-6 rounded-2xl border border-primary/20 bg-primary/5 p-4">
+            <div className="flex items-center gap-2 font-bold"><ShieldCheck size={18} />{t('staffAccounts.reviewRequest')}</div>
+            <p className="mt-2 text-sm text-muted-foreground">{t('staffAccounts.reviewRequestDesc')}</p>
+            <div className="mt-4 flex flex-wrap gap-3">
+              <Button data-testid={`button-approve-${member.id}`} disabled={pending} onClick={() => approveReq.mutate({ id: member.id, data: { role } }, { onSuccess: async () => { setMessage(`${t('staffAccounts.requestApproved')} ${t('staffAccounts.approvedStatusDesc', { phone: member.phone })}`); await refresh(); } })}>
+                <CheckCircle2 size={17} />{t('staffAccounts.approveRequest')}
+              </Button>
+              <Button data-testid={`button-reject-${member.id}`} variant="danger" disabled={pending} onClick={() => rejectReq.mutate({ id: member.id }, { onSuccess: async () => { setMessage(t('staffAccounts.requestRejected')); await refresh(); } })}>
+                <UserX size={17} />{t('staffAccounts.rejectRequest')}
+              </Button>
+            </div>
+          </div>
+        ) : member.accountStatus === 'approved' ? (
+          <div className="mt-6 rounded-2xl border border-border p-4">
+            <div className="flex items-center gap-2 font-bold"><CheckCircle2 size={18} />{t('staffAccounts.approvedStatus')}</div>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {t('staffAccounts.approvedStatusDesc', { phone: member.phone })}
+            </p>
+          </div>
+        ) : member.accountStatus === 'unlinked' || member.accountStatus === 'pending_verification' ? (
           <div className="mt-6 space-y-5">
             <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4">
               <div className="flex items-center gap-2 font-bold"><ShieldCheck size={18} />{t('staffAccounts.inviteTitle')}</div>

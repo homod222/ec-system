@@ -7,49 +7,6 @@
  */
 import * as zod from "zod";
 /**
- * @summary Request a WhatsApp login code
- */
-export const requestPhoneLoginBodyPhoneMin = 8;
-export const requestPhoneLoginBodyPhoneMax = 30;
-export const RequestPhoneLoginBody = zod.object({
-  phone: zod
-    .string()
-    .min(requestPhoneLoginBodyPhoneMin)
-    .max(requestPhoneLoginBodyPhoneMax),
-});
-export const requestPhoneLoginResponseChallengeIdMin = 32;
-export const requestPhoneLoginResponseChallengeIdMax = 64;
-export const requestPhoneLoginResponseFirstNameMax = 100;
-export const RequestPhoneLoginResponse = zod.object({
-  challengeId: zod
-    .string()
-    .min(requestPhoneLoginResponseChallengeIdMin)
-    .max(requestPhoneLoginResponseChallengeIdMax),
-  expiresInSeconds: zod.number().int().min(1),
-  recognized: zod.boolean(),
-  firstName: zod
-    .string()
-    .min(1)
-    .max(requestPhoneLoginResponseFirstNameMax)
-    .optional(),
-});
-/**
- * @summary Verify code and issue a short-lived Clerk sign-in ticket
- */
-export const verifyPhoneLoginBodyChallengeIdMin = 32;
-export const verifyPhoneLoginBodyChallengeIdMax = 64;
-export const verifyPhoneLoginBodyOtpRegExp = new RegExp("^\\d{6}$");
-export const VerifyPhoneLoginBody = zod.object({
-  challengeId: zod
-    .string()
-    .min(verifyPhoneLoginBodyChallengeIdMin)
-    .max(verifyPhoneLoginBodyChallengeIdMax),
-  otp: zod.string().regex(verifyPhoneLoginBodyOtpRegExp),
-});
-export const VerifyPhoneLoginResponse = zod.object({
-  ticket: zod.string().min(1),
-});
-/**
  * @summary Get the authenticated owner's verified login phone
  */
 export const getPhoneEnrollmentResponsePhoneRegExp = new RegExp("^965\\d{8}$");
@@ -106,6 +63,142 @@ export const VerifyPhoneEnrollmentResponse = zod.object({
     .string()
     .regex(verifyPhoneEnrollmentResponsePhoneRegExp)
     .optional(),
+});
+export const requestGuardianRegistrationBodyNameMax = 200;
+export const requestGuardianRegistrationBodyPhoneRegExp = new RegExp(
+  "^(?:\\+?965|00965)?[569][0-9]{7}$",
+);
+export const RequestGuardianRegistrationBody = zod.object({
+  name: zod.string().min(1).max(requestGuardianRegistrationBodyNameMax),
+  email: zod.string().email(),
+  phone: zod.string().regex(requestGuardianRegistrationBodyPhoneRegExp),
+});
+export const RequestGuardianRegistrationResponse = zod.object({
+  challengeId: zod.string(),
+  expiresInSeconds: zod.number().int(),
+});
+export const completeGuardianRegistrationBodyOtpRegExp = new RegExp(
+  "^[0-9]{6}$",
+);
+export const completeGuardianRegistrationBodyPasswordMin = 8;
+export const completeGuardianRegistrationBodyPasswordMax = 256;
+export const CompleteGuardianRegistrationBody = zod.object({
+  challengeId: zod.string(),
+  otp: zod.string().regex(completeGuardianRegistrationBodyOtpRegExp),
+  password: zod
+    .string()
+    .min(completeGuardianRegistrationBodyPasswordMin)
+    .max(completeGuardianRegistrationBodyPasswordMax),
+});
+export const CompleteGuardianRegistrationResponse = zod.object({
+  status: zod.enum(["created", "needs_admin"]),
+});
+export const requestStaffRegistrationBodyNameMin = 5;
+export const requestStaffRegistrationBodyNameMax = 200;
+export const requestStaffRegistrationBodyNameRegExp = new RegExp(
+  "^\\S+\\s+\\S+\\s+\\S+(?:\\s+.*)?$",
+);
+export const requestStaffRegistrationBodyPhoneRegExp = new RegExp(
+  "^(?:\\+?965|00965)?[569][0-9]{7}$",
+);
+export const RequestStaffRegistrationBody = zod.object({
+  name: zod
+    .string()
+    .min(requestStaffRegistrationBodyNameMin)
+    .max(requestStaffRegistrationBodyNameMax)
+    .regex(requestStaffRegistrationBodyNameRegExp),
+  email: zod.string().email(),
+  phone: zod.string().regex(requestStaffRegistrationBodyPhoneRegExp),
+});
+export const RequestStaffRegistrationResponse = zod.object({
+  status: zod.enum(["pending_approval", "approved", "otp_sent", "rejected"]),
+});
+export const ApproveStaffRegistrationParams = zod.object({
+  id: zod.coerce.number(),
+});
+export const ApproveStaffRegistrationBody = zod.object({
+  role: zod.enum([
+    "admin",
+    "manager",
+    "supervisor",
+    "teacher",
+    "accountant",
+    "receptionist",
+  ]),
+});
+export const ApproveStaffRegistrationResponse = zod.object({
+  status: zod.enum(["pending_approval", "approved", "otp_sent", "rejected"]),
+});
+export const RejectStaffRegistrationParams = zod.object({
+  id: zod.coerce.number(),
+});
+export const RejectStaffRegistrationResponse = zod.object({
+  status: zod.enum(["pending_approval", "approved", "otp_sent", "rejected"]),
+});
+export const completeStaffRegistrationBodyOtpRegExp = new RegExp("^[0-9]{6}$");
+export const completeStaffRegistrationBodyPasswordMin = 8;
+export const completeStaffRegistrationBodyPasswordMax = 256;
+export const CompleteStaffRegistrationBody = zod.object({
+  challengeId: zod.string(),
+  otp: zod.string().regex(completeStaffRegistrationBodyOtpRegExp),
+  password: zod
+    .string()
+    .min(completeStaffRegistrationBodyPasswordMin)
+    .max(completeStaffRegistrationBodyPasswordMax),
+});
+export const CompleteStaffRegistrationResponse = zod.object({
+  status: zod.enum(["created", "needs_admin"]),
+});
+export const requestPasswordResetBodyIdentifierMin = 3;
+export const requestPasswordResetBodyIdentifierMax = 254;
+export const RequestPasswordResetBody = zod.object({
+  identifier: zod
+    .string()
+    .min(requestPasswordResetBodyIdentifierMin)
+    .max(requestPasswordResetBodyIdentifierMax),
+});
+export const RequestPasswordResetResponse = zod.object({
+  challengeId: zod.string(),
+  expiresInSeconds: zod.number().int(),
+});
+export const completePasswordResetBodyOtpRegExp = new RegExp("^[0-9]{6}$");
+export const completePasswordResetBodyPasswordMin = 8;
+export const completePasswordResetBodyPasswordMax = 256;
+export const CompletePasswordResetBody = zod.object({
+  challengeId: zod.string(),
+  otp: zod.string().regex(completePasswordResetBodyOtpRegExp),
+  password: zod
+    .string()
+    .min(completePasswordResetBodyPasswordMin)
+    .max(completePasswordResetBodyPasswordMax),
+});
+export const CompletePasswordResetResponse = zod.object({
+  accepted: zod.boolean(),
+});
+export const requestStaffActivationBodyIdentifierMin = 3;
+export const requestStaffActivationBodyIdentifierMax = 254;
+export const RequestStaffActivationBody = zod.object({
+  identifier: zod
+    .string()
+    .min(requestStaffActivationBodyIdentifierMin)
+    .max(requestStaffActivationBodyIdentifierMax),
+});
+export const RequestStaffActivationResponse = zod.object({
+  challengeId: zod.string(),
+  expiresInSeconds: zod.number().int(),
+});
+export const passwordLoginBodyIdentifierMin = 3;
+export const passwordLoginBodyIdentifierMax = 254;
+export const passwordLoginBodyPasswordMax = 256;
+export const PasswordLoginBody = zod.object({
+  identifier: zod
+    .string()
+    .min(passwordLoginBodyIdentifierMin)
+    .max(passwordLoginBodyIdentifierMax),
+  password: zod.string().min(1).max(passwordLoginBodyPasswordMax),
+});
+export const PasswordLoginResponse = zod.object({
+  ticket: zod.string().min(1),
 });
 /**
  * Returns server health status
@@ -729,9 +822,12 @@ export const ListStaffResponseItem = zod.object({
   clerkUserId: zod.string().nullish(),
   accountStatus: zod.enum([
     "unlinked",
+    "pending_approval",
+    "approved",
     "pending_verification",
     "active",
     "disabled",
+    "rejected",
   ]),
 });
 export const ListStaffResponse = zod.array(ListStaffResponseItem);
@@ -759,9 +855,12 @@ export const CreateStaffResponse = zod.object({
   clerkUserId: zod.string().nullish(),
   accountStatus: zod.enum([
     "unlinked",
+    "pending_approval",
+    "approved",
     "pending_verification",
     "active",
     "disabled",
+    "rejected",
   ]),
 });
 export const StartStaffAccountParams = zod.object({
@@ -784,12 +883,16 @@ export const StartStaffAccountResponse = zod.object({
   clerkUserId: zod.string().nullish(),
   accountStatus: zod.enum([
     "unlinked",
+    "pending_approval",
+    "approved",
     "pending_verification",
     "active",
     "disabled",
+    "rejected",
   ]),
   role: zod.string(),
   setupComplete: zod.boolean(),
+  otpSent: zod.boolean().optional(),
 });
 export const UpdateStaffAccountParams = zod.object({
   id: zod.coerce.number(),
@@ -812,12 +915,16 @@ export const UpdateStaffAccountResponse = zod.object({
   clerkUserId: zod.string().nullish(),
   accountStatus: zod.enum([
     "unlinked",
+    "pending_approval",
+    "approved",
     "pending_verification",
     "active",
     "disabled",
+    "rejected",
   ]),
   role: zod.string(),
   setupComplete: zod.boolean(),
+  otpSent: zod.boolean().optional(),
 });
 export const VerifyStaffAccountParams = zod.object({
   id: zod.coerce.number(),
@@ -841,12 +948,16 @@ export const VerifyStaffAccountResponse = zod.object({
   clerkUserId: zod.string().nullish(),
   accountStatus: zod.enum([
     "unlinked",
+    "pending_approval",
+    "approved",
     "pending_verification",
     "active",
     "disabled",
+    "rejected",
   ]),
   role: zod.string(),
   setupComplete: zod.boolean(),
+  otpSent: zod.boolean().optional(),
 });
 export const RequestStaffPasswordResetBody = zod.object({
   email: zod.string().email(),
@@ -1994,9 +2105,12 @@ export const UpdateStaffResponse = zod.object({
   clerkUserId: zod.string().nullish(),
   accountStatus: zod.enum([
     "unlinked",
+    "pending_approval",
+    "approved",
     "pending_verification",
     "active",
     "disabled",
+    "rejected",
   ]),
 });
 export const DeleteStaffParams = zod.object({

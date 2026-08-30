@@ -14,4 +14,5 @@ export interface StaffAccountResult {
   accountStatus: StaffAccountResultAccountStatus;
   role: string;
   setupComplete: boolean;
+  otpSent?: boolean;
 }

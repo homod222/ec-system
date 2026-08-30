@@ -4,17 +4,15 @@ import { and, eq, gte, isNull, sql } from "drizzle-orm";
 import { createHash, randomInt, randomUUID, timingSafeEqual } from "node:crypto";
 import {
   db,
-  guardiansTable,
   phoneLoginIdentitiesTable,
   phoneOtpChallengesTable,
-  staffTable,
 } from "@workspace/db";
 import {
-  RequestPhoneLoginBody,
-  VerifyPhoneLoginBody,
-  RequestPhoneLoginResponse,
-  VerifyPhoneLoginResponse,
   GetPhoneEnrollmentResponse,
+  RequestPhoneEnrollmentBody,
+  RequestPhoneEnrollmentResponse,
+  VerifyPhoneEnrollmentBody,
+  VerifyPhoneEnrollmentResponse,
 } from "@workspace/api-zod";
 
 type Sender = (to: string, otp: string) => Promise<{ ok: true } | { ok: false; error: string }>;
@@ -58,48 +56,6 @@ function secureDigestEqual(expectedHex: string, actualHex: string) {
   const expected = Buffer.from(expectedHex, "hex");
   const actual = Buffer.from(actualHex, "hex");
   return expected.length === actual.length && timingSafeEqual(expected, actual);
-}
-
-async function resolveIdentity(phone: string): Promise<Identity | null> {
-  const normalizedStaffPhone = sql`
-    CASE
-      WHEN regexp_replace(${staffTable.phone}, '\\D', '', 'g') LIKE '00965%'
-        THEN substring(regexp_replace(${staffTable.phone}, '\\D', '', 'g') FROM 6)
-      WHEN regexp_replace(${staffTable.phone}, '\\D', '', 'g') LIKE '965%'
-        AND length(regexp_replace(${staffTable.phone}, '\\D', '', 'g')) > 8
-        THEN substring(regexp_replace(${staffTable.phone}, '\\D', '', 'g') FROM 4)
-      ELSE ltrim(regexp_replace(${staffTable.phone}, '\\D', '', 'g'), '0')
-    END`;
-  const normalizedGuardianPhone = sql`
-    CASE
-      WHEN regexp_replace(${guardiansTable.phone}, '\\D', '', 'g') LIKE '00965%'
-        THEN substring(regexp_replace(${guardiansTable.phone}, '\\D', '', 'g') FROM 6)
-      WHEN regexp_replace(${guardiansTable.phone}, '\\D', '', 'g') LIKE '965%'
-        AND length(regexp_replace(${guardiansTable.phone}, '\\D', '', 'g')) > 8
-        THEN substring(regexp_replace(${guardiansTable.phone}, '\\D', '', 'g') FROM 4)
-      ELSE ltrim(regexp_replace(${guardiansTable.phone}, '\\D', '', 'g'), '0')
-    END`;
-  const [owners, staff, guardians] = await Promise.all([
-    db.select().from(phoneLoginIdentitiesTable).where(eq(phoneLoginIdentitiesTable.normalizedPhone, phone)),
-    db.select({ clerkUserId: staffTable.clerkUserId, name: staffTable.name })
-      .from(staffTable).where(and(
-        eq(staffTable.accountStatus, "active"),
-        sql`${staffTable.clerkUserId} is not null`,
-        sql`'965' || ${normalizedStaffPhone} = ${phone}`,
-      )).limit(2),
-    db.select({ clerkUserId: guardiansTable.clerkUserId, name: guardiansTable.name })
-      .from(guardiansTable).where(and(
-        sql`${guardiansTable.clerkUserId} is not null`,
-        sql`'965' || ${normalizedGuardianPhone} = ${phone}`,
-      )).limit(2),
-  ]);
-  const candidates: Identity[] = [
-    ...owners.map(row => ({ clerkUserId: row.clerkUserId, firstName: row.firstName })),
-    ...staff.map(row => ({ clerkUserId: row.clerkUserId!, firstName: firstName(row.name) })),
-    ...guardians.map(row => ({ clerkUserId: row.clerkUserId!, firstName: firstName(row.name) })),
-  ];
-  const unique = Array.from(new Map(candidates.map(candidate => [candidate.clerkUserId, candidate])).values());
-  return unique.length === 1 ? unique[0] : null;
 }
 
 async function isEnrollmentAdmin(userId: string) {
@@ -169,65 +125,12 @@ export function createPhoneAuthRouter(sender: Sender = defaultSender): IRouter {
     return { id, otp };
   }
 
-  router.post("/auth/phone/request", async (req, res, next) => {
-    try {
-      const body = RequestPhoneLoginBody.safeParse(req.body);
-      if (!body.success) return void res.status(400).json({ error: "Invalid phone" });
-      const phone = normalizeKuwaitPhone(body.data.phone);
-      if (!phone) return void res.status(400).json({ error: "Invalid Kuwait mobile number" });
-      const identity = await resolveIdentity(phone);
-      const challenge = await createChallenge(req, { purpose: "login", phone, identity });
-      if (!challenge) return void res.status(429).json({ error: "Try again later" });
-      res.json(RequestPhoneLoginResponse.parse({
-        challengeId: challenge.id,
-        expiresInSeconds: OTP_SECONDS,
-        recognized: Boolean(identity),
-        ...(identity ? { firstName: identity.firstName } : {}),
-      }));
-    } catch (error) { next(error); }
+  router.post("/auth/phone/request", (_req, res) => {
+    res.status(410).json({ error: "Phone login retired" });
   });
 
-  router.post("/auth/phone/verify", async (req, res, next) => {
-    try {
-      const body = VerifyPhoneLoginBody.safeParse(req.body);
-      if (!body.success) return void res.status(400).json({ error: "Invalid challenge" });
-      const [challenge] = await db.select().from(phoneOtpChallengesTable).where(and(
-        eq(phoneOtpChallengesTable.id, body.data.challengeId),
-        eq(phoneOtpChallengesTable.purpose, "login"),
-        isNull(phoneOtpChallengesTable.consumedAt),
-        sql`${phoneOtpChallengesTable.expiresAt} > now()`,
-        sql`${phoneOtpChallengesTable.attempts} < ${MAX_ATTEMPTS}`,
-      )).limit(1);
-      if (!challenge || !challenge.clerkUserId) {
-        return void res.status(400).json({ error: "Invalid or expired code" });
-      }
-      if (!secureDigestEqual(challenge.otpHash, digest(`otp:${challenge.id}:${body.data.otp}`))) {
-        const [attempted] = await db.update(phoneOtpChallengesTable)
-          .set({ attempts: sql`${phoneOtpChallengesTable.attempts} + 1` })
-          .where(and(
-            eq(phoneOtpChallengesTable.id, challenge.id),
-            eq(phoneOtpChallengesTable.purpose, "login"),
-            isNull(phoneOtpChallengesTable.consumedAt),
-            sql`${phoneOtpChallengesTable.expiresAt} > now()`,
-            sql`${phoneOtpChallengesTable.attempts} < ${MAX_ATTEMPTS}`,
-          ))
-          .returning({ attempts: phoneOtpChallengesTable.attempts });
-        return void res.status(attempted?.attempts === MAX_ATTEMPTS ? 429 : 400).json({ error: "Invalid or expired code" });
-      }
-      const [consumed] = await db.update(phoneOtpChallengesTable).set({ consumedAt: new Date() }).where(and(
-        eq(phoneOtpChallengesTable.id, challenge.id),
-        eq(phoneOtpChallengesTable.purpose, "login"),
-        isNull(phoneOtpChallengesTable.consumedAt),
-        sql`${phoneOtpChallengesTable.expiresAt} > now()`,
-        sql`${phoneOtpChallengesTable.attempts} < ${MAX_ATTEMPTS}`,
-      )).returning({ id: phoneOtpChallengesTable.id });
-      if (!consumed) return void res.status(400).json({ error: "Invalid or expired code" });
-      const signInTokens = clerkClient.signInTokens as unknown as {
-        createSignInToken(input: { userId: string; expiresInSeconds: number }): Promise<{ token: string }>;
-      };
-      const token = await signInTokens.createSignInToken({ userId: challenge.clerkUserId, expiresInSeconds: 60 });
-      res.json(VerifyPhoneLoginResponse.parse({ ticket: token.token }));
-    } catch (error) { next(error); }
+  router.post("/auth/phone/verify", (_req, res) => {
+    res.status(410).json({ error: "Phone login retired" });
   });
 
   router.get("/auth/phone/enrollment", async (req, res, next) => {
@@ -249,17 +152,18 @@ export function createPhoneAuthRouter(sender: Sender = defaultSender): IRouter {
       if (!userId) return void res.status(401).json({ error: "Unauthorized" });
       const user = await isEnrollmentAdmin(userId);
       if (!user) return void res.status(403).json({ error: "Administrative access required" });
-      const body = RequestPhoneLoginBody.safeParse(req.body);
+      const body = RequestPhoneEnrollmentBody.safeParse(req.body);
       const phone = body.success ? normalizeKuwaitPhone(body.data.phone) : null;
       if (!phone) return void res.status(400).json({ error: "Invalid Kuwait mobile number" });
-      const existing = await resolveIdentity(phone);
+      const [existing] = await db.select().from(phoneLoginIdentitiesTable)
+        .where(eq(phoneLoginIdentitiesTable.normalizedPhone, phone)).limit(1);
       if (existing && existing.clerkUserId !== userId) return void res.status(409).json({ error: "Phone already enrolled" });
       const name = firstName(user.firstName || "المالك");
       const challenge = await createChallenge(req, {
         purpose: "enrollment", phone, identity: { clerkUserId: userId, firstName: name }, requestedBy: userId,
       });
       if (!challenge) return void res.status(429).json({ error: "Try again later" });
-      res.json(RequestPhoneLoginResponse.parse({ challengeId: challenge.id, expiresInSeconds: OTP_SECONDS, recognized: true, firstName: name }));
+      res.json(RequestPhoneEnrollmentResponse.parse({ challengeId: challenge.id, expiresInSeconds: OTP_SECONDS, recognized: true, firstName: name }));
     } catch (error) { next(error); }
   });
 
@@ -268,7 +172,7 @@ export function createPhoneAuthRouter(sender: Sender = defaultSender): IRouter {
       const userId = getAuth(req).userId;
       if (!userId) return void res.status(401).json({ error: "Unauthorized" });
       if (!await isEnrollmentAdmin(userId)) return void res.status(403).json({ error: "Administrative access required" });
-      const body = VerifyPhoneLoginBody.safeParse(req.body);
+      const body = VerifyPhoneEnrollmentBody.safeParse(req.body);
       if (!body.success) return void res.status(400).json({ error: "Invalid challenge" });
       const [challenge] = await db.select().from(phoneOtpChallengesTable).where(and(
         eq(phoneOtpChallengesTable.id, body.data.challengeId),
@@ -314,7 +218,7 @@ export function createPhoneAuthRouter(sender: Sender = defaultSender): IRouter {
           set: { normalizedPhone: challenge.normalizedPhone!, firstName: challenge.firstName || "المالك", verifiedAt: new Date() },
         });
       });
-      res.json(GetPhoneEnrollmentResponse.parse({ enrolled: true, phone: challenge.normalizedPhone }));
+      res.json(VerifyPhoneEnrollmentResponse.parse({ enrolled: true, phone: challenge.normalizedPhone }));
     } catch (error) {
       if (typeof error === "object" && error !== null && "code" in error && error.code === "23505") {
         return void res.status(409).json({ error: "Phone already enrolled" });

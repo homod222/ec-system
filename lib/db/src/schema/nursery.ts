@@ -46,9 +46,26 @@ export const phoneOtpChallengesTable = pgTable("phone_otp_challenges", {
   clerkUserId: text("clerk_user_id"),
   firstName: text("first_name"),
   requestedBy: text("requested_by"),
+  /** Public registration/reset subject; never contains a password or OTP. */
+  subjectId: integer("subject_id"),
+  payload: jsonb("payload").$type<Record<string, unknown>>(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   attempts: integer("attempts").notNull().default(0),
   consumedAt: timestamp("consumed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+/** One-time reservation that prevents concurrent public registration creating two Clerk users. */
+export const guardianRegistrationClaimsTable = pgTable("guardian_registration_claims", {
+  guardianId: integer("guardian_id").primaryKey(),
+  challengeId: text("challenge_id").notNull().unique(),
+  clerkUserId: text("clerk_user_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+});
+export const passwordLoginAttemptsTable = pgTable("password_login_attempts", {
+  id: serial("id").primaryKey(),
+  ipHash: text("ip_hash").notNull(),
+  identifierHash: text("identifier_hash").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

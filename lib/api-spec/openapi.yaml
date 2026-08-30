@@ -41,41 +41,6 @@ tags:
   - name: site-gallery
     description: Public website gallery management
 paths:
-  /auth/phone/request:
-    post:
-      operationId: requestPhoneLogin
-      tags: [phone-auth]
-      summary: Request a WhatsApp login code
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/PhoneLoginRequest" }
-      responses:
-        "200":
-          description: Generic accepted response, with first name only when uniquely recognized
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/PhoneLoginChallenge" }
-        "429": { description: Too many requests }
-  /auth/phone/verify:
-    post:
-      operationId: verifyPhoneLogin
-      tags: [phone-auth]
-      summary: Verify code and issue a short-lived Clerk sign-in ticket
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/PhoneLoginVerify" }
-      responses:
-        "200":
-          description: Clerk one-time sign-in ticket
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/PhoneLoginTicket" }
-        "400": { description: "Invalid, expired, used, or locked challenge" }
-        "429": { description: Too many attempts }
   /auth/phone/enrollment:
     get:
       operationId: getPhoneEnrollment
@@ -125,6 +90,108 @@ paths:
               schema: { $ref: "#/components/schemas/PhoneEnrollmentState" }
         "400": { description: Invalid challenge }
         "403": { description: Owner access required }
+  /auth/registration/guardian/request:
+    post:
+      operationId: requestGuardianRegistration
+      security: []
+      tags: [phone-auth]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/GuardianRegistrationInput" } } }
+      responses:
+        "200": { description: Generic verification challenge, content: { application/json: { schema: { $ref: "#/components/schemas/PublicOtpChallenge" } } } }
+        "400": { description: Invalid registration data }
+        "429": { description: Too many requests }
+  /auth/registration/guardian/complete:
+    post:
+      operationId: completeGuardianRegistration
+      security: []
+      tags: [phone-auth]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/PublicRegistrationComplete" } } }
+      responses:
+        "200": { description: Account created or administrator assistance required, content: { application/json: { schema: { $ref: "#/components/schemas/PublicRegistrationResult" } } } }
+        "400": { description: Invalid verification }
+  /auth/registration/staff:
+    post:
+      operationId: requestStaffRegistration
+      security: []
+      tags: [staff]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/StaffRegistrationInput" } } }
+      responses:
+        "200": { description: Generic pending approval acknowledgement, content: { application/json: { schema: { $ref: "#/components/schemas/PendingApprovalResult" } } } }
+  /auth/registration/staff/{id}/approve:
+    post:
+      operationId: approveStaffRegistration
+      tags: [staff]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/StaffApprovalInput" } } }
+      responses:
+        "200": { description: Approval OTP sent, content: { application/json: { schema: { $ref: "#/components/schemas/PendingApprovalResult" } } } }
+        "403": { description: Administrative access required }
+  /auth/registration/staff/{id}/reject:
+    post:
+      operationId: rejectStaffRegistration
+      tags: [staff]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: Request rejected, content: { application/json: { schema: { $ref: "#/components/schemas/PendingApprovalResult" } } } }
+  /auth/registration/staff/complete:
+    post:
+      operationId: completeStaffRegistration
+      security: []
+      tags: [staff]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/PublicRegistrationComplete" } } }
+      responses:
+        "200": { description: Staff account created, content: { application/json: { schema: { $ref: "#/components/schemas/PublicRegistrationResult" } } } }
+  /auth/password-reset/request:
+    post:
+      operationId: requestPasswordReset
+      security: []
+      tags: [phone-auth]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/PasswordResetRequest" } } }
+      responses:
+        "200": { description: Generic acknowledgement and opaque challenge, content: { application/json: { schema: { $ref: "#/components/schemas/PublicOtpChallenge" } } } }
+  /auth/password-reset/complete:
+    post:
+      operationId: completePasswordReset
+      security: []
+      tags: [phone-auth]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/PublicRegistrationComplete" } } }
+      responses:
+        "200": { description: Generic completion, content: { application/json: { schema: { $ref: "#/components/schemas/GenericAccepted" } } } }
+  /auth/registration/staff/activation/request:
+    post:
+      operationId: requestStaffActivation
+      security: []
+      tags: [staff]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/PasswordResetRequest" } } }
+      responses:
+        "200": { description: Opaque activation challenge, content: { application/json: { schema: { $ref: "#/components/schemas/PublicOtpChallenge" } } } }
+  /auth/password-login:
+    post:
+      operationId: passwordLogin
+      security: []
+      tags: [phone-auth]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/PasswordLoginInput" } } }
+      responses:
+        "200": { description: Short-lived Clerk sign-in ticket, content: { application/json: { schema: { $ref: "#/components/schemas/PhoneLoginTicket" } } } }
+        "400": { description: Invalid credentials }
   /healthz:
     get:
       operationId: healthCheck
@@ -1631,6 +1698,64 @@ components:
       required: true
       schema: { $ref: "#/components/schemas/OperationalResource" }
   schemas:
+    GuardianRegistrationInput:
+      type: object
+      required: [name, email, phone]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 200 }
+        email: { type: string, format: email }
+        phone: { type: string, pattern: '^(?:\+?965|00965)?[569][0-9]{7}$' }
+    StaffRegistrationInput:
+      type: object
+      required: [name, email, phone]
+      properties:
+        name: { type: string, minLength: 5, maxLength: 200, pattern: '^\S+\s+\S+\s+\S+(?:\s+.*)?$' }
+        email: { type: string, format: email }
+        phone: { type: string, pattern: '^(?:\+?965|00965)?[569][0-9]{7}$' }
+    PublicOtpChallenge:
+      type: object
+      required: [challengeId, expiresInSeconds]
+      properties:
+        challengeId: { type: string }
+        expiresInSeconds: { type: integer }
+    PublicRegistrationComplete:
+      type: object
+      required: [challengeId, otp, password]
+      properties:
+        challengeId: { type: string }
+        otp: { type: string, pattern: '^[0-9]{6}$' }
+        password: { type: string, minLength: 8, maxLength: 256 }
+    PublicRegistrationResult:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [created, needs_admin] }
+    PendingApprovalResult:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [pending_approval, approved, otp_sent, rejected] }
+    StaffApprovalInput:
+      type: object
+      required: [role]
+      properties:
+        role: { type: string, enum: [admin, manager, supervisor, teacher, accountant, receptionist] }
+    PasswordResetRequest:
+      type: object
+      required: [identifier]
+      properties:
+        identifier: { type: string, minLength: 3, maxLength: 254 }
+    PasswordLoginInput:
+      type: object
+      required: [identifier, password]
+      properties:
+        identifier: { type: string, minLength: 3, maxLength: 254 }
+        password: { type: string, minLength: 1, maxLength: 256 }
+    GenericAccepted:
+      type: object
+      required: [accepted]
+      properties:
+        accepted: { type: boolean }
     PhoneLoginRequest:
       type: object
       required: [phone]
@@ -1922,7 +2047,7 @@ components:
         clerkUserId: { type: ["string", "null"] }
         accountStatus:
           type: string
-          enum: [unlinked, pending_verification, active, disabled]
+          enum: [unlinked, pending_approval, approved, pending_verification, active, disabled, rejected]
     StaffInput:
       type: object
       required: [name, role, phone, status]
@@ -1965,9 +2090,10 @@ components:
         clerkUserId: { type: ["string", "null"] }
         accountStatus:
           type: string
-          enum: [unlinked, pending_verification, active, disabled]
+          enum: [unlinked, pending_approval, approved, pending_verification, active, disabled, rejected]
         role: { type: string }
         setupComplete: { type: boolean }
+        otpSent: { type: boolean }
     StaffPasswordResetRequest:
       type: object
       required: [email]

@@ -45,8 +45,10 @@ import type {
   DashboardSummary,
   ExportNurseryReportParams,
   FinanceSummary,
+  GenericAccepted,
   GetNurseryReportParams,
   Guardian,
+  GuardianRegistrationInput,
   HealthStatus,
   InternalPaymentInput,
   Invoice,
@@ -80,6 +82,9 @@ import type {
   ParentMessage,
   ParentMessageInput,
   ParentOverview,
+  PasswordLoginInput,
+  PasswordResetRequest,
+  PendingApprovalResult,
   PermissionCatalogGroup,
   PermissionPrincipal,
   PhoneEnrollmentState,
@@ -88,6 +93,9 @@ import type {
   PhoneLoginTicket,
   PhoneLoginVerify,
   ProgressReport,
+  PublicOtpChallenge,
+  PublicRegistrationComplete,
+  PublicRegistrationResult,
   PublicSiteGalleryItem,
   PublicSiteSettings,
   Receipt,
@@ -104,6 +112,7 @@ import type {
   StaffAccountResult,
   StaffAccountUpdateInput,
   StaffAccountVerifyInput,
+  StaffApprovalInput,
   StaffAttendance,
   StaffAttendanceInput,
   StaffInput,
@@ -112,6 +121,7 @@ import type {
   StaffPasswordResetCompleteResult,
   StaffPasswordResetRequest,
   StaffPasswordResetRequestResult,
+  StaffRegistrationInput,
   UploadUrlRequest,
   UploadUrlResponse,
   UserPermission,
@@ -145,178 +155,6 @@ const withQueryKey = <T extends object, K>(
     });
   }
   return result;
-};
-
-export const getRequestPhoneLoginUrl = () => {
-  return `/api/auth/phone/request`;
-};
-
-/**
- * @summary Request a WhatsApp login code
- */
-export const requestPhoneLogin = async (
-  phoneLoginRequest: PhoneLoginRequest,
-  options?: Parameters<typeof customFetch>[1],
-): Promise<PhoneLoginChallenge> => {
-  return customFetch<PhoneLoginChallenge>(getRequestPhoneLoginUrl(), {
-    ...options,
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...options?.headers },
-    body: JSON.stringify(phoneLoginRequest),
-  });
-};
-
-export const getRequestPhoneLoginMutationOptions = <
-  TError = ErrorType<void>,
-  TContext = unknown,
->(options?: {
-  mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof requestPhoneLogin>>,
-    TError,
-    { data: BodyType<PhoneLoginRequest> },
-    TContext
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}): UseMutationOptions<
-  Awaited<ReturnType<typeof requestPhoneLogin>>,
-  TError,
-  { data: BodyType<PhoneLoginRequest> },
-  TContext
-> => {
-  const mutationKey = ["requestPhoneLogin"];
-  const { mutation: mutationOptions, request: requestOptions } = options
-    ? options.mutation &&
-      "mutationKey" in options.mutation &&
-      options.mutation.mutationKey
-      ? options
-      : { ...options, mutation: { ...options.mutation, mutationKey } }
-    : { mutation: { mutationKey }, request: undefined };
-
-  const mutationFn: MutationFunction<
-    Awaited<ReturnType<typeof requestPhoneLogin>>,
-    { data: BodyType<PhoneLoginRequest> }
-  > = (props) => {
-    const { data } = props ?? {};
-
-    return requestPhoneLogin(data, requestOptions);
-  };
-
-  return { mutationFn, ...mutationOptions };
-};
-
-export type RequestPhoneLoginMutationResult = NonNullable<
-  Awaited<ReturnType<typeof requestPhoneLogin>>
->;
-export type RequestPhoneLoginMutationBody = BodyType<PhoneLoginRequest>;
-export type RequestPhoneLoginMutationError = ErrorType<void>;
-
-/**
- * @summary Request a WhatsApp login code
- */
-export const useRequestPhoneLogin = <
-  TError = ErrorType<void>,
-  TContext = unknown,
->(options?: {
-  mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof requestPhoneLogin>>,
-    TError,
-    { data: BodyType<PhoneLoginRequest> },
-    TContext
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}): UseMutationResult<
-  Awaited<ReturnType<typeof requestPhoneLogin>>,
-  TError,
-  { data: BodyType<PhoneLoginRequest> },
-  TContext
-> => {
-  return useMutation(getRequestPhoneLoginMutationOptions(options));
-};
-
-export const getVerifyPhoneLoginUrl = () => {
-  return `/api/auth/phone/verify`;
-};
-
-/**
- * @summary Verify code and issue a short-lived Clerk sign-in ticket
- */
-export const verifyPhoneLogin = async (
-  phoneLoginVerify: PhoneLoginVerify,
-  options?: Parameters<typeof customFetch>[1],
-): Promise<PhoneLoginTicket> => {
-  return customFetch<PhoneLoginTicket>(getVerifyPhoneLoginUrl(), {
-    ...options,
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...options?.headers },
-    body: JSON.stringify(phoneLoginVerify),
-  });
-};
-
-export const getVerifyPhoneLoginMutationOptions = <
-  TError = ErrorType<void>,
-  TContext = unknown,
->(options?: {
-  mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof verifyPhoneLogin>>,
-    TError,
-    { data: BodyType<PhoneLoginVerify> },
-    TContext
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}): UseMutationOptions<
-  Awaited<ReturnType<typeof verifyPhoneLogin>>,
-  TError,
-  { data: BodyType<PhoneLoginVerify> },
-  TContext
-> => {
-  const mutationKey = ["verifyPhoneLogin"];
-  const { mutation: mutationOptions, request: requestOptions } = options
-    ? options.mutation &&
-      "mutationKey" in options.mutation &&
-      options.mutation.mutationKey
-      ? options
-      : { ...options, mutation: { ...options.mutation, mutationKey } }
-    : { mutation: { mutationKey }, request: undefined };
-
-  const mutationFn: MutationFunction<
-    Awaited<ReturnType<typeof verifyPhoneLogin>>,
-    { data: BodyType<PhoneLoginVerify> }
-  > = (props) => {
-    const { data } = props ?? {};
-
-    return verifyPhoneLogin(data, requestOptions);
-  };
-
-  return { mutationFn, ...mutationOptions };
-};
-
-export type VerifyPhoneLoginMutationResult = NonNullable<
-  Awaited<ReturnType<typeof verifyPhoneLogin>>
->;
-export type VerifyPhoneLoginMutationBody = BodyType<PhoneLoginVerify>;
-export type VerifyPhoneLoginMutationError = ErrorType<void>;
-
-/**
- * @summary Verify code and issue a short-lived Clerk sign-in ticket
- */
-export const useVerifyPhoneLogin = <
-  TError = ErrorType<void>,
-  TContext = unknown,
->(options?: {
-  mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof verifyPhoneLogin>>,
-    TError,
-    { data: BodyType<PhoneLoginVerify> },
-    TContext
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}): UseMutationResult<
-  Awaited<ReturnType<typeof verifyPhoneLogin>>,
-  TError,
-  { data: BodyType<PhoneLoginVerify> },
-  TContext
-> => {
-  return useMutation(getVerifyPhoneLoginMutationOptions(options));
 };
 
 export const getGetPhoneEnrollmentUrl = () => {
@@ -564,6 +402,819 @@ export const useVerifyPhoneEnrollment = <
   TContext
 > => {
   return useMutation(getVerifyPhoneEnrollmentMutationOptions(options));
+};
+
+export const getRequestGuardianRegistrationUrl = () => {
+  return `/api/auth/registration/guardian/request`;
+};
+
+export const requestGuardianRegistration = async (
+  guardianRegistrationInput: GuardianRegistrationInput,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<PublicOtpChallenge> => {
+  return customFetch<PublicOtpChallenge>(getRequestGuardianRegistrationUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(guardianRegistrationInput),
+  });
+};
+
+export const getRequestGuardianRegistrationMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof requestGuardianRegistration>>,
+    TError,
+    { data: BodyType<GuardianRegistrationInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof requestGuardianRegistration>>,
+  TError,
+  { data: BodyType<GuardianRegistrationInput> },
+  TContext
+> => {
+  const mutationKey = ["requestGuardianRegistration"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof requestGuardianRegistration>>,
+    { data: BodyType<GuardianRegistrationInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return requestGuardianRegistration(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RequestGuardianRegistrationMutationResult = NonNullable<
+  Awaited<ReturnType<typeof requestGuardianRegistration>>
+>;
+export type RequestGuardianRegistrationMutationBody =
+  BodyType<GuardianRegistrationInput>;
+export type RequestGuardianRegistrationMutationError = ErrorType<void>;
+
+export const useRequestGuardianRegistration = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof requestGuardianRegistration>>,
+    TError,
+    { data: BodyType<GuardianRegistrationInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof requestGuardianRegistration>>,
+  TError,
+  { data: BodyType<GuardianRegistrationInput> },
+  TContext
+> => {
+  return useMutation(getRequestGuardianRegistrationMutationOptions(options));
+};
+
+export const getCompleteGuardianRegistrationUrl = () => {
+  return `/api/auth/registration/guardian/complete`;
+};
+
+export const completeGuardianRegistration = async (
+  publicRegistrationComplete: PublicRegistrationComplete,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<PublicRegistrationResult> => {
+  return customFetch<PublicRegistrationResult>(
+    getCompleteGuardianRegistrationUrl(),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(publicRegistrationComplete),
+    },
+  );
+};
+
+export const getCompleteGuardianRegistrationMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof completeGuardianRegistration>>,
+    TError,
+    { data: BodyType<PublicRegistrationComplete> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof completeGuardianRegistration>>,
+  TError,
+  { data: BodyType<PublicRegistrationComplete> },
+  TContext
+> => {
+  const mutationKey = ["completeGuardianRegistration"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof completeGuardianRegistration>>,
+    { data: BodyType<PublicRegistrationComplete> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return completeGuardianRegistration(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CompleteGuardianRegistrationMutationResult = NonNullable<
+  Awaited<ReturnType<typeof completeGuardianRegistration>>
+>;
+export type CompleteGuardianRegistrationMutationBody =
+  BodyType<PublicRegistrationComplete>;
+export type CompleteGuardianRegistrationMutationError = ErrorType<void>;
+
+export const useCompleteGuardianRegistration = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof completeGuardianRegistration>>,
+    TError,
+    { data: BodyType<PublicRegistrationComplete> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof completeGuardianRegistration>>,
+  TError,
+  { data: BodyType<PublicRegistrationComplete> },
+  TContext
+> => {
+  return useMutation(getCompleteGuardianRegistrationMutationOptions(options));
+};
+
+export const getRequestStaffRegistrationUrl = () => {
+  return `/api/auth/registration/staff`;
+};
+
+export const requestStaffRegistration = async (
+  staffRegistrationInput: StaffRegistrationInput,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<PendingApprovalResult> => {
+  return customFetch<PendingApprovalResult>(getRequestStaffRegistrationUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(staffRegistrationInput),
+  });
+};
+
+export const getRequestStaffRegistrationMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof requestStaffRegistration>>,
+    TError,
+    { data: BodyType<StaffRegistrationInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof requestStaffRegistration>>,
+  TError,
+  { data: BodyType<StaffRegistrationInput> },
+  TContext
+> => {
+  const mutationKey = ["requestStaffRegistration"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof requestStaffRegistration>>,
+    { data: BodyType<StaffRegistrationInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return requestStaffRegistration(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RequestStaffRegistrationMutationResult = NonNullable<
+  Awaited<ReturnType<typeof requestStaffRegistration>>
+>;
+export type RequestStaffRegistrationMutationBody =
+  BodyType<StaffRegistrationInput>;
+export type RequestStaffRegistrationMutationError = ErrorType<unknown>;
+
+export const useRequestStaffRegistration = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof requestStaffRegistration>>,
+    TError,
+    { data: BodyType<StaffRegistrationInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof requestStaffRegistration>>,
+  TError,
+  { data: BodyType<StaffRegistrationInput> },
+  TContext
+> => {
+  return useMutation(getRequestStaffRegistrationMutationOptions(options));
+};
+
+export const getApproveStaffRegistrationUrl = (id: number) => {
+  return `/api/auth/registration/staff/${id}/approve`;
+};
+
+export const approveStaffRegistration = async (
+  id: number,
+  staffApprovalInput: StaffApprovalInput,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<PendingApprovalResult> => {
+  return customFetch<PendingApprovalResult>(
+    getApproveStaffRegistrationUrl(id),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(staffApprovalInput),
+    },
+  );
+};
+
+export const getApproveStaffRegistrationMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof approveStaffRegistration>>,
+    TError,
+    { id: number; data: BodyType<StaffApprovalInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof approveStaffRegistration>>,
+  TError,
+  { id: number; data: BodyType<StaffApprovalInput> },
+  TContext
+> => {
+  const mutationKey = ["approveStaffRegistration"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof approveStaffRegistration>>,
+    { id: number; data: BodyType<StaffApprovalInput> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return approveStaffRegistration(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ApproveStaffRegistrationMutationResult = NonNullable<
+  Awaited<ReturnType<typeof approveStaffRegistration>>
+>;
+export type ApproveStaffRegistrationMutationBody = BodyType<StaffApprovalInput>;
+export type ApproveStaffRegistrationMutationError = ErrorType<void>;
+
+export const useApproveStaffRegistration = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof approveStaffRegistration>>,
+    TError,
+    { id: number; data: BodyType<StaffApprovalInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof approveStaffRegistration>>,
+  TError,
+  { id: number; data: BodyType<StaffApprovalInput> },
+  TContext
+> => {
+  return useMutation(getApproveStaffRegistrationMutationOptions(options));
+};
+
+export const getRejectStaffRegistrationUrl = (id: number) => {
+  return `/api/auth/registration/staff/${id}/reject`;
+};
+
+export const rejectStaffRegistration = async (
+  id: number,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<PendingApprovalResult> => {
+  return customFetch<PendingApprovalResult>(getRejectStaffRegistrationUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getRejectStaffRegistrationMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof rejectStaffRegistration>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof rejectStaffRegistration>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["rejectStaffRegistration"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof rejectStaffRegistration>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return rejectStaffRegistration(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RejectStaffRegistrationMutationResult = NonNullable<
+  Awaited<ReturnType<typeof rejectStaffRegistration>>
+>;
+
+export type RejectStaffRegistrationMutationError = ErrorType<unknown>;
+
+export const useRejectStaffRegistration = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof rejectStaffRegistration>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof rejectStaffRegistration>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getRejectStaffRegistrationMutationOptions(options));
+};
+
+export const getCompleteStaffRegistrationUrl = () => {
+  return `/api/auth/registration/staff/complete`;
+};
+
+export const completeStaffRegistration = async (
+  publicRegistrationComplete: PublicRegistrationComplete,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<PublicRegistrationResult> => {
+  return customFetch<PublicRegistrationResult>(
+    getCompleteStaffRegistrationUrl(),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(publicRegistrationComplete),
+    },
+  );
+};
+
+export const getCompleteStaffRegistrationMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof completeStaffRegistration>>,
+    TError,
+    { data: BodyType<PublicRegistrationComplete> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof completeStaffRegistration>>,
+  TError,
+  { data: BodyType<PublicRegistrationComplete> },
+  TContext
+> => {
+  const mutationKey = ["completeStaffRegistration"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof completeStaffRegistration>>,
+    { data: BodyType<PublicRegistrationComplete> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return completeStaffRegistration(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CompleteStaffRegistrationMutationResult = NonNullable<
+  Awaited<ReturnType<typeof completeStaffRegistration>>
+>;
+export type CompleteStaffRegistrationMutationBody =
+  BodyType<PublicRegistrationComplete>;
+export type CompleteStaffRegistrationMutationError = ErrorType<unknown>;
+
+export const useCompleteStaffRegistration = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof completeStaffRegistration>>,
+    TError,
+    { data: BodyType<PublicRegistrationComplete> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof completeStaffRegistration>>,
+  TError,
+  { data: BodyType<PublicRegistrationComplete> },
+  TContext
+> => {
+  return useMutation(getCompleteStaffRegistrationMutationOptions(options));
+};
+
+export const getRequestPasswordResetUrl = () => {
+  return `/api/auth/password-reset/request`;
+};
+
+export const requestPasswordReset = async (
+  passwordResetRequest: PasswordResetRequest,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<PublicOtpChallenge> => {
+  return customFetch<PublicOtpChallenge>(getRequestPasswordResetUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(passwordResetRequest),
+  });
+};
+
+export const getRequestPasswordResetMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof requestPasswordReset>>,
+    TError,
+    { data: BodyType<PasswordResetRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof requestPasswordReset>>,
+  TError,
+  { data: BodyType<PasswordResetRequest> },
+  TContext
+> => {
+  const mutationKey = ["requestPasswordReset"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof requestPasswordReset>>,
+    { data: BodyType<PasswordResetRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return requestPasswordReset(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RequestPasswordResetMutationResult = NonNullable<
+  Awaited<ReturnType<typeof requestPasswordReset>>
+>;
+export type RequestPasswordResetMutationBody = BodyType<PasswordResetRequest>;
+export type RequestPasswordResetMutationError = ErrorType<unknown>;
+
+export const useRequestPasswordReset = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof requestPasswordReset>>,
+    TError,
+    { data: BodyType<PasswordResetRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof requestPasswordReset>>,
+  TError,
+  { data: BodyType<PasswordResetRequest> },
+  TContext
+> => {
+  return useMutation(getRequestPasswordResetMutationOptions(options));
+};
+
+export const getCompletePasswordResetUrl = () => {
+  return `/api/auth/password-reset/complete`;
+};
+
+export const completePasswordReset = async (
+  publicRegistrationComplete: PublicRegistrationComplete,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<GenericAccepted> => {
+  return customFetch<GenericAccepted>(getCompletePasswordResetUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(publicRegistrationComplete),
+  });
+};
+
+export const getCompletePasswordResetMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof completePasswordReset>>,
+    TError,
+    { data: BodyType<PublicRegistrationComplete> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof completePasswordReset>>,
+  TError,
+  { data: BodyType<PublicRegistrationComplete> },
+  TContext
+> => {
+  const mutationKey = ["completePasswordReset"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof completePasswordReset>>,
+    { data: BodyType<PublicRegistrationComplete> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return completePasswordReset(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CompletePasswordResetMutationResult = NonNullable<
+  Awaited<ReturnType<typeof completePasswordReset>>
+>;
+export type CompletePasswordResetMutationBody =
+  BodyType<PublicRegistrationComplete>;
+export type CompletePasswordResetMutationError = ErrorType<unknown>;
+
+export const useCompletePasswordReset = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof completePasswordReset>>,
+    TError,
+    { data: BodyType<PublicRegistrationComplete> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof completePasswordReset>>,
+  TError,
+  { data: BodyType<PublicRegistrationComplete> },
+  TContext
+> => {
+  return useMutation(getCompletePasswordResetMutationOptions(options));
+};
+
+export const getRequestStaffActivationUrl = () => {
+  return `/api/auth/registration/staff/activation/request`;
+};
+
+export const requestStaffActivation = async (
+  passwordResetRequest: PasswordResetRequest,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<PublicOtpChallenge> => {
+  return customFetch<PublicOtpChallenge>(getRequestStaffActivationUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(passwordResetRequest),
+  });
+};
+
+export const getRequestStaffActivationMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof requestStaffActivation>>,
+    TError,
+    { data: BodyType<PasswordResetRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof requestStaffActivation>>,
+  TError,
+  { data: BodyType<PasswordResetRequest> },
+  TContext
+> => {
+  const mutationKey = ["requestStaffActivation"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof requestStaffActivation>>,
+    { data: BodyType<PasswordResetRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return requestStaffActivation(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RequestStaffActivationMutationResult = NonNullable<
+  Awaited<ReturnType<typeof requestStaffActivation>>
+>;
+export type RequestStaffActivationMutationBody = BodyType<PasswordResetRequest>;
+export type RequestStaffActivationMutationError = ErrorType<unknown>;
+
+export const useRequestStaffActivation = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof requestStaffActivation>>,
+    TError,
+    { data: BodyType<PasswordResetRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof requestStaffActivation>>,
+  TError,
+  { data: BodyType<PasswordResetRequest> },
+  TContext
+> => {
+  return useMutation(getRequestStaffActivationMutationOptions(options));
+};
+
+export const getPasswordLoginUrl = () => {
+  return `/api/auth/password-login`;
+};
+
+export const passwordLogin = async (
+  passwordLoginInput: PasswordLoginInput,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<PhoneLoginTicket> => {
+  return customFetch<PhoneLoginTicket>(getPasswordLoginUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(passwordLoginInput),
+  });
+};
+
+export const getPasswordLoginMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof passwordLogin>>,
+    TError,
+    { data: BodyType<PasswordLoginInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof passwordLogin>>,
+  TError,
+  { data: BodyType<PasswordLoginInput> },
+  TContext
+> => {
+  const mutationKey = ["passwordLogin"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof passwordLogin>>,
+    { data: BodyType<PasswordLoginInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return passwordLogin(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PasswordLoginMutationResult = NonNullable<
+  Awaited<ReturnType<typeof passwordLogin>>
+>;
+export type PasswordLoginMutationBody = BodyType<PasswordLoginInput>;
+export type PasswordLoginMutationError = ErrorType<void>;
+
+export const usePasswordLogin = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof passwordLogin>>,
+    TError,
+    { data: BodyType<PasswordLoginInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof passwordLogin>>,
+  TError,
+  { data: BodyType<PasswordLoginInput> },
+  TContext
+> => {
+  return useMutation(getPasswordLoginMutationOptions(options));
 };
 
 export const getHealthCheckUrl = () => {

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'wouter';
-import { useRequestStaffActivation, useCompleteStaffRegistration } from '@workspace/api-client-react';
+import { useRequestPasswordReset, useCompletePasswordReset } from '@workspace/api-client-react';
 import { useI18n } from '@/i18n';
 import { Button } from '@/App';
 import { User, LockKeyhole, ShieldCheck, CheckCircle2, ChevronRight, ChevronLeft } from 'lucide-react';
@@ -8,7 +8,7 @@ import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { basePath } from '@/App';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
 
-export function StaffActivate() {
+export function ForgotPasswordPage() {
   const { t, dir } = useI18n();
   const [step, setStep] = useState<'request' | 'otp' | 'success'>('request');
   const [identifier, setIdentifier] = useState('');
@@ -16,14 +16,13 @@ export function StaffActivate() {
   const [password, setPassword] = useState('');
   const [passwordConfirm, setPasswordConfirm] = useState('');
   const [challengeId, setChallengeId] = useState('');
-  const [resultStatus, setResultStatus] = useState<string>('');
 
-  const requestAct = useRequestStaffActivation();
-  const completeAct = useCompleteStaffRegistration();
+  const requestReset = useRequestPasswordReset();
+  const completeReset = useCompletePasswordReset();
 
   const handleRequest = (e: React.FormEvent) => {
     e.preventDefault();
-    requestAct.mutate(
+    requestReset.mutate(
       { data: { identifier } },
       {
         onSuccess: (res) => {
@@ -37,11 +36,10 @@ export function StaffActivate() {
   const handleComplete = (e: React.FormEvent) => {
     e.preventDefault();
     if (password !== passwordConfirm || password.length < 8) return;
-    completeAct.mutate(
+    completeReset.mutate(
       { data: { challengeId, otp, password } },
       {
-        onSuccess: (res) => {
-          setResultStatus(res.status);
+        onSuccess: () => {
           setStep('success');
         }
       }
@@ -51,7 +49,7 @@ export function StaffActivate() {
   return (
     <div dir={dir} className="grid min-h-[100dvh] place-items-center bg-ec-pattern px-4 py-12 relative overflow-hidden">
       <div className="absolute inset-0 bg-background/90 backdrop-blur-3xl" />
-
+      
       <div className={`absolute top-4 z-10 sm:top-8 ${dir === 'rtl' ? 'right-5 sm:right-8' : 'left-5 sm:left-8'}`}>
         <Link href="/" className="block hover:opacity-80 transition-opacity">
           <img src={`${basePath}/ec-official-logo-v2.png`} alt={t('admin.brand')} className="mx-auto h-20 w-24 object-contain drop-shadow-sm sm:h-28 sm:w-36" />
@@ -60,10 +58,10 @@ export function StaffActivate() {
       <div className={`absolute top-8 z-10 ${dir === 'rtl' ? 'left-8' : 'right-8'}`}>
         <LanguageSwitcher className="bg-card/95 shadow-sm backdrop-blur" />
       </div>
-
+      
       <div className="relative z-10 w-full max-w-md animate-rise">
         <div className="rounded-[2rem] border border-border bg-card p-8 shadow-2xl">
-
+          
           {step === 'request' && (
             <form onSubmit={handleRequest} className="space-y-6">
               <div className="mb-8 flex items-center gap-3">
@@ -71,7 +69,7 @@ export function StaffActivate() {
                   {dir === 'rtl' ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
                 </Link>
                 <h1 className="text-xl font-bold text-foreground">
-                  {t('staffActivation.title')}
+                  {t('passwordReset.title')}
                 </h1>
               </div>
 
@@ -82,7 +80,7 @@ export function StaffActivate() {
                 <div className="relative mt-2">
                   <User className={`absolute top-3 text-muted-foreground ${dir === 'rtl' ? 'right-3' : 'left-3'}`} size={18} />
                   <input
-                    data-testid="input-activation-identifier"
+                    data-testid="input-forgot-identifier"
                     type="text"
                     required
                     autoComplete="username"
@@ -93,19 +91,19 @@ export function StaffActivate() {
                 </div>
               </label>
 
-              {requestAct.isError && (
+              {requestReset.isError && (
                 <p className="rounded-xl bg-destructive/10 p-3 text-sm font-bold text-destructive">
                   {t('phoneAuth.requestError')}
                 </p>
               )}
 
               <Button
-                data-testid="button-activation-request"
+                data-testid="button-forgot-request"
                 type="submit"
                 className="w-full text-base"
-                disabled={requestAct.isPending || !identifier}
+                disabled={requestReset.isPending || !identifier}
               >
-                {requestAct.isPending ? t('common.loading') : t('passwordReset.send')}
+                {requestReset.isPending ? t('common.loading') : t('passwordReset.send')}
               </Button>
             </form>
           )}
@@ -114,12 +112,12 @@ export function StaffActivate() {
             <form onSubmit={handleComplete} className="space-y-5">
               <div className="text-center mb-6">
                 <ShieldCheck className="mx-auto text-primary mb-3" size={32} />
-                <h1 className="text-xl font-bold text-foreground">{t('staffActivation.otp')}</h1>
+                <h1 className="text-xl font-bold text-foreground">{t('passwordReset.newPasswordTitle')}</h1>
                 <p className="mt-2 text-sm text-muted-foreground">{t('passwordReset.sentBody')}</p>
               </div>
 
               <div className="flex justify-center">
-                <InputOTP data-testid="input-activation-otp" maxLength={6} value={otp} onChange={setOtp} containerClassName="justify-center">
+                <InputOTP data-testid="input-forgot-otp" maxLength={6} value={otp} onChange={setOtp} containerClassName="justify-center">
                   <InputOTPGroup>
                     {[0, 1, 2, 3, 4, 5].map((index) => <InputOTPSlot key={index} index={index} />)}
                   </InputOTPGroup>
@@ -131,7 +129,7 @@ export function StaffActivate() {
                 <div className="relative mt-2">
                   <LockKeyhole className={`absolute top-3 text-muted-foreground ${dir === 'rtl' ? 'right-3' : 'left-3'}`} size={18} />
                   <input
-                    data-testid="input-activation-password"
+                    data-testid="input-forgot-password"
                     type="password"
                     required
                     autoComplete="new-password"
@@ -148,7 +146,7 @@ export function StaffActivate() {
                 <div className="relative mt-2">
                   <LockKeyhole className={`absolute top-3 text-muted-foreground ${dir === 'rtl' ? 'right-3' : 'left-3'}`} size={18} />
                   <input
-                    data-testid="input-activation-password-confirm"
+                    data-testid="input-forgot-password-confirm"
                     type="password"
                     required
                     autoComplete="new-password"
@@ -160,19 +158,19 @@ export function StaffActivate() {
                 </div>
               </label>
 
-              {completeAct.isError && (
+              {completeReset.isError && (
                 <p className="rounded-xl bg-destructive/10 p-3 text-sm font-bold text-destructive">
-                  {t('staffActivation.error')}
+                  {t('passwordReset.error')}
                 </p>
               )}
 
               <Button
-                data-testid="button-activation-complete"
+                data-testid="button-forgot-complete"
                 type="submit"
                 className="w-full text-base"
-                disabled={completeAct.isPending || otp.length !== 6 || password.length < 8 || password !== passwordConfirm}
+                disabled={completeReset.isPending || otp.length !== 6 || password.length < 8 || password !== passwordConfirm}
               >
-                {completeAct.isPending ? t('common.loading') : t('staffActivation.create')}
+                {completeReset.isPending ? t('common.loading') : t('passwordReset.save')}
               </Button>
             </form>
           )}
@@ -180,11 +178,9 @@ export function StaffActivate() {
           {step === 'success' && (
             <div className="text-center space-y-5">
               <CheckCircle2 className="mx-auto text-emerald-600" size={48} />
-              <h1 className="text-2xl font-bold text-foreground">
-                {resultStatus === 'needs_admin' ? t('auth.pendingTitle') : t('staffActivation.successTitle')}
-              </h1>
+              <h1 className="text-2xl font-bold text-foreground">{t('passwordReset.completeTitle')}</h1>
               <p className="text-sm text-muted-foreground">
-                {resultStatus === 'needs_admin' ? t('auth.pendingBody') : t('staffActivation.successBody')}
+                {t('passwordReset.completeBody')}
               </p>
               <Link href="/sign-in">
                 <Button className="w-full">{t('auth.signIn')}</Button>

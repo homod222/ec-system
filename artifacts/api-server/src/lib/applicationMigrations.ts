@@ -337,6 +337,8 @@ export async function runApplicationMigrations(): Promise<void> {
       clerk_user_id text,
       first_name text,
       requested_by text,
+      subject_id integer,
+      payload jsonb,
       expires_at timestamptz NOT NULL,
       attempts integer NOT NULL DEFAULT 0,
       consumed_at timestamptz,
@@ -348,6 +350,31 @@ export async function runApplicationMigrations(): Promise<void> {
       ON phone_otp_challenges (ip_hash, created_at DESC);
     CREATE INDEX IF NOT EXISTS phone_otp_expiry_idx
       ON phone_otp_challenges (expires_at);
+    ALTER TABLE phone_otp_challenges
+      ADD COLUMN IF NOT EXISTS subject_id integer,
+      ADD COLUMN IF NOT EXISTS payload jsonb;
+    CREATE INDEX IF NOT EXISTS phone_otp_subject_idx
+      ON phone_otp_challenges (purpose, subject_id) WHERE subject_id IS NOT NULL;
+    CREATE TABLE IF NOT EXISTS guardian_registration_claims (
+      guardian_id integer PRIMARY KEY,
+      challenge_id text NOT NULL UNIQUE,
+      clerk_user_id text,
+      expires_at timestamptz NOT NULL DEFAULT now() + interval '10 minutes',
+      created_at timestamptz NOT NULL DEFAULT now()
+    );
+    ALTER TABLE guardian_registration_claims
+      ADD COLUMN IF NOT EXISTS clerk_user_id text,
+      ADD COLUMN IF NOT EXISTS expires_at timestamptz NOT NULL DEFAULT now() + interval '10 minutes';
+    CREATE TABLE IF NOT EXISTS password_login_attempts (
+      id serial PRIMARY KEY,
+      ip_hash text NOT NULL,
+      identifier_hash text NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS password_login_attempt_ip_idx ON password_login_attempts (ip_hash, created_at DESC);
+    CREATE INDEX IF NOT EXISTS password_login_attempt_identifier_idx ON password_login_attempts (identifier_hash, created_at DESC);
+    UPDATE staff SET account_status = 'approved', otp_hash = NULL, otp_expires_at = NULL, otp_attempts = 0
+      WHERE account_status IN ('pending_verification', 'provisioning', 'issuing_otp') AND clerk_user_id IS NULL;
 
     CREATE INDEX IF NOT EXISTS classrooms_branch_idx ON classrooms (branch_id);
     CREATE INDEX IF NOT EXISTS classrooms_stage_idx ON classrooms (stage_id);

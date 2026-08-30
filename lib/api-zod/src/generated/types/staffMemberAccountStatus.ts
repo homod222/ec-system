@@ -11,7 +11,10 @@ export type StaffMemberAccountStatus = typeof StaffMemberAccountStatus[keyof typ
 
 export const StaffMemberAccountStatus = {
   unlinked: 'unlinked',
+  pending_approval: 'pending_approval',
+  approved: 'approved',
   pending_verification: 'pending_verification',
   active: 'active',
   disabled: 'disabled',
+  rejected: 'rejected',
 } as const;

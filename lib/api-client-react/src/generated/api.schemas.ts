@@ -5,6 +5,112 @@
  * API for the nursery management platform
  * OpenAPI spec version: 0.1.0
  */
+export interface GuardianRegistrationInput {
+  /**
+   * @minLength 1
+   * @maxLength 200
+   */
+  name: string;
+  email: string;
+  /** @pattern ^(?:\+?965|00965)?[569][0-9]{7}$ */
+  phone: string;
+}
+
+export interface StaffRegistrationInput {
+  /**
+   * @minLength 5
+   * @maxLength 200
+   * @pattern ^\S+\s+\S+\s+\S+(?:\s+.*)?$
+   */
+  name: string;
+  email: string;
+  /** @pattern ^(?:\+?965|00965)?[569][0-9]{7}$ */
+  phone: string;
+}
+
+export interface PublicOtpChallenge {
+  challengeId: string;
+  expiresInSeconds: number;
+}
+
+export interface PublicRegistrationComplete {
+  challengeId: string;
+  /** @pattern ^[0-9]{6}$ */
+  otp: string;
+  /**
+   * @minLength 8
+   * @maxLength 256
+   */
+  password: string;
+}
+
+export type PublicRegistrationResultStatus =
+  (typeof PublicRegistrationResultStatus)[keyof typeof PublicRegistrationResultStatus];
+
+export const PublicRegistrationResultStatus = {
+  created: "created",
+  needs_admin: "needs_admin",
+} as const;
+
+export interface PublicRegistrationResult {
+  status: PublicRegistrationResultStatus;
+}
+
+export type PendingApprovalResultStatus =
+  (typeof PendingApprovalResultStatus)[keyof typeof PendingApprovalResultStatus];
+
+export const PendingApprovalResultStatus = {
+  pending_approval: "pending_approval",
+  approved: "approved",
+  otp_sent: "otp_sent",
+  rejected: "rejected",
+} as const;
+
+export interface PendingApprovalResult {
+  status: PendingApprovalResultStatus;
+}
+
+export type StaffApprovalInputRole =
+  (typeof StaffApprovalInputRole)[keyof typeof StaffApprovalInputRole];
+
+export const StaffApprovalInputRole = {
+  admin: "admin",
+  manager: "manager",
+  supervisor: "supervisor",
+  teacher: "teacher",
+  accountant: "accountant",
+  receptionist: "receptionist",
+} as const;
+
+export interface StaffApprovalInput {
+  role: StaffApprovalInputRole;
+}
+
+export interface PasswordResetRequest {
+  /**
+   * @minLength 3
+   * @maxLength 254
+   */
+  identifier: string;
+}
+
+export interface PasswordLoginInput {
+  /**
+   * @minLength 3
+   * @maxLength 254
+   */
+  identifier: string;
+  /**
+   * @minLength 1
+   * @maxLength 256
+   */
+  password: string;
+}
+
+export interface GenericAccepted {
+  accepted: boolean;
+}
+
 export interface PhoneLoginRequest {
   /**
    * @minLength 8
@@ -424,9 +530,12 @@ export type StaffMemberAccountStatus =
 
 export const StaffMemberAccountStatus = {
   unlinked: "unlinked",
+  pending_approval: "pending_approval",
+  approved: "approved",
   pending_verification: "pending_verification",
   active: "active",
   disabled: "disabled",
+  rejected: "rejected",
 } as const;
 
 export interface StaffMember {
@@ -548,9 +657,12 @@ export type StaffAccountResultAccountStatus =
 
 export const StaffAccountResultAccountStatus = {
   unlinked: "unlinked",
+  pending_approval: "pending_approval",
+  approved: "approved",
   pending_verification: "pending_verification",
   active: "active",
   disabled: "disabled",
+  rejected: "rejected",
 } as const;
 
 export interface StaffAccountResult {
@@ -560,6 +672,7 @@ export interface StaffAccountResult {
   accountStatus: StaffAccountResultAccountStatus;
   role: string;
   setupComplete: boolean;
+  otpSent?: boolean;
 }
 
 export interface StaffPasswordResetRequest {
