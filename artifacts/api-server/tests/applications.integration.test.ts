@@ -399,6 +399,49 @@ afterAll(async () => {
 });
 
 describe.sequential("application registration regression flow", () => {
+  it("atomically enforces the phone OTP request limit under concurrency", async () => {
+    const localPhone = `5${Math.floor(1_000_000 + Math.random() * 9_000_000)}`;
+    const responses = await Promise.all(Array.from({ length: 8 }, () =>
+      request(app).post("/api/auth/phone/request").send({ phone: localPhone }),
+    ));
+    expect(responses.filter(response => response.status === 200)).toHaveLength(4);
+    expect(responses.filter(response => response.status === 429)).toHaveLength(4);
+    const challengeIds = responses
+      .filter(response => response.status === 200)
+      .map(response => response.body.challengeId);
+    await pool.query("delete from phone_otp_challenges where id = any($1::text[])", [challengeIds]);
+  });
+
+  it("recognizes active staff and linked guardians without exposing full names", async () => {
+    const staffClerkId = `phone-staff-${randomUUID()}`;
+    const guardianClerkId = `phone-guardian-${randomUUID()}`;
+    const staffPhone = `6${Math.floor(1_000_000 + Math.random() * 9_000_000)}`;
+    const guardianPhone = `9${Math.floor(1_000_000 + Math.random() * 9_000_000)}`;
+    await pool.query(
+      `insert into staff (owner_id, name, role, email, phone, clerk_user_id, account_status)
+       values ($1, 'أحمد الاختبار', 'teacher', $2, $3, $4, 'active')`,
+      [ownerA, `phone-staff-${randomUUID()}@example.test`, staffPhone, staffClerkId],
+    );
+    await pool.query(
+      `insert into guardians (owner_id, name, phone, clerk_user_id)
+       values ($1, 'سارة الاختبار', $2, $3)`,
+      [ownerA, `+965 ${guardianPhone.slice(0, 4)} ${guardianPhone.slice(4)}`, guardianClerkId],
+    );
+
+    const staffLogin = await request(app).post("/api/auth/phone/request").send({ phone: staffPhone }).expect(200);
+    expect(staffLogin.body).toMatchObject({ recognized: true, firstName: "أحمد" });
+    expect(whatsappMessages.at(-1)?.to).toBe(`965${staffPhone}`);
+
+    const guardianLogin = await request(app).post("/api/auth/phone/request").send({ phone: guardianPhone }).expect(200);
+    expect(guardianLogin.body).toMatchObject({ recognized: true, firstName: "سارة" });
+    expect(whatsappMessages.at(-1)?.to).toBe(`965${guardianPhone}`);
+
+    await pool.query("delete from phone_otp_challenges where id = any($1::text[])", [[
+      staffLogin.body.challengeId,
+      guardianLogin.body.challengeId,
+    ]]);
+  });
+
   it("enrolls an owner phone and issues a single-use WhatsApp login ticket with first-name greeting", async () => {
     const phone = "5000 8765";
     const enrollment = await request(app).post("/api/auth/phone/enrollment/request")

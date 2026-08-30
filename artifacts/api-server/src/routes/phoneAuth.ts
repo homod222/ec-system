@@ -51,24 +51,52 @@ function firstName(name: string) {
 }
 
 function requestIp(req: Request) {
-  const forwarded = req.headers["x-forwarded-for"];
-  return (typeof forwarded === "string" ? forwarded.split(",")[0] : req.ip) || "unknown";
+  return req.ip || req.socket.remoteAddress || "unknown";
+}
+
+function secureDigestEqual(expectedHex: string, actualHex: string) {
+  const expected = Buffer.from(expectedHex, "hex");
+  const actual = Buffer.from(actualHex, "hex");
+  return expected.length === actual.length && timingSafeEqual(expected, actual);
 }
 
 async function resolveIdentity(phone: string): Promise<Identity | null> {
+  const normalizedStaffPhone = sql`
+    CASE
+      WHEN regexp_replace(${staffTable.phone}, '\\D', '', 'g') LIKE '00965%'
+        THEN substring(regexp_replace(${staffTable.phone}, '\\D', '', 'g') FROM 6)
+      WHEN regexp_replace(${staffTable.phone}, '\\D', '', 'g') LIKE '965%'
+        AND length(regexp_replace(${staffTable.phone}, '\\D', '', 'g')) > 8
+        THEN substring(regexp_replace(${staffTable.phone}, '\\D', '', 'g') FROM 4)
+      ELSE ltrim(regexp_replace(${staffTable.phone}, '\\D', '', 'g'), '0')
+    END`;
+  const normalizedGuardianPhone = sql`
+    CASE
+      WHEN regexp_replace(${guardiansTable.phone}, '\\D', '', 'g') LIKE '00965%'
+        THEN substring(regexp_replace(${guardiansTable.phone}, '\\D', '', 'g') FROM 6)
+      WHEN regexp_replace(${guardiansTable.phone}, '\\D', '', 'g') LIKE '965%'
+        AND length(regexp_replace(${guardiansTable.phone}, '\\D', '', 'g')) > 8
+        THEN substring(regexp_replace(${guardiansTable.phone}, '\\D', '', 'g') FROM 4)
+      ELSE ltrim(regexp_replace(${guardiansTable.phone}, '\\D', '', 'g'), '0')
+    END`;
   const [owners, staff, guardians] = await Promise.all([
     db.select().from(phoneLoginIdentitiesTable).where(eq(phoneLoginIdentitiesTable.normalizedPhone, phone)),
-    db.select({ clerkUserId: staffTable.clerkUserId, name: staffTable.name, phone: staffTable.phone })
-      .from(staffTable).where(and(eq(staffTable.accountStatus, "active"), sql`${staffTable.clerkUserId} is not null`)),
-    db.select({ clerkUserId: guardiansTable.clerkUserId, name: guardiansTable.name, phone: guardiansTable.phone })
-      .from(guardiansTable).where(sql`${guardiansTable.clerkUserId} is not null`),
+    db.select({ clerkUserId: staffTable.clerkUserId, name: staffTable.name })
+      .from(staffTable).where(and(
+        eq(staffTable.accountStatus, "active"),
+        sql`${staffTable.clerkUserId} is not null`,
+        sql`'965' || ${normalizedStaffPhone} = ${phone}`,
+      )).limit(2),
+    db.select({ clerkUserId: guardiansTable.clerkUserId, name: guardiansTable.name })
+      .from(guardiansTable).where(and(
+        sql`${guardiansTable.clerkUserId} is not null`,
+        sql`'965' || ${normalizedGuardianPhone} = ${phone}`,
+      )).limit(2),
   ]);
   const candidates: Identity[] = [
     ...owners.map(row => ({ clerkUserId: row.clerkUserId, firstName: row.firstName })),
-    ...staff.filter(row => normalizeKuwaitPhone(row.phone) === phone && row.clerkUserId)
-      .map(row => ({ clerkUserId: row.clerkUserId!, firstName: firstName(row.name) })),
-    ...guardians.filter(row => normalizeKuwaitPhone(row.phone) === phone && row.clerkUserId)
-      .map(row => ({ clerkUserId: row.clerkUserId!, firstName: firstName(row.name) })),
+    ...staff.map(row => ({ clerkUserId: row.clerkUserId!, firstName: firstName(row.name) })),
+    ...guardians.map(row => ({ clerkUserId: row.clerkUserId!, firstName: firstName(row.name) })),
   ];
   const unique = Array.from(new Map(candidates.map(candidate => [candidate.clerkUserId, candidate])).values());
   return unique.length === 1 ? unique[0] : null;
@@ -103,25 +131,34 @@ export function createPhoneAuthRouter(sender: Sender = defaultSender): IRouter {
     const phoneHash = digest(`phone:${options.phone}`);
     const ipHash = digest(`ip:${requestIp(req)}`);
     const since = new Date(Date.now() - WINDOW_MS);
-    const [phoneRequests, ipRequests] = await Promise.all([
-      db.select({ id: phoneOtpChallengesTable.id }).from(phoneOtpChallengesTable)
-        .where(and(eq(phoneOtpChallengesTable.normalizedPhoneHash, phoneHash), gte(phoneOtpChallengesTable.createdAt, since))),
-      db.select({ id: phoneOtpChallengesTable.id }).from(phoneOtpChallengesTable)
-        .where(and(eq(phoneOtpChallengesTable.ipHash, ipHash), gte(phoneOtpChallengesTable.createdAt, since))),
-    ]);
-    if (phoneRequests.length >= MAX_PER_PHONE || ipRequests.length >= MAX_PER_IP) return null;
-    await db.insert(phoneOtpChallengesTable).values({
-      id,
-      purpose: options.purpose,
-      normalizedPhoneHash: phoneHash,
-      normalizedPhone: options.purpose === "enrollment" ? options.phone : null,
-      ipHash,
-      otpHash: digest(`otp:${id}:${otp}`),
-      clerkUserId: options.identity?.clerkUserId ?? null,
-      firstName: options.identity?.firstName ?? null,
-      requestedBy: options.requestedBy ?? null,
-      expiresAt: new Date(Date.now() + OTP_SECONDS * 1000),
+    const inserted = await db.transaction(async tx => {
+      for (const lockKey of [`phone:${phoneHash}`, `ip:${ipHash}`].sort()) {
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${lockKey})::bigint)`);
+      }
+      const [phoneRequests, ipRequests] = await Promise.all([
+        tx.select({ id: phoneOtpChallengesTable.id }).from(phoneOtpChallengesTable)
+          .where(and(eq(phoneOtpChallengesTable.normalizedPhoneHash, phoneHash), gte(phoneOtpChallengesTable.createdAt, since)))
+          .limit(MAX_PER_PHONE),
+        tx.select({ id: phoneOtpChallengesTable.id }).from(phoneOtpChallengesTable)
+          .where(and(eq(phoneOtpChallengesTable.ipHash, ipHash), gte(phoneOtpChallengesTable.createdAt, since)))
+          .limit(MAX_PER_IP),
+      ]);
+      if (phoneRequests.length >= MAX_PER_PHONE || ipRequests.length >= MAX_PER_IP) return false;
+      await tx.insert(phoneOtpChallengesTable).values({
+        id,
+        purpose: options.purpose,
+        normalizedPhoneHash: phoneHash,
+        normalizedPhone: options.purpose === "enrollment" ? options.phone : null,
+        ipHash,
+        otpHash: digest(`otp:${id}:${otp}`),
+        clerkUserId: options.identity?.clerkUserId ?? null,
+        firstName: options.identity?.firstName ?? null,
+        requestedBy: options.requestedBy ?? null,
+        expiresAt: new Date(Date.now() + OTP_SECONDS * 1000),
+      });
+      return true;
     });
+    if (!inserted) return null;
     if (options.identity || options.purpose === "enrollment") {
       const result = await sender(options.phone, `رمز تسجيل الدخول إلى حضانة EC هو: ${otp}\nصالح لمدة 5 دقائق. لا تشارك الرمز مع أي شخص.`);
       if (!result.ok) {
@@ -162,9 +199,7 @@ export function createPhoneAuthRouter(sender: Sender = defaultSender): IRouter {
       if (!challenge || challenge.expiresAt <= new Date() || challenge.attempts >= MAX_ATTEMPTS || !challenge.clerkUserId) {
         return void res.status(400).json({ error: "Invalid or expired code" });
       }
-      const expected = Buffer.from(challenge.otpHash, "hex");
-      const actual = Buffer.from(digest(`otp:${challenge.id}:${body.data.otp}`), "hex");
-      if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
+      if (!secureDigestEqual(challenge.otpHash, digest(`otp:${challenge.id}:${body.data.otp}`))) {
         await db.update(phoneOtpChallengesTable).set({ attempts: sql`${phoneOtpChallengesTable.attempts} + 1` })
           .where(and(eq(phoneOtpChallengesTable.id, challenge.id), isNull(phoneOtpChallengesTable.consumedAt)));
         return void res.status(challenge.attempts + 1 >= MAX_ATTEMPTS ? 429 : 400).json({ error: "Invalid or expired code" });
@@ -230,7 +265,7 @@ export function createPhoneAuthRouter(sender: Sender = defaultSender): IRouter {
       if (!challenge || !challenge.normalizedPhone || challenge.expiresAt <= new Date() || challenge.attempts >= MAX_ATTEMPTS) {
         return void res.status(400).json({ error: "Invalid or expired code" });
       }
-      if (digest(`otp:${challenge.id}:${body.data.otp}`) !== challenge.otpHash) {
+      if (!secureDigestEqual(challenge.otpHash, digest(`otp:${challenge.id}:${body.data.otp}`))) {
         await db.update(phoneOtpChallengesTable).set({ attempts: sql`${phoneOtpChallengesTable.attempts} + 1` })
           .where(eq(phoneOtpChallengesTable.id, challenge.id));
         return void res.status(400).json({ error: "Invalid or expired code" });
@@ -250,7 +285,12 @@ export function createPhoneAuthRouter(sender: Sender = defaultSender): IRouter {
         });
       });
       res.json(GetPhoneEnrollmentResponse.parse({ enrolled: true, phone: challenge.normalizedPhone }));
-    } catch (error) { next(error); }
+    } catch (error) {
+      if (typeof error === "object" && error !== null && "code" in error && error.code === "23505") {
+        return void res.status(409).json({ error: "Phone already enrolled" });
+      }
+      next(error);
+    }
   });
 
   return router;

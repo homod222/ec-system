@@ -12,6 +12,11 @@ import {
 
 const app: Express = express();
 
+// Replit terminates public traffic at an internal proxy. Trust only private proxy
+// hops so Express derives req.ip from the proxy-appended client address instead
+// of accepting an arbitrary X-Forwarded-For value from an untrusted peer.
+app.set("trust proxy", ["loopback", "linklocal", "uniquelocal"]);
+
 app.use(
   pinoHttp({
     logger,
