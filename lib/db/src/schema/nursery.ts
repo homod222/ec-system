@@ -11,6 +11,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
+import { sql } from "drizzle-orm";
 import { z } from "zod/v4";
 
 export const guardiansTable = pgTable("guardians", {
@@ -19,21 +20,29 @@ export const guardiansTable = pgTable("guardians", {
   name: text("name").notNull(),
   phone: text("phone").notNull(),
   email: text("email"),
-  clerkUserId: text("clerk_user_id").unique(),
+  clerkUserId: text("clerk_user_id"),
   /** Lower-cased trimmed email, or phone when email is unavailable; unique per owner. */
   identityKey: text("identity_key"),
   balance: numeric("balance", { precision: 10, scale: 2, mode: "number" }).notNull().default(0),
-});
+}, (table) => [
+  uniqueIndex("guardians_clerk_user_id_unique").on(table.clerkUserId),
+  uniqueIndex("guardians_owner_identity_key_unique")
+    .on(table.ownerId, table.identityKey)
+    .where(sql`${table.identityKey} is not null`),
+]);
 
 /** Verified owner/admin phone aliases. Login remains bound to the existing Clerk user. */
 export const phoneLoginIdentitiesTable = pgTable("phone_login_identities", {
   id: serial("id").primaryKey(),
-  clerkUserId: text("clerk_user_id").notNull().unique(),
-  normalizedPhone: text("normalized_phone").notNull().unique(),
+  clerkUserId: text("clerk_user_id").notNull(),
+  normalizedPhone: text("normalized_phone").notNull(),
   firstName: text("first_name").notNull(),
   verifiedAt: timestamp("verified_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
-});
+}, (table) => [
+  uniqueIndex("phone_login_identities_clerk_user_id_key").on(table.clerkUserId),
+  uniqueIndex("phone_login_identities_normalized_phone_key").on(table.normalizedPhone),
+]);
 
 /** Durable, hashed, single-use challenges for login and authenticated enrollment. */
 export const phoneOtpChallengesTable = pgTable("phone_otp_challenges", {
@@ -45,29 +54,35 @@ export const phoneOtpChallengesTable = pgTable("phone_otp_challenges", {
   otpHash: text("otp_hash").notNull(),
   clerkUserId: text("clerk_user_id"),
   firstName: text("first_name"),
+  fullName: text("full_name"),
+  email: text("email"),
+  accountType: text("account_type"),
   requestedBy: text("requested_by"),
-  /** Public registration/reset subject; never contains a password or OTP. */
-  subjectId: integer("subject_id"),
-  payload: jsonb("payload").$type<Record<string, unknown>>(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   attempts: integer("attempts").notNull().default(0),
   consumedAt: timestamp("consumed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
-/** One-time reservation that prevents concurrent public registration creating two Clerk users. */
-export const guardianRegistrationClaimsTable = pgTable("guardian_registration_claims", {
-  guardianId: integer("guardian_id").primaryKey(),
-  challengeId: text("challenge_id").notNull().unique(),
-  clerkUserId: text("clerk_user_id"),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-});
-export const passwordLoginAttemptsTable = pgTable("password_login_attempts", {
+
+/** Public password accounts. Password material remains exclusively in Clerk. */
+export const publicAuthAccountsTable = pgTable("public_auth_accounts", {
   id: serial("id").primaryKey(),
-  ipHash: text("ip_hash").notNull(),
-  identifierHash: text("identifier_hash").notNull(),
+  normalizedPhone: text("normalized_phone").notNull(),
+  clerkUserId: text("clerk_user_id").notNull(),
+  fullName: text("full_name").notNull(),
+  email: text("email").notNull(),
+  accountType: text("account_type").notNull(),
+  accountStatus: text("account_status").notNull().default("pending"),
+  ownerId: text("owner_id"),
+  guardianId: integer("guardian_id"),
+  staffId: integer("staff_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+}, (table) => [
+  uniqueIndex("public_auth_accounts_normalized_phone_key").on(table.normalizedPhone),
+  uniqueIndex("public_auth_accounts_clerk_user_id_key").on(table.clerkUserId),
+  uniqueIndex("public_auth_accounts_email_unique").on(sql`lower(${table.email})`),
+]);
 
 export const classroomsTable = pgTable("classrooms", {
   id: serial("id").primaryKey(),
@@ -112,7 +127,7 @@ export const staffTable = pgTable("staff", {
   status: text("status").notNull().default("present"),
   avatarUrl: text("avatar_url"),
   profile: jsonb("profile").$type<Record<string, unknown>>().notNull().default({}),
-  clerkUserId: text("clerk_user_id").unique(),
+  clerkUserId: text("clerk_user_id"),
   accountStatus: text("account_status").notNull().default("unlinked"),
   otpHash: text("otp_hash"),
   otpExpiresAt: timestamp("otp_expires_at", { withTimezone: true }),
@@ -120,7 +135,9 @@ export const staffTable = pgTable("staff", {
   passwordResetHash: text("password_reset_hash"),
   passwordResetExpiresAt: timestamp("password_reset_expires_at", { withTimezone: true }),
   passwordResetRequestedAt: timestamp("password_reset_requested_at", { withTimezone: true }),
-});
+}, (table) => [
+  uniqueIndex("staff_clerk_user_id_unique").on(table.clerkUserId),
+]);
 
 export const attendanceTable = pgTable("attendance", {
   id: serial("id").primaryKey(),
@@ -191,8 +208,8 @@ export const paymentAttemptsTable = pgTable("payment_attempts", {
   id: serial("id").primaryKey(),
   invoiceId: integer("invoice_id").notNull(),
   attemptNumber: integer("attempt_number").notNull(),
-  customerReference: text("customer_reference").notNull().unique(),
-  providerInvoiceId: text("provider_invoice_id").unique(),
+  customerReference: text("customer_reference").notNull(),
+  providerInvoiceId: text("provider_invoice_id"),
   providerPaymentId: text("provider_payment_id"),
   paymentUrl: text("payment_url"),
   status: text("status").notNull(),
@@ -202,6 +219,8 @@ export const paymentAttemptsTable = pgTable("payment_attempts", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
+  uniqueIndex("payment_attempts_customer_reference_key").on(table.customerReference),
+  uniqueIndex("payment_attempts_provider_invoice_id_key").on(table.providerInvoiceId),
   uniqueIndex("payment_attempts_invoice_attempt_unique").on(table.invoiceId, table.attemptNumber),
 ]);
 export const exchangeRatesTable = pgTable("exchange_rates", {
@@ -307,7 +326,7 @@ export const siteGalleryItemsTable = pgTable("site_gallery_items", {
   ownerId: text("owner_id").notNull(),
   title: text("title").notNull(),
   altText: text("alt_text").notNull(),
-  objectPath: text("object_path").notNull().unique(),
+  objectPath: text("object_path").notNull(),
   contentType: text("content_type").notNull(),
   size: integer("size").notNull(),
   sortOrder: integer("sort_order").notNull().default(0),
@@ -315,7 +334,9 @@ export const siteGalleryItemsTable = pgTable("site_gallery_items", {
   createdBy: text("created_by").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
-});
+}, (table) => [
+  uniqueIndex("site_gallery_items_object_path_key").on(table.objectPath),
+]);
 
 export const insertGuardianSchema = createInsertSchema(guardiansTable).omit({ id: true, ownerId: true });
 export const insertClassroomSchema = createInsertSchema(classroomsTable).omit({ id: true, ownerId: true });

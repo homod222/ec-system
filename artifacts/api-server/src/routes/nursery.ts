@@ -1,6 +1,6 @@
-import { createHmac, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { Router, type IRouter, type RequestHandler } from "express";
-import { and, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { clerkClient, getAuth } from "@clerk/express";
 import {
   CreateChildBody,
@@ -50,9 +50,9 @@ import {
   SendInvoiceReminderResponse,
   SendParentMessageBody,
   SendParentMessageResponse,
-  StartStaffAccountBody,
-  StartStaffAccountParams,
-  StartStaffAccountResponse,
+  LinkStaffAccountBody,
+  LinkStaffAccountParams,
+  LinkStaffAccountResponse,
   UpdateStaffAccountBody,
   UpdateStaffAccountParams,
   UpdateStaffAccountResponse,
@@ -63,9 +63,6 @@ import {
   UpdateStaffParams,
   UpdateStaffResponse,
   DeleteStaffParams,
-  VerifyStaffAccountBody,
-  VerifyStaffAccountParams,
-  VerifyStaffAccountResponse,
   RequestStaffPasswordResetBody,
   RequestStaffPasswordResetResponse,
   CompleteStaffPasswordResetBody,
@@ -88,6 +85,7 @@ import {
   invoiceRefundsTable,
   parentMessagesTable,
   progressReportsTable,
+  publicAuthAccountsTable,
   staffTable,
 } from "@workspace/db";
 import { checkClassroomCapacity } from "../lib/classroomCapacity";
@@ -110,8 +108,6 @@ import {
 const router: IRouter = Router();
 const today = () => new Date().toISOString().slice(0, 10);
 const staffAccountRoles = new Set(["admin", "manager", "supervisor", "teacher", "accountant", "receptionist"]);
-const otpLifetimeMs = 10 * 60 * 1000;
-const maxOtpAttempts = 5;
 const verificationRate = new Map<string, { count: number; resetAt: number }>();
 
 function staffResponse(member: typeof staffTable.$inferSelect) {
@@ -134,18 +130,6 @@ function staffAuditSnapshot(member: typeof staffTable.$inferSelect) {
     ...safe
   } = member;
   return safe as Record<string, unknown>;
-}
-
-function otpDigest(staffId: number, otp: string) {
-  const secret = process.env.SESSION_SECRET;
-  if (!secret) throw new Error("SESSION_SECRET is required for staff OTP verification");
-  return createHmac("sha256", secret).update(`${staffId}:${otp}`).digest("hex");
-}
-
-function otpMatches(staffId: number, otp: string, expected: string) {
-  const actual = Buffer.from(otpDigest(staffId, otp), "hex");
-  const stored = Buffer.from(expected, "hex");
-  return actual.length === stored.length && timingSafeEqual(actual, stored);
 }
 
 function passwordResetDigest(staffId: number, token: string) {
@@ -175,7 +159,7 @@ function canonicalAppOrigin() {
   return null;
 }
 
-function accountResult(member: typeof staffTable.$inferSelect, otpSent = false) {
+function accountResult(member: typeof staffTable.$inferSelect) {
   const accountStatus = ["provisioning", "issuing_otp"].includes(member.accountStatus) ? "pending_verification" : member.accountStatus;
   return {
     staffId: member.id,
@@ -183,7 +167,6 @@ function accountResult(member: typeof staffTable.$inferSelect, otpSent = false) 
     accountStatus,
     role: member.role.toLowerCase(),
     setupComplete: accountStatus === "active",
-    otpSent,
   };
 }
 
@@ -191,118 +174,7 @@ function ownerAccountManager(req: Parameters<typeof nurseryContext>[0]) {
   return ["owner", "superadmin"].includes(nurseryContext(req).role);
 }
 
-router.post("/staff/:id/account/verify", async (req, res, next): Promise<void> => {
-  if (req.method === "POST") {
-    res.status(410).json({ error: "This endpoint is retired; use /auth/registration/staff/activation/request" });
-    return;
-  }
-  const now = Date.now();
-  const rateKey = req.ip || req.socket.remoteAddress || "unknown";
-  const rate = verificationRate.get(rateKey);
-  if (rate && rate.resetAt > now && rate.count >= 20) {
-    res.status(429).json({ error: "Too many verification requests; try again later" });
-    return;
-  }
-  verificationRate.set(rateKey, rate && rate.resetAt > now
-    ? { ...rate, count: rate.count + 1 }
-    : { count: 1, resetAt: now + 60_000 });
-  const params = VerifyStaffAccountParams.safeParse(req.params);
-  const body = VerifyStaffAccountBody.safeParse(req.body);
-  if (!params.success || !body.success) {
-    res.status(400).json({ error: params.success ? body.error?.message : params.error.message });
-    return;
-  }
-  try {
-    const [member] = await db.select().from(staffTable).where(eq(staffTable.id, params.data.id)).limit(1);
-    if (!member || member.accountStatus !== "pending_verification" || !member.otpHash || !member.otpExpiresAt) {
-      res.status(404).json({ error: "Account verification not found" });
-      return;
-    }
-    if (member.otpAttempts >= maxOtpAttempts) {
-      res.status(429).json({ error: "Too many verification attempts; request a new code" });
-      return;
-    }
-    if (member.otpExpiresAt.getTime() <= Date.now()) {
-      res.status(400).json({ error: "Verification code expired" });
-      return;
-    }
-    if (!otpMatches(member.id, body.data.otp, member.otpHash)) {
-      const [attempted] = await db.update(staffTable)
-        .set({ otpAttempts: sql`${staffTable.otpAttempts} + 1` })
-        .where(and(
-          eq(staffTable.id, member.id),
-          eq(staffTable.accountStatus, "pending_verification"),
-          sql`${staffTable.otpAttempts} < ${maxOtpAttempts}`,
-        )).returning({ otpAttempts: staffTable.otpAttempts });
-      if (!attempted || attempted.otpAttempts >= maxOtpAttempts) {
-        res.status(429).json({ error: "Too many verification attempts; request a new code" });
-        return;
-      }
-      res.status(400).json({ error: "Invalid verification code" });
-      return;
-    }
-    if (!member.email || !staffAccountRoles.has(member.role.toLowerCase())) {
-      res.status(400).json({ error: "A valid email and supported account role are required" });
-      return;
-    }
-    const [claimed] = await db.update(staffTable).set({
-      accountStatus: "provisioning",
-      otpHash: null,
-    }).where(and(
-      eq(staffTable.id, member.id),
-      eq(staffTable.accountStatus, "pending_verification"),
-      eq(staffTable.otpHash, member.otpHash),
-    )).returning();
-    if (!claimed) {
-      res.status(409).json({ error: "Verification is already being completed" });
-      return;
-    }
-    const names = member.name.trim().split(/\s+/);
-    let created;
-    try {
-      created = await clerkClient.users.createUser({
-        emailAddress: [member.email.trim().toLowerCase()],
-        password: body.data.password,
-        firstName: names[0] || member.name,
-        lastName: names.slice(1).join(" ") || undefined,
-        publicMetadata: { ownerId: member.ownerId, role: member.role.toLowerCase(), accountStatus: "active" },
-        privateMetadata: { staffId: member.id },
-      });
-    } catch (error) {
-      await db.update(staffTable).set({
-        accountStatus: "pending_verification",
-        otpHash: member.otpHash,
-      }).where(and(eq(staffTable.id, member.id), eq(staffTable.accountStatus, "provisioning")));
-      throw error;
-    }
-    const [updated] = await db.update(staffTable).set({
-      clerkUserId: created.id,
-      accountStatus: "active",
-      otpHash: null,
-      otpExpiresAt: null,
-      otpAttempts: 0,
-    }).where(eq(staffTable.id, member.id)).returning();
-    await db.insert(auditLogsTable).values({
-      ownerId: member.ownerId,
-      actorId: created.id,
-      actorRole: member.role.toLowerCase(),
-      operation: "verify-staff-account",
-      entityType: "staff-account",
-      entityId: String(member.id),
-      before: { accountStatus: member.accountStatus, clerkUserId: null },
-      after: { accountStatus: updated.accountStatus, clerkUserId: updated.clerkUserId, role: updated.role },
-    });
-    res.json(VerifyStaffAccountResponse.parse(accountResult(updated)));
-  } catch (error) {
-    next(error);
-  }
-});
-
 router.post("/staff/password-reset/request", async (req, res, next): Promise<void> => {
-  if (req.method === "POST") {
-    res.status(410).json({ error: "This endpoint is retired; use /auth/password-reset/request" });
-    return;
-  }
   const requestStartedAt = Date.now();
   const body = RequestStaffPasswordResetBody.safeParse(req.body);
   if (!body.success) {
@@ -368,10 +240,6 @@ router.post("/staff/password-reset/request", async (req, res, next): Promise<voi
 });
 
 router.post("/staff/password-reset/complete", async (req, res, next): Promise<void> => {
-  if (req.method === "POST") {
-    res.status(410).json({ error: "This endpoint is retired; use /auth/password-reset/complete" });
-    return;
-  }
   const now = Date.now();
   const rateKey = `password-reset-complete:${req.ip || req.socket.remoteAddress || "unknown"}`;
   const rate = verificationRate.get(rateKey);
@@ -500,16 +368,13 @@ async function clerkIdentity(req: Parameters<typeof getAuth>[0]) {
   return { role, verifiedEmails: emails };
 }
 
-async function resolveGuardian(req: Parameters<typeof getAuth>[0], emails: string[]) {
+async function resolveGuardian(req: Parameters<typeof getAuth>[0], _emails: string[]) {
   const auth = getAuth(req);
   if (!auth.userId) return null;
   const [linked] = await db.select().from(guardiansTable)
     .where(eq(guardiansTable.clerkUserId, auth.userId)).limit(1);
   if (linked) return linked;
-  // Email alone is not a tenant-scoped proof of guardian identity. Public
-  // registration links a guardian only after its WhatsApp challenge succeeds.
-  // Keeping this lookup link-only prevents cross-tenant email auto-linking.
-  void emails;
+
   return null;
 }
 
@@ -1002,8 +867,8 @@ router.delete("/staff/:id", async (req, res): Promise<void> => {
 });
 
 router.post("/staff/:id/account", async (req, res): Promise<void> => {
-  const params = StartStaffAccountParams.safeParse(req.params);
-  const body = StartStaffAccountBody.safeParse(req.body);
+  const params = LinkStaffAccountParams.safeParse(req.params);
+  const body = LinkStaffAccountBody.safeParse(req.body);
   if (!params.success || !body.success) {
     res.status(400).json({ error: params.success ? body.error?.message : params.error.message });
     return;
@@ -1025,136 +890,64 @@ router.post("/staff/:id/account", async (req, res): Promise<void> => {
     res.status(400).json({ error: "Select a supported account role first" });
     return;
   }
-  if (body.data.mode === "link") {
-    if (member.clerkUserId || !["unlinked", "pending_verification"].includes(member.accountStatus)) {
-      res.status(409).json({ error: "Unlink the current account before linking another user" });
-      return;
-    }
-    if (!body.data.clerkUserId) {
-      res.status(400).json({ error: "clerkUserId is required for linking" });
-      return;
-    }
-    const user = await clerkClient.users.getUser(body.data.clerkUserId);
-    const metadata = user.publicMetadata as Claims;
-    const existingOwnerId = metadata.ownerId ?? metadata.owner_id;
-    if (existingOwnerId && existingOwnerId !== ownerId) {
-      res.status(409).json({ error: "Clerk user already belongs to another nursery" });
-      return;
-    }
-    const [linkedElsewhere] = await db.select({ id: staffTable.id }).from(staffTable)
-      .where(eq(staffTable.clerkUserId, user.id)).limit(1);
-    if (linkedElsewhere && linkedElsewhere.id !== member.id) {
-      res.status(409).json({ error: "Clerk user is already linked to another staff record" });
-      return;
-    }
-    let [reserved] = await db.update(staffTable).set({
-      clerkUserId: user.id, role, accountStatus: "provisioning", otpHash: null, otpExpiresAt: null, otpAttempts: 0,
-    }).where(and(
-      eq(staffTable.id, member.id),
-      eq(staffTable.ownerId, ownerId),
-      sql`${staffTable.clerkUserId} is null`,
-      inArray(staffTable.accountStatus, ["unlinked", "pending_verification"]),
-    )).returning();
-    if (!reserved) {
-      res.status(409).json({ error: "Staff account state changed; reload and try again" });
-      return;
-    }
-    try {
-      await clerkClient.users.updateUserMetadata(user.id, {
-        publicMetadata: { ...metadata, ownerId, role, accountStatus: "active" },
-        privateMetadata: { ...(user.privateMetadata as Claims), staffId: member.id },
-      });
-    } catch (error) {
-      await db.update(staffTable).set({ clerkUserId: null, accountStatus: member.accountStatus })
-        .where(and(
-          eq(staffTable.id, member.id),
-          eq(staffTable.clerkUserId, user.id),
-          eq(staffTable.accountStatus, "provisioning"),
-        ));
-      throw error;
-    }
-    [reserved] = await db.update(staffTable).set({ accountStatus: "active" })
-      .where(and(
-        eq(staffTable.id, member.id),
-        eq(staffTable.clerkUserId, user.id),
-        eq(staffTable.accountStatus, "provisioning"),
-      )).returning();
-    if (!reserved) {
-      res.status(409).json({ error: "Unable to finalize staff account link" });
-      return;
-    }
-    const updated = reserved;
-    await auditNurseryOperation(req, "link-staff-account", "staff-account", String(member.id),
-      { clerkUserId: member.clerkUserId, accountStatus: member.accountStatus },
-      { clerkUserId: updated.clerkUserId, accountStatus: updated.accountStatus, role });
-    res.json(StartStaffAccountResponse.parse(accountResult(updated)));
-    return;
-  }
-  // Invitations now use the public activation challenge. No legacy OTP is
-  // generated or sent from this authenticated management action.
-  if (req.method === "POST") {
-    const [approved] = await db.update(staffTable).set({ role, accountStatus: "approved", otpHash: null, otpExpiresAt: null, otpAttempts: 0 })
-      .where(and(eq(staffTable.id, member.id), eq(staffTable.ownerId, ownerId), isNull(staffTable.clerkUserId), inArray(staffTable.accountStatus, ["unlinked", "pending_verification", "provisioning", "issuing_otp"]))).returning();
-    if (!approved) return void res.status(409).json({ error: "Staff account state changed; reload and try again" });
-    await auditNurseryOperation(req, "approve-staff-account", "staff-account", String(member.id), { accountStatus: member.accountStatus }, { accountStatus: "approved", role });
-    res.json(StartStaffAccountResponse.parse(accountResult(approved)));
-    return;
-  }
-  if (!member.email) {
-    res.status(400).json({ error: "Staff email is required before sending verification" });
-    return;
-  }
   if (member.clerkUserId || !["unlinked", "pending_verification"].includes(member.accountStatus)) {
-    res.status(409).json({ error: "Unlink the current account before issuing a new invitation" });
+    res.status(409).json({ error: "Unlink the current account before linking another user" });
     return;
   }
-  const [reservedInvitation] = await db.update(staffTable).set({
-    accountStatus: "issuing_otp",
+  const user = await clerkClient.users.getUser(body.data.clerkUserId);
+  const metadata = user.publicMetadata as Claims;
+  const existingOwnerId = metadata.ownerId ?? metadata.owner_id;
+  if (existingOwnerId && existingOwnerId !== ownerId) {
+    res.status(409).json({ error: "Clerk user already belongs to another nursery" });
+    return;
+  }
+  const [linkedElsewhere] = await db.select({ id: staffTable.id }).from(staffTable)
+    .where(eq(staffTable.clerkUserId, user.id)).limit(1);
+  if (linkedElsewhere && linkedElsewhere.id !== member.id) {
+    res.status(409).json({ error: "Clerk user is already linked to another staff record" });
+    return;
+  }
+  let [reserved] = await db.update(staffTable).set({
+    clerkUserId: user.id, role, accountStatus: "provisioning", otpHash: null, otpExpiresAt: null, otpAttempts: 0,
   }).where(and(
     eq(staffTable.id, member.id),
     eq(staffTable.ownerId, ownerId),
     sql`${staffTable.clerkUserId} is null`,
     inArray(staffTable.accountStatus, ["unlinked", "pending_verification"]),
-  )).returning({ id: staffTable.id });
-  if (!reservedInvitation) {
+  )).returning();
+  if (!reserved) {
     res.status(409).json({ error: "Staff account state changed; reload and try again" });
     return;
   }
-  const otp = randomInt(100000, 1000000).toString();
-  const sendResult = await sendWhatsAppText(
-    member.phone,
-    `رمز التحقق لإنشاء حسابك في نظام الحضانة هو: ${otp}\nرقم الموظفة: ${member.id}\nافتحي صفحة تفعيل حساب الموظفة في النظام. الرمز صالح لمدة 10 دقائق. لا تشاركيه مع أي شخص.`,
-  );
-  if (!sendResult.ok) {
-    await db.update(staffTable).set({
-      accountStatus: member.accountStatus,
-      role: member.role,
-      otpHash: member.otpHash,
-      otpExpiresAt: member.otpExpiresAt,
-      otpAttempts: member.otpAttempts,
-    }).where(and(eq(staffTable.id, member.id), eq(staffTable.accountStatus, "issuing_otp")));
-    res.status(503).json({ error: sendResult.error });
+  try {
+    await clerkClient.users.updateUserMetadata(user.id, {
+      publicMetadata: { ...metadata, ownerId, role, accountStatus: "active" },
+      privateMetadata: { ...(user.privateMetadata as Claims), staffId: member.id },
+    });
+  } catch (error) {
+    await db.update(staffTable).set({ clerkUserId: null, accountStatus: member.accountStatus })
+      .where(and(
+        eq(staffTable.id, member.id),
+        eq(staffTable.clerkUserId, user.id),
+        eq(staffTable.accountStatus, "provisioning"),
+      ));
+    throw error;
+  }
+  [reserved] = await db.update(staffTable).set({ accountStatus: "active" })
+    .where(and(
+      eq(staffTable.id, member.id),
+      eq(staffTable.clerkUserId, user.id),
+      eq(staffTable.accountStatus, "provisioning"),
+    )).returning();
+  if (!reserved) {
+    res.status(409).json({ error: "Unable to finalize staff account link" });
     return;
   }
-  const [updated] = await db.update(staffTable).set({
-    role,
-    accountStatus: "pending_verification",
-    otpHash: otpDigest(member.id, otp),
-    otpExpiresAt: new Date(Date.now() + otpLifetimeMs),
-    otpAttempts: 0,
-  }).where(and(
-    eq(staffTable.id, member.id),
-    eq(staffTable.ownerId, ownerId),
-    sql`${staffTable.clerkUserId} is null`,
-    eq(staffTable.accountStatus, "issuing_otp"),
-  )).returning();
-  if (!updated) {
-    res.status(409).json({ error: "Unable to finalize staff invitation" });
-    return;
-  }
-  await auditNurseryOperation(req, "send-staff-account-otp", "staff-account", String(member.id),
-    { accountStatus: member.accountStatus }, { accountStatus: updated.accountStatus, expiresInMinutes: 10 });
-  res.json(StartStaffAccountResponse.parse(accountResult(updated, true)));
+  const updated = reserved;
+  await auditNurseryOperation(req, "link-staff-account", "staff-account", String(member.id),
+    { clerkUserId: member.clerkUserId, accountStatus: member.accountStatus },
+    { clerkUserId: updated.clerkUserId, accountStatus: updated.accountStatus, role });
+  res.json(LinkStaffAccountResponse.parse(accountResult(updated)));
 });
 
 router.patch("/staff/:id/account", async (req, res): Promise<void> => {
@@ -1197,6 +990,10 @@ router.patch("/staff/:id/account", async (req, res): Promise<void> => {
       otpExpiresAt: null,
       otpAttempts: 0,
     }).where(eq(staffTable.id, member.id)).returning();
+    await db.update(publicAuthAccountsTable).set({
+      accountStatus: "pending",
+      ownerId: null,
+    }).where(eq(publicAuthAccountsTable.clerkUserId, member.clerkUserId));
     await auditNurseryOperation(req, "unlink-staff-account", "staff-account", String(member.id),
       { role: member.role, accountStatus: member.accountStatus, clerkUserId: member.clerkUserId },
       { role: updated.role, accountStatus: updated.accountStatus, clerkUserId: null });
@@ -1213,6 +1010,10 @@ router.patch("/staff/:id/account", async (req, res): Promise<void> => {
     otpExpiresAt: null,
     otpAttempts: 0,
   }).where(eq(staffTable.id, member.id)).returning();
+  await db.update(publicAuthAccountsTable).set({
+    accountStatus: accountStatus === "active" ? "active" : "pending",
+    ownerId: accountStatus === "active" ? ownerId : null,
+  }).where(eq(publicAuthAccountsTable.clerkUserId, member.clerkUserId));
   await auditNurseryOperation(req, "update-staff-account", "staff-account", String(member.id),
     { role: member.role, accountStatus: member.accountStatus },
     { role: updated.role, accountStatus: updated.accountStatus });

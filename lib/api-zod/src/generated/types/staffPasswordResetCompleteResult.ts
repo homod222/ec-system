@@ -8,5 +8,4 @@
 
 export interface StaffPasswordResetCompleteResult {
   updated: boolean;
-  otpSent?: boolean;
 }

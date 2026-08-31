@@ -6,7 +6,12 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface PublicOtpChallenge {
+export interface PublicRegistrationChallenge {
+  /**
+     * @minLength 32
+     * @maxLength 64
+     */
   challengeId: string;
+  /** @minimum 1 */
   expiresInSeconds: number;
 }

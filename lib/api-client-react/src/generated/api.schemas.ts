@@ -5,110 +5,90 @@
  * API for the nursery management platform
  * OpenAPI spec version: 0.1.0
  */
-export interface GuardianRegistrationInput {
-  /**
-   * @minLength 1
-   * @maxLength 200
-   */
-  name: string;
-  email: string;
-  /** @pattern ^(?:\+?965|00965)?[569][0-9]{7}$ */
-  phone: string;
-}
+export type PublicRegistrationRequestAccountType =
+  (typeof PublicRegistrationRequestAccountType)[keyof typeof PublicRegistrationRequestAccountType];
 
-export interface StaffRegistrationInput {
+export const PublicRegistrationRequestAccountType = {
+  guardian: "guardian",
+  staff: "staff",
+} as const;
+
+export interface PublicRegistrationRequest {
+  /**
+   * @minLength 8
+   * @maxLength 30
+   */
+  phone: string;
   /**
    * @minLength 5
    * @maxLength 200
-   * @pattern ^\S+\s+\S+\s+\S+(?:\s+.*)?$
+   * @pattern ^\S+(?:\s+\S+){2,}$
    */
-  name: string;
+  fullName: string;
+  /** @maxLength 254 */
   email: string;
-  /** @pattern ^(?:\+?965|00965)?[569][0-9]{7}$ */
-  phone: string;
+  accountType: PublicRegistrationRequestAccountType;
 }
 
-export interface PublicOtpChallenge {
+export interface PublicRegistrationVerify {
+  /**
+   * @minLength 32
+   * @maxLength 64
+   */
   challengeId: string;
-  expiresInSeconds: number;
-}
-
-export interface PublicRegistrationComplete {
-  challengeId: string;
-  /** @pattern ^[0-9]{6}$ */
+  /** @pattern ^\d{6}$ */
   otp: string;
   /**
    * @minLength 8
-   * @maxLength 256
+   * @maxLength 128
    */
   password: string;
 }
+
+export interface PublicRegistrationChallenge {
+  /**
+   * @minLength 32
+   * @maxLength 64
+   */
+  challengeId: string;
+  /** @minimum 1 */
+  expiresInSeconds: number;
+}
+
+export type PublicRegistrationResultAccountType =
+  (typeof PublicRegistrationResultAccountType)[keyof typeof PublicRegistrationResultAccountType];
+
+export const PublicRegistrationResultAccountType = {
+  guardian: "guardian",
+  staff: "staff",
+} as const;
 
 export type PublicRegistrationResultStatus =
   (typeof PublicRegistrationResultStatus)[keyof typeof PublicRegistrationResultStatus];
 
 export const PublicRegistrationResultStatus = {
-  created: "created",
-  needs_admin: "needs_admin",
+  active: "active",
+  pending: "pending",
 } as const;
 
 export interface PublicRegistrationResult {
+  /** @minLength 1 */
+  ticket: string;
+  accountType: PublicRegistrationResultAccountType;
   status: PublicRegistrationResultStatus;
 }
 
-export type PendingApprovalResultStatus =
-  (typeof PendingApprovalResultStatus)[keyof typeof PendingApprovalResultStatus];
-
-export const PendingApprovalResultStatus = {
-  pending_approval: "pending_approval",
-  approved: "approved",
-  otp_sent: "otp_sent",
-  rejected: "rejected",
-} as const;
-
-export interface PendingApprovalResult {
-  status: PendingApprovalResultStatus;
-}
-
-export type StaffApprovalInputRole =
-  (typeof StaffApprovalInputRole)[keyof typeof StaffApprovalInputRole];
-
-export const StaffApprovalInputRole = {
-  admin: "admin",
-  manager: "manager",
-  supervisor: "supervisor",
-  teacher: "teacher",
-  accountant: "accountant",
-  receptionist: "receptionist",
-} as const;
-
-export interface StaffApprovalInput {
-  role: StaffApprovalInputRole;
-}
-
-export interface PasswordResetRequest {
+export interface PhonePasswordSignIn {
   /**
-   * @minLength 3
-   * @maxLength 254
+   * @minLength 8
+   * @maxLength 30
    */
-  identifier: string;
-}
-
-export interface PasswordLoginInput {
+  phone: string;
   /**
-   * @minLength 3
-   * @maxLength 254
-   */
-  identifier: string;
-  /**
-   * @minLength 1
-   * @maxLength 256
+   * @minLength 8
+   * @maxLength 128
    */
   password: string;
-}
-
-export interface GenericAccepted {
-  accepted: boolean;
 }
 
 export interface PhoneLoginRequest {
@@ -530,12 +510,9 @@ export type StaffMemberAccountStatus =
 
 export const StaffMemberAccountStatus = {
   unlinked: "unlinked",
-  pending_approval: "pending_approval",
-  approved: "approved",
   pending_verification: "pending_verification",
   active: "active",
   disabled: "disabled",
-  rejected: "rejected",
 } as const;
 
 export interface StaffMember {
@@ -583,18 +560,10 @@ export interface StaffInput {
   hireDate?: string | null;
 }
 
-export type StaffAccountActionInputMode =
-  (typeof StaffAccountActionInputMode)[keyof typeof StaffAccountActionInputMode];
+export type StaffAccountLinkInputRole =
+  (typeof StaffAccountLinkInputRole)[keyof typeof StaffAccountLinkInputRole];
 
-export const StaffAccountActionInputMode = {
-  invite: "invite",
-  link: "link",
-} as const;
-
-export type StaffAccountActionInputRole =
-  (typeof StaffAccountActionInputRole)[keyof typeof StaffAccountActionInputRole];
-
-export const StaffAccountActionInputRole = {
+export const StaffAccountLinkInputRole = {
   admin: "admin",
   manager: "manager",
   supervisor: "supervisor",
@@ -603,27 +572,10 @@ export const StaffAccountActionInputRole = {
   receptionist: "receptionist",
 } as const;
 
-export interface StaffAccountActionInput {
-  mode: StaffAccountActionInputMode;
-  /**
-   * @minLength 1
-   * @nullable
-   */
-  clerkUserId?: string | null;
-  role: StaffAccountActionInputRole;
-}
-
-export interface StaffAccountVerifyInput {
-  /**
-   * @minLength 6
-   * @maxLength 6
-   */
-  otp: string;
-  /**
-   * @minLength 8
-   * @maxLength 128
-   */
-  password: string;
+export interface StaffAccountLinkInput {
+  /** @minLength 1 */
+  clerkUserId: string;
+  role: StaffAccountLinkInputRole;
 }
 
 export type StaffAccountUpdateInputRole =
@@ -657,12 +609,9 @@ export type StaffAccountResultAccountStatus =
 
 export const StaffAccountResultAccountStatus = {
   unlinked: "unlinked",
-  pending_approval: "pending_approval",
-  approved: "approved",
   pending_verification: "pending_verification",
   active: "active",
   disabled: "disabled",
-  rejected: "rejected",
 } as const;
 
 export interface StaffAccountResult {
@@ -672,7 +621,6 @@ export interface StaffAccountResult {
   accountStatus: StaffAccountResultAccountStatus;
   role: string;
   setupComplete: boolean;
-  otpSent?: boolean;
 }
 
 export interface StaffPasswordResetRequest {
@@ -700,7 +648,6 @@ export interface StaffPasswordResetComplete {
 
 export interface StaffPasswordResetCompleteResult {
   updated: boolean;
-  otpSent?: boolean;
 }
 
 export type AttendanceRecordStatus =

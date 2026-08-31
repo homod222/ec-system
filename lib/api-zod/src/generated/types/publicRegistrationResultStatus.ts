@@ -10,6 +10,6 @@ export type PublicRegistrationResultStatus = typeof PublicRegistrationResultStat
 
 
 export const PublicRegistrationResultStatus = {
-  created: 'created',
-  needs_admin: 'needs_admin',
+  active: 'active',
+  pending: 'pending',
 } as const;

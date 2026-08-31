@@ -4,23 +4,22 @@ import {
   getListStaffQueryKey,
   useCreateStaff,
   useDeleteStaff,
+  useLinkStaffAccount,
   useListPermissionPrincipals,
   useListStaff,
-  useStartStaffAccount,
   useUpdateStaff,
   useUpdateStaffAccount,
-  useApproveStaffRegistration,
-  useRejectStaffRegistration,
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Shell, Button, Pill, Avatar, QueryState, PageHeader } from '../../App';
 import {
   Briefcase, DollarSign, Edit3, GraduationCap, KeyRound, Plane, Plus,
-  Search, ShieldCheck, Star, Trash2, UserCheck, UserX, X, CheckCircle2
+  Search, ShieldCheck, Star, Trash2, UserCheck, UserX, X,
 } from 'lucide-react';
 import type { StaffAccountUpdateInputRole, StaffMember } from '@workspace/api-client-react';
 import { OperationalManager } from '../../components/OperationalManager';
 import { useI18n } from '../../i18n';
+import { Link } from 'wouter';
 
 const accountRoleValues: StaffAccountUpdateInputRole[] = ['admin', 'manager', 'supervisor', 'teacher', 'accountant', 'receptionist'];
 
@@ -65,7 +64,7 @@ export function StaffExpanded() {
             <span>{t('staffAccounts.actions')}</span>
           </div>
           {filtered.map((member) => (
-            <div key={member.id} data-testid={`row-staff-${member.id}`} className="grid gap-3 border-b border-border px-6 py-5 last:border-0 hover:bg-muted/50 md:grid-cols-[1.3fr_.8fr_.9fr_.8fr_auto] md:items-center md:gap-4">
+            <div key={member.id} data-testid={`row-staff-${member.id}`} className={`grid gap-3 border-b border-border px-6 py-5 last:border-0 hover:bg-muted/50 md:grid-cols-[1.3fr_.8fr_.9fr_.8fr_auto] md:items-center md:gap-4 ${member.accountStatus === 'pending_verification' ? 'bg-sky-50/60 dark:bg-sky-950/20' : ''}`}>
               <div className="flex items-center gap-4">
                 <Avatar name={member.name} className="h-11 w-11" />
                 <div>
@@ -76,13 +75,13 @@ export function StaffExpanded() {
               <div className="text-sm font-bold text-foreground">{accountRoleValues.includes(member.role as StaffAccountUpdateInputRole) ? t(`staffAccounts.role.${member.role}` as never) : member.role}</div>
               <div className="text-sm font-medium text-muted-foreground">{member.phone}</div>
               <div>
-                <Pill tone={member.accountStatus === 'active' ? 'green' : member.accountStatus === 'disabled' ? 'red' : (member.accountStatus === 'pending_verification' || member.accountStatus === 'pending_approval' || member.accountStatus === 'approved') ? 'blue' : 'neutral'}>
+                <Pill tone={member.accountStatus === 'active' ? 'green' : member.accountStatus === 'disabled' ? 'red' : member.accountStatus === 'pending_verification' ? 'blue' : 'neutral'}>
                   {t(`staffAccounts.status.${member.accountStatus}` as never)}
                 </Pill>
                 <p className="mt-2 text-[11px] text-muted-foreground">{formatNumber(member.attendanceRate / 100, { style: 'percent', maximumFractionDigits: 0 })} {t('staffAccounts.attendance')}</p>
               </div>
               <div className="flex gap-2">
-                <Button data-testid={`button-account-staff-${member.id}`} aria-label={t('staffAccounts.manage')} title={t('staffAccounts.manage')} variant="ghost" className="!p-2" onClick={() => setAccountMember(member)}><KeyRound size={16} /></Button>
+                <Button data-testid={`button-account-staff-${member.id}`} aria-label={member.accountStatus === 'pending_verification' ? t('staffAccounts.reviewPending') : t('staffAccounts.manage')} title={member.accountStatus === 'pending_verification' ? t('staffAccounts.reviewPending') : t('staffAccounts.manage')} variant={member.accountStatus === 'pending_verification' ? 'soft' : 'ghost'} className="!p-2" onClick={() => setAccountMember(member)}><KeyRound size={16} /></Button>
                 <Button aria-label={t('common.edit')} title={t('common.edit')} variant="ghost" className="!p-2" onClick={() => setEditing(member)}><Edit3 size={16} /></Button>
                 <DeleteStaffButton member={member} />
               </div>
@@ -188,13 +187,11 @@ function StaffAccountDialog({ member, onClose }: { member: StaffMember; onClose:
   const [role, setRole] = useState<StaffAccountUpdateInputRole>((accountRoleValues.includes(member.role as StaffAccountUpdateInputRole) ? member.role : 'teacher') as StaffAccountUpdateInputRole);
   const [linkUserId, setLinkUserId] = useState('');
   const [message, setMessage] = useState('');
-  const start = useStartStaffAccount();
+  const link = useLinkStaffAccount();
   const update = useUpdateStaffAccount();
-  const approveReq = useApproveStaffRegistration();
-  const rejectReq = useRejectStaffRegistration();
   const principals = useListPermissionPrincipals();
   const queryClient = useQueryClient();
-  const pending = start.isPending || update.isPending || approveReq.isPending || rejectReq.isPending;
+  const pending = link.isPending || update.isPending;
   const refresh = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: getListStaffQueryKey() }),
@@ -228,44 +225,14 @@ function StaffAccountDialog({ member, onClose }: { member: StaffMember; onClose:
           </select>
         </label>
 
-        {member.accountStatus === 'pending_approval' ? (
-          <div className="mt-6 rounded-2xl border border-primary/20 bg-primary/5 p-4">
-            <div className="flex items-center gap-2 font-bold"><ShieldCheck size={18} />{t('staffAccounts.reviewRequest')}</div>
-            <p className="mt-2 text-sm text-muted-foreground">{t('staffAccounts.reviewRequestDesc')}</p>
-            <div className="mt-4 flex flex-wrap gap-3">
-              <Button data-testid={`button-approve-${member.id}`} disabled={pending} onClick={() => approveReq.mutate({ id: member.id, data: { role } }, { onSuccess: async () => { setMessage(`${t('staffAccounts.requestApproved')} ${t('staffAccounts.approvedStatusDesc', { phone: member.phone })}`); await refresh(); } })}>
-                <CheckCircle2 size={17} />{t('staffAccounts.approveRequest')}
-              </Button>
-              <Button data-testid={`button-reject-${member.id}`} variant="danger" disabled={pending} onClick={() => rejectReq.mutate({ id: member.id }, { onSuccess: async () => { setMessage(t('staffAccounts.requestRejected')); await refresh(); } })}>
-                <UserX size={17} />{t('staffAccounts.rejectRequest')}
-              </Button>
-            </div>
-          </div>
-        ) : member.accountStatus === 'approved' ? (
-          <div className="mt-6 rounded-2xl border border-border p-4">
-            <div className="flex items-center gap-2 font-bold"><CheckCircle2 size={18} />{t('staffAccounts.approvedStatus')}</div>
-            <p className="mt-2 text-sm text-muted-foreground">
-              {t('staffAccounts.approvedStatusDesc', { phone: member.phone })}
-            </p>
-          </div>
-        ) : member.accountStatus === 'unlinked' || member.accountStatus === 'pending_verification' ? (
+        {member.accountStatus === 'unlinked' ? (
           <div className="mt-6 space-y-5">
             <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4">
-              <div className="flex items-center gap-2 font-bold"><ShieldCheck size={18} />{t('staffAccounts.inviteTitle')}</div>
-              <p className="mt-2 text-sm text-muted-foreground">{t('staffAccounts.inviteBody', { phone: member.phone, email: member.email || t('staffAccounts.notRegistered') })}</p>
-              <Button
-                data-testid="button-send-staff-otp"
-                className="mt-4"
-                disabled={pending || !member.email}
-                onClick={() => start.mutate({ id: member.id, data: { mode: 'invite', role } }, {
-                  onSuccess: async () => {
-                    setMessage(t('staffAccounts.otpSent'));
-                    await refresh();
-                  },
-                })}
-              >
-                <KeyRound size={17} />{t('staffAccounts.sendOtp')}
-              </Button>
+              <div className="flex items-center gap-2 font-bold"><ShieldCheck size={18} />{t('staffAccounts.registerTitle')}</div>
+              <p className="mt-2 text-sm text-muted-foreground">{t('staffAccounts.registerBody')}</p>
+              <Link href="/sign-up" className="mt-4 inline-flex items-center rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground hover:opacity-90">
+                {t('staffAccounts.goToSignUp')}
+              </Link>
             </div>
 
             <div className="rounded-2xl border border-border p-4">
@@ -282,7 +249,7 @@ function StaffAccountDialog({ member, onClose }: { member: StaffMember; onClose:
                 variant="ghost"
                 className="mt-3"
                 disabled={pending || !linkUserId}
-                onClick={() => start.mutate({ id: member.id, data: { mode: 'link', clerkUserId: linkUserId, role } }, {
+                onClick={() => link.mutate({ id: member.id, data: { clerkUserId: linkUserId, role } }, {
                   onSuccess: async () => {
                     setMessage(t('staffAccounts.linkedSuccess'));
                     await refresh();
@@ -301,7 +268,7 @@ function StaffAccountDialog({ member, onClose }: { member: StaffMember; onClose:
           </div>
         )}
 
-        {(start.isError || update.isError) && <p className="mt-4 text-sm font-medium text-destructive">{t('staffAccounts.operationError')}</p>}
+        {(link.isError || update.isError) && <p className="mt-4 text-sm font-medium text-destructive">{t('staffAccounts.operationError')}</p>}
         {message && <p data-testid="text-account-result" className="mt-4 rounded-xl bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-800">{message}</p>}
       </div>
     </div>

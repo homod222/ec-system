@@ -7,20 +7,18 @@ import nurseryOperationsRouter from "./nurseryOperations";
 import task16OperationsRouter from "./task16Operations";
 import siteGalleryRouter from "./siteGallery";
 import phoneAuthRouter from "./phoneAuth";
-import publicRegistrationRouter from "./publicRegistration";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
 router.use(phoneAuthRouter);
-router.use(publicRegistrationRouter);
 router.use(siteGalleryRouter);
 router.use(applicationsRouter);
 router.use(storageRouter);
 router.use((req, res, next) => {
   const isPublicStaffAccountRoute = req.method === "POST" && (
-    req.path.startsWith("/auth/registration/") ||
-    req.path.startsWith("/auth/password-reset/")
+    req.path === "/staff/password-reset/request" ||
+    req.path === "/staff/password-reset/complete"
   );
   if (isPublicStaffAccountRoute) {
     nurseryRouter(req, res, next);

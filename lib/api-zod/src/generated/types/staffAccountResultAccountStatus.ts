@@ -11,10 +11,7 @@ export type StaffAccountResultAccountStatus = typeof StaffAccountResultAccountSt
 
 export const StaffAccountResultAccountStatus = {
   unlinked: 'unlinked',
-  pending_approval: 'pending_approval',
-  approved: 'approved',
   pending_verification: 'pending_verification',
   active: 'active',
   disabled: 'disabled',
-  rejected: 'rejected',
 } as const;

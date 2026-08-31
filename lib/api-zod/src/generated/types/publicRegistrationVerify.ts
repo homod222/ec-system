@@ -6,15 +6,17 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface PasswordLoginInput {
+export interface PublicRegistrationVerify {
   /**
-     * @minLength 3
-     * @maxLength 254
+     * @minLength 32
+     * @maxLength 64
      */
-  identifier: string;
+  challengeId: string;
+  /** @pattern ^\d{6}$ */
+  otp: string;
   /**
-     * @minLength 1
-     * @maxLength 256
+     * @minLength 8
+     * @maxLength 128
      */
   password: string;
 }

@@ -35,7 +35,7 @@ import { ChildProfileExpanded } from './pages/admin/ChildProfileExpanded';
 import { ClassroomsExpanded } from './pages/admin/ClassroomsExpanded';
 import { AttendanceExpanded } from './pages/admin/AttendanceExpanded';
 import { StaffExpanded } from './pages/admin/StaffExpanded';
-import { StaffActivate } from './pages/StaffActivate';
+import { StaffPasswordReset } from './pages/StaffPasswordReset';
 import FinanceExpanded from './pages/admin/FinanceExpanded';
 import { Education } from './pages/admin/Education';
 import { Activities } from './pages/admin/Activities';
@@ -44,14 +44,18 @@ import { Permissions } from './pages/admin/Permissions';
 import { Settings } from './pages/admin/Settings';
 import { Audit } from './pages/admin/Audit';
 import { SiteGallery } from './pages/admin/SiteGallery';
-import { SignInPage } from './pages/auth/SignIn';
-import { RegisterPage } from './pages/auth/Register';
-import { ForgotPasswordPage } from './pages/auth/ForgotPassword';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { useI18n, type Locale, type TranslationKey } from '@/i18n';
+import {
+  requestRegistration,
+  signInWithPassword,
+  verifyRegistration,
+  type AuthTicketResponse,
+  type RegistrationAccountType,
+} from '@/lib/auth-api';
 
 const queryClient = new QueryClient();
-export const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
+const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
 const clerkKeyResolver = (ClerkInternal as unknown as { publishableKeyFromHost?: (host: string, key?: string) => string }).publishableKeyFromHost ?? ((_: string, key?: string) => key || '');
 const clerkPubKey = clerkKeyResolver(window.location.hostname, import.meta.env.VITE_CLERK_PUBLISHABLE_KEY);
 const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
@@ -610,6 +614,237 @@ function AccessPending() {
     </div>
   );
 }
+function normalizeKuwaitPhone(value: string): string | null {
+  const digits = value.replace(/\D/g, '').replace(/^965/, '');
+  return /^[24569]\d{7}$/.test(digits) ? `+965${digits}` : null;
+}
+
+function routeForAuthResult(result: AuthTicketResponse): string {
+  if (result.status === 'pending' || result.role === 'pending') return '/access-pending';
+  if (result.accountType === 'guardian' || result.role === 'guardian' || result.role === 'parent') return '/parent';
+  return '/dashboard';
+}
+
+async function activateTicket(clerk: ReturnType<typeof useClerk>, result: AuthTicketResponse) {
+  if (!clerk.loaded || !result.ticket) throw new Error('Authentication unavailable');
+  const attempt = await clerk.client.signIn.create({ strategy: 'ticket', ticket: result.ticket });
+  if (attempt.status !== 'complete' || !attempt.createdSessionId) throw new Error('Authentication incomplete');
+  await clerk.setActive({ session: attempt.createdSessionId });
+  window.location.assign(`${basePath}${routeForAuthResult(result)}`);
+}
+
+function PhoneSignIn() {
+  const { t } = useI18n();
+  const clerk = useClerk();
+  const [phone, setPhone] = useState('');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const normalizedPhone = normalizeKuwaitPhone(phone);
+    if (!normalizedPhone) {
+      setError(t('auth.phoneInvalid'));
+      return;
+    }
+    setBusy(true); setError('');
+    try {
+      const result = await signInWithPassword({ phone: normalizedPhone, password });
+      await activateTicket(clerk, result);
+    } catch {
+      setError(t('auth.signInError'));
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="rounded-[2rem] border border-border bg-card p-8 shadow-2xl">
+      <div className="mb-7 text-center">
+        <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-[#25D366]/15 text-[#128C4A]"><Phone size={25} /></span>
+        <h1 className="mt-4 text-2xl font-bold">{t('auth.passwordSignInTitle')}</h1>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">{t('auth.passwordSignInSubtitle')}</p>
+      </div>
+      <form onSubmit={submit} className="space-y-5">
+        <label className="block text-sm font-bold">{t('auth.phone')}
+          <div className="mt-2 flex overflow-hidden rounded-xl border border-input bg-background focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20" dir="ltr">
+            <span className="grid place-items-center border-r border-input px-3 font-bold text-muted-foreground">+965</span>
+            <input data-testid="input-login-phone" required inputMode="numeric" autoComplete="tel" value={phone}
+              onChange={event => setPhone(event.target.value)} placeholder="5••• ••••"
+              aria-describedby={error ? 'sign-in-error' : undefined}
+              className="min-w-0 flex-1 bg-transparent px-4 py-3 text-left outline-none" />
+          </div>
+        </label>
+        <label className="block text-sm font-bold">{t('auth.password')}
+          <input data-testid="input-login-password" required type="password" autoComplete="current-password" value={password}
+            onChange={event => setPassword(event.target.value)}
+            className="mt-2 w-full rounded-xl border border-input bg-background px-4 py-3 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
+        </label>
+        <Button data-testid="button-password-sign-in" className="w-full" disabled={busy}>{busy ? t('common.loading') : t('auth.signIn')}</Button>
+      </form>
+      {error && <p id="sign-in-error" role="alert" className="mt-4 text-center text-sm font-bold text-destructive">{error}</p>}
+      <div className="mt-5 text-center text-sm text-muted-foreground">
+        {t('auth.noAccount')} <Link href="/sign-up" className="font-bold text-primary hover:underline">{t('auth.signUp')}</Link>
+      </div>
+      <div className="mt-3 text-center">
+        <Link href="/staff-password-reset" className="text-xs font-bold text-primary hover:underline">{t('passwordReset.forgot')}</Link>
+      </div>
+      <div className="mt-6 border-t border-border pt-5 text-center">
+        <Link href="/owner-recovery" className="text-xs font-bold text-muted-foreground hover:text-primary">{t('auth.ownerRecovery')}</Link>
+      </div>
+    </div>
+  );
+}
+
+function RegistrationForm() {
+  const { t } = useI18n();
+  const clerk = useClerk();
+  const [accountType, setAccountType] = useState<RegistrationAccountType>('guardian');
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [challengeId, setChallengeId] = useState('');
+  const [otp, setOtp] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmation, setConfirmation] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const requestOtp = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const normalizedPhone = normalizeKuwaitPhone(phone);
+    if (fullName.trim().split(/\s+/).filter(Boolean).length < 3) {
+      setError(t('auth.fullNameInvalid'));
+      return;
+    }
+    if (!normalizedPhone) {
+      setError(t('auth.phoneInvalid'));
+      return;
+    }
+    setBusy(true); setError('');
+    try {
+      const result = await requestRegistration({ phone: normalizedPhone, fullName: fullName.trim(), email: email.trim(), accountType });
+      if (!result.challengeId) throw new Error('Missing challenge');
+      setChallengeId(result.challengeId);
+    } catch {
+      setError(t('auth.registrationRequestError'));
+    } finally { setBusy(false); }
+  };
+
+  const completeRegistration = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (password.length < 8) {
+      setError(t('auth.passwordInvalid'));
+      return;
+    }
+    if (password !== confirmation) {
+      setError(t('auth.passwordMismatch'));
+      return;
+    }
+    setBusy(true); setError('');
+    try {
+      const result = await verifyRegistration({ challengeId, otp, password });
+      await activateTicket(clerk, result);
+    } catch {
+      setError(t('auth.registrationVerifyError'));
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="rounded-[2rem] border border-border bg-card p-7 shadow-2xl sm:p-9">
+      <div className="mb-7 text-center">
+        <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-primary/10 text-primary"><ShieldCheck size={26} /></span>
+        <h1 className="mt-4 text-2xl font-bold">{t('auth.registrationTitle')}</h1>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">{challengeId ? t('auth.registrationVerifySubtitle') : t('auth.registrationSubtitle')}</p>
+      </div>
+      {!challengeId ? (
+        <form onSubmit={requestOtp} className="space-y-4">
+          <fieldset>
+            <legend className="mb-2 text-sm font-bold">{t('auth.accountType')}</legend>
+            <div className="grid grid-cols-2 gap-3">
+              {(['guardian', 'staff'] as const).map(type => (
+                <label key={type} className={`cursor-pointer rounded-xl border p-3 text-center text-sm font-bold transition-colors ${accountType === type ? 'border-primary bg-primary/10 text-primary' : 'border-input bg-background'}`}>
+                  <input className="sr-only" type="radio" name="accountType" value={type} checked={accountType === type} onChange={() => setAccountType(type)} />
+                  {t(type === 'guardian' ? 'auth.guardian' : 'auth.staff')}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <label className="block text-sm font-bold">{t('auth.fullName')}
+            <input required autoComplete="name" value={fullName} onChange={event => setFullName(event.target.value)}
+              aria-describedby="full-name-help" className="mt-2 w-full rounded-xl border border-input bg-background px-4 py-3 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
+            <span id="full-name-help" className="mt-1 block text-xs font-normal text-muted-foreground">{t('auth.fullNameHelp')}</span>
+          </label>
+          <label className="block text-sm font-bold">{t('auth.email')}
+            <input required type="email" autoComplete="email" value={email} onChange={event => setEmail(event.target.value)}
+              className="mt-2 w-full rounded-xl border border-input bg-background px-4 py-3 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" dir="ltr" />
+          </label>
+          <label className="block text-sm font-bold">{t('auth.phone')}
+            <div className="mt-2 flex overflow-hidden rounded-xl border border-input bg-background focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20" dir="ltr">
+              <span className="grid place-items-center border-r border-input px-3 font-bold text-muted-foreground">+965</span>
+              <input required inputMode="numeric" autoComplete="tel" value={phone} onChange={event => setPhone(event.target.value)}
+                placeholder="5••• ••••" className="min-w-0 flex-1 bg-transparent px-4 py-3 text-left outline-none" />
+            </div>
+          </label>
+          <Button className="w-full" disabled={busy}>{busy ? t('common.loading') : t('auth.requestOtp')}</Button>
+        </form>
+      ) : (
+        <form onSubmit={completeRegistration} className="space-y-4">
+          <label className="block text-sm font-bold">{t('auth.otp')}
+            <input required inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={otp}
+              onChange={event => setOtp(event.target.value.replace(/\D/g, ''))}
+              className="mt-2 w-full rounded-xl border border-input bg-background px-4 py-3 text-center font-mono text-2xl tracking-[.45em] outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" dir="ltr" />
+          </label>
+          <label className="block text-sm font-bold">{t('auth.password')}
+            <input required minLength={8} type="password" autoComplete="new-password" value={password} onChange={event => setPassword(event.target.value)}
+              className="mt-2 w-full rounded-xl border border-input bg-background px-4 py-3 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
+          </label>
+          <label className="block text-sm font-bold">{t('auth.confirmPassword')}
+            <input required minLength={8} type="password" autoComplete="new-password" value={confirmation} onChange={event => setConfirmation(event.target.value)}
+              className="mt-2 w-full rounded-xl border border-input bg-background px-4 py-3 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
+          </label>
+          <Button className="w-full" disabled={busy || otp.length !== 6}>{busy ? t('common.loading') : t('auth.completeRegistration')}</Button>
+          <button type="button" onClick={() => { setChallengeId(''); setOtp(''); setPassword(''); setConfirmation(''); setError(''); }} className="w-full text-sm font-bold text-primary hover:underline">{t('auth.changeDetails')}</button>
+        </form>
+      )}
+      {error && <p role="alert" className="mt-4 text-center text-sm font-bold text-destructive">{error}</p>}
+      <p className="mt-6 text-center text-sm text-muted-foreground">{t('auth.haveAccount')} <Link href="/sign-in" className="font-bold text-primary hover:underline">{t('auth.signIn')}</Link></p>
+    </div>
+  );
+}
+
+function AuthPage() {
+  const { dir, t } = useI18n();
+  return (
+    <div dir={dir} className="grid min-h-[100dvh] place-items-center bg-ec-pattern px-4 py-12 relative overflow-hidden">
+      <div className="absolute inset-0 bg-background/90 backdrop-blur-3xl" />
+      <div className={`absolute top-4 z-10 sm:top-8 ${dir === 'rtl' ? 'right-5 sm:right-8' : 'left-5 sm:left-8'}`}>
+        <Link href="/" data-testid="link-auth-logo" className="block hover:opacity-80 transition-opacity">
+          <img src={`${basePath}/ec-official-logo-v2.png`} alt={t('admin.brand')} className="mx-auto h-20 w-24 object-contain drop-shadow-sm sm:h-28 sm:w-36" />
+        </Link>
+      </div>
+      <div className={`absolute top-8 z-10 ${dir === 'rtl' ? 'left-8' : 'right-8'}`}>
+        <LanguageSwitcher className="bg-card/95 shadow-sm backdrop-blur" />
+      </div>
+      <div className="relative z-10 w-full max-w-md animate-rise">
+        <PhoneSignIn />
+      </div>
+    </div>
+  ); 
+}
+
+function SignUpPage() {
+  const { dir, t } = useI18n();
+  return (
+    <div dir={dir} className="relative grid min-h-[100dvh] place-items-center overflow-hidden bg-ec-pattern px-4 py-28 sm:py-12">
+      <div className="absolute inset-0 bg-background/90 backdrop-blur-3xl" />
+      <Link href="/" className={`absolute top-4 z-10 ${dir === 'rtl' ? 'right-5' : 'left-5'}`}>
+        <img src={`${basePath}/ec-official-logo-v2.png`} alt={t('admin.brand')} className="h-20 w-24 object-contain" />
+      </Link>
+      <div className={`absolute top-8 z-10 ${dir === 'rtl' ? 'left-8' : 'right-8'}`}><LanguageSwitcher className="bg-card/95 shadow-sm" /></div>
+      <main className="relative z-10 w-full max-w-lg animate-rise"><RegistrationForm /></main>
+    </div>
+  );
+}
 
 function RoutedErrorBoundary({ children }: { children: React.ReactNode }) { 
   const [location] = useLocation(); 
@@ -621,17 +856,15 @@ function Router() {
     <RoutedErrorBoundary>
       <Switch>
         <Route path="/" component={Landing} />
-        <Route path="/sign-in/*?" component={SignInPage} />
-        <Route path="/register/*?" component={RegisterPage} />
-        <Route path="/forgot-password/*?" component={ForgotPasswordPage} />
-        <Route path="/sign-up/*?"><Redirect to="/register" /></Route>
+        <Route path="/sign-in/*?" component={AuthPage} />
+        <Route path="/sign-up/*?" component={SignUpPage} />
+        <Route path="/register/*?" component={SignUpPage} />
+        <Route path="/staff-password-reset" component={StaffPasswordReset} />
         <Route path="/owner-recovery/*?" component={() => (
           <div className="grid min-h-[100dvh] place-items-center bg-background p-4">
             <SignIn routing="path" path={`${basePath}/owner-recovery`} />
           </div>
         )} />
-        <Route path="/staff-activate" component={StaffActivate} />
-        <Route path="/staff-password-reset"><Redirect to="/forgot-password" /></Route>
         <Route path="/access-pending"><Protected><AccessPending /></Protected></Route>
 
         {/* Parent Portal Routes */}

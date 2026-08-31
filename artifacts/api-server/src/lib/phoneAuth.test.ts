@@ -5,6 +5,7 @@ vi.mock("@workspace/db", () => ({
   guardiansTable: {},
   phoneLoginIdentitiesTable: {},
   phoneOtpChallengesTable: {},
+  publicAuthAccountsTable: {},
   staffTable: {},
 }));
 vi.mock("@clerk/express", () => ({ clerkClient: {}, getAuth: vi.fn() }));
@@ -29,5 +30,58 @@ describe("phone authentication", async () => {
     const sender = vi.fn(async () => ({ ok: true as const }));
     expect(createPhoneAuthRouter(sender)).toBeTruthy();
     expect(sender).not.toHaveBeenCalled();
+  });
+});
+
+describe("replacement authentication contracts", async () => {
+  const {
+    RequestPublicRegistrationBody,
+    VerifyPublicRegistrationBody,
+    SignInWithPhonePasswordBody,
+  } = await import("@workspace/api-zod");
+
+  it("requires a Kuwait registration identity with a triple full name", () => {
+    expect(RequestPublicRegistrationBody.safeParse({
+      phone: "+965 5000 1234",
+      fullName: "أحمد محمد علي",
+      email: "parent@example.com",
+      accountType: "guardian",
+    }).success).toBe(true);
+    expect(RequestPublicRegistrationBody.safeParse({
+      phone: "+965 5000 1234",
+      fullName: "أحمد علي",
+      email: "parent@example.com",
+      accountType: "guardian",
+    }).success).toBe(false);
+    expect(RequestPublicRegistrationBody.safeParse({
+      phone: "+965 5000 1234",
+      fullName: "أحمد محمد علي",
+      email: "invalid",
+      accountType: "owner",
+    }).success).toBe(false);
+  });
+
+  it("creates the password only in the OTP verification step", () => {
+    const request = RequestPublicRegistrationBody.parse({
+      phone: "50001234",
+      fullName: "Test Middle User",
+      email: "staff@example.com",
+      accountType: "staff",
+      password: "not-accepted-here",
+    });
+    expect(request).not.toHaveProperty("password");
+    expect(VerifyPublicRegistrationBody.safeParse({
+      challengeId: "12345678-1234-1234-1234-123456789012",
+      otp: "123456",
+      password: "safe-password",
+    }).success).toBe(true);
+  });
+
+  it("requires phone and password for subsequent sign-in", () => {
+    expect(SignInWithPhonePasswordBody.safeParse({
+      phone: "50001234",
+      password: "safe-password",
+    }).success).toBe(true);
+    expect(SignInWithPhonePasswordBody.safeParse({ phone: "50001234" }).success).toBe(false);
   });
 });

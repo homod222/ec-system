@@ -6,10 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type StaffApprovalInputRole = typeof StaffApprovalInputRole[keyof typeof StaffApprovalInputRole];
+export type StaffAccountLinkInputRole = typeof StaffAccountLinkInputRole[keyof typeof StaffAccountLinkInputRole];
 
 
-export const StaffApprovalInputRole = {
+export const StaffAccountLinkInputRole = {
   admin: 'admin',
   manager: 'manager',
   supervisor: 'supervisor',

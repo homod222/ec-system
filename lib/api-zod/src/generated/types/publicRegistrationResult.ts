@@ -5,8 +5,12 @@
  * API for the nursery management platform
  * OpenAPI spec version: 0.1.0
  */
+import type { PublicRegistrationResultAccountType } from './publicRegistrationResultAccountType';
 import type { PublicRegistrationResultStatus } from './publicRegistrationResultStatus';
 
 export interface PublicRegistrationResult {
+  /** @minLength 1 */
+  ticket: string;
+  accountType: PublicRegistrationResultAccountType;
   status: PublicRegistrationResultStatus;
 }

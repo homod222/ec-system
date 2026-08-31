@@ -6,13 +6,15 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface PublicRegistrationComplete {
-  challengeId: string;
-  /** @pattern ^[0-9]{6}$ */
-  otp: string;
+export interface PhonePasswordSignIn {
   /**
      * @minLength 8
-     * @maxLength 256
+     * @maxLength 30
+     */
+  phone: string;
+  /**
+     * @minLength 8
+     * @maxLength 128
      */
   password: string;
 }
