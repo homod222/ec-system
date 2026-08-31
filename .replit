@@ -36,15 +36,3 @@ PUBLIC_APP_URL = "https://n-zm-dr-l-h-dn.replit.app"
 
 [objectStorage]
 defaultBucketID = "replit-objstore-498fa24e-1bb2-4339-a9e1-92bec0654e03"
-
-[[ports]]
-localPort = 8080
-externalPort = 8080
-
-[[ports]]
-localPort = 8081
-externalPort = 8081
-
-[[ports]]
-localPort = 25158
-externalPort = 80

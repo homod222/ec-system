@@ -10,10 +10,8 @@ for migration in lib/db/migrations/*.sql; do
   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration"
 done
 
-push_log="$(mktemp)"
-trap 'rm -f "$push_log"' EXIT
-pnpm --filter @workspace/db run push 2>&1 | tee "$push_log"
-if grep -q "Interactive prompts require a TTY" "$push_log"; then
-  echo "Drizzle requested an unsafe interactive schema decision; refusing post-merge setup." >&2
-  exit 1
-fi
+# Do not run `drizzle-kit push` here. The development database can contain
+# compatibility columns and durable auth/rate-limit data created by ordered
+# migrations. A declarative push would treat those as deletions and either
+# prompt in this non-interactive hook or, with --force, destroy live data.
+# Schema reconciliation for production remains handled by Replit Publish.
