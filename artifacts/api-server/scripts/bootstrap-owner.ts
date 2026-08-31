@@ -1,5 +1,5 @@
 import { clerkClient } from "@clerk/express";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import {
   db,
   nurserySettingsTable,
@@ -11,7 +11,7 @@ import {
 const PHONE = "96560607740";
 const EMAIL = "homod222@hotmail.com";
 const FULL_NAME = "Homod Ali Alnomasi";
-const PASSWORD = "StrongPass123";
+const PASSWORD = "REPLACE_WITH_15_CHAR_PASSWORD";
 const STAFF_ID = 638;
 
 async function main() {
