@@ -564,6 +564,36 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Guardian"
+  /guardians/accounts:
+    get:
+      operationId: listGuardianAccounts
+      tags: [guardians]
+      summary: List guardian login accounts and their status
+      responses:
+        "200":
+          description: Guardian account records
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/GuardianAccountResult"
+  /guardians/{id}/account:
+    patch:
+      operationId: updateGuardianAccount
+      tags: [guardians]
+      summary: Activate or disable a guardian's login account
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/GuardianAccountUpdateInput" } } }
+      responses:
+        "200":
+          description: Updated guardian account
+          content: { application/json: { schema: { $ref: "#/components/schemas/GuardianAccountResult" } } }
+        "403": { description: Owner access required }
+        "404": { description: Guardian or linked account not found }
   /classrooms:
     get:
       operationId: listClassrooms
@@ -1962,6 +1992,23 @@ components:
         email: { type: ["string", "null"] }
         childrenCount: { type: number }
         balance: { type: number }
+    GuardianAccountResult:
+      type: object
+      required: [guardianId, name, phone, clerkUserId, accountStatus]
+      properties:
+        guardianId: { type: number }
+        name: { type: string }
+        phone: { type: string }
+        email: { type: ["string", "null"] }
+        clerkUserId: { type: ["string", "null"] }
+        accountStatus:
+          type: string
+          enum: [unlinked, active, disabled]
+    GuardianAccountUpdateInput:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [active, disabled] }
     Classroom:
       type: object
       required: [id, name, level, teacherName, capacity, childrenCount, color]

@@ -40,6 +40,10 @@ import {
   ListParentMessagesResponse,
   ListParentProgressReportsQueryParams,
   ListParentProgressReportsResponse,
+  ListGuardianAccountsResponse,
+  UpdateGuardianAccountParams,
+  UpdateGuardianAccountBody,
+  UpdateGuardianAccountResponse,
   ListStaffResponse,
   RecordAttendanceBody,
   RecordAttendanceResponse,
@@ -785,6 +789,72 @@ router.get("/guardians", async (req, res): Promise<void> => {
     childrenCount: children.filter((child) => child.guardianId === guardian.id).length,
     balance: guardian.balance,
   }))));
+});
+
+function guardianAccountResponse(
+  guardian: typeof guardiansTable.$inferSelect,
+  account: typeof publicAuthAccountsTable.$inferSelect | undefined,
+) {
+  return {
+    guardianId: guardian.id,
+    name: guardian.name,
+    phone: guardian.phone,
+    email: guardian.email,
+    clerkUserId: guardian.clerkUserId,
+    accountStatus: !guardian.clerkUserId
+      ? "unlinked" as const
+      : account?.accountStatus === "disabled" ? "disabled" as const : "active" as const,
+  };
+}
+
+router.get("/guardians/accounts", async (req, res): Promise<void> => {
+  const { ownerId } = nurseryContext(req);
+  const guardians = await db.select().from(guardiansTable).where(eq(guardiansTable.ownerId, ownerId));
+  const accounts = await db.select().from(publicAuthAccountsTable)
+    .where(eq(publicAuthAccountsTable.accountType, "guardian"));
+  const accountsByGuardianId = new Map(accounts.filter((account) => account.guardianId !== null)
+    .map((account) => [account.guardianId as number, account]));
+  res.json(ListGuardianAccountsResponse.parse(guardians.map((guardian) =>
+    guardianAccountResponse(guardian, accountsByGuardianId.get(guardian.id)))));
+});
+
+router.patch("/guardians/:id/account", async (req, res): Promise<void> => {
+  const params = UpdateGuardianAccountParams.safeParse(req.params);
+  const body = UpdateGuardianAccountBody.safeParse(req.body);
+  if (!params.success || !body.success) {
+    res.status(400).json({ error: params.success ? body.error?.message : params.error.message });
+    return;
+  }
+  if (!ownerAccountManager(req)) {
+    res.status(403).json({ error: "Owner access required" });
+    return;
+  }
+  const { ownerId } = nurseryContext(req);
+  const [guardian] = await db.select().from(guardiansTable).where(and(
+    eq(guardiansTable.id, params.data.id), eq(guardiansTable.ownerId, ownerId),
+  )).limit(1);
+  if (!guardian || !guardian.clerkUserId) {
+    res.status(404).json({ error: "Linked guardian account not found" });
+    return;
+  }
+  const status = body.data.status;
+  const user = await clerkClient.users.getUser(guardian.clerkUserId);
+  await clerkClient.users.updateUserMetadata(user.id, {
+    publicMetadata: {
+      ...(user.publicMetadata as Claims),
+      role: "parent",
+      ownerId,
+      accountStatus: status,
+    },
+  });
+  const [account] = await db.update(publicAuthAccountsTable).set({
+    accountStatus: status,
+    ownerId: status === "active" ? ownerId : null,
+  }).where(eq(publicAuthAccountsTable.clerkUserId, guardian.clerkUserId)).returning();
+  await auditNurseryOperation(req, "update-guardian-account", "guardian-account", String(guardian.id),
+    { accountStatus: account ? (status === "active" ? "disabled" : "active") : null },
+    { accountStatus: status });
+  res.json(UpdateGuardianAccountResponse.parse(guardianAccountResponse(guardian, account)));
 });
 
 router.get("/classrooms", async (req, res): Promise<void> => {

@@ -21,7 +21,7 @@ import { OperationalManager } from '../../components/OperationalManager';
 import { useI18n } from '../../i18n';
 import { Link } from 'wouter';
 
-const accountRoleValues: StaffAccountUpdateInputRole[] = ['admin', 'manager', 'supervisor', 'teacher', 'accountant', 'receptionist'];
+export const accountRoleValues: StaffAccountUpdateInputRole[] = ['admin', 'manager', 'supervisor', 'teacher', 'accountant', 'receptionist'];
 
 export function StaffExpanded() {
   const { t, dir, formatNumber } = useI18n();
@@ -182,7 +182,7 @@ function Field({ label, value, onChange, type = 'text', required = false }: { la
   return <label className="text-sm font-bold">{label}<input required={required} type={type} value={value} onChange={(event) => onChange(event.target.value)} className="mt-2 w-full rounded-xl border border-input bg-background px-4 py-3" /></label>;
 }
 
-function StaffAccountDialog({ member, onClose }: { member: StaffMember; onClose: () => void }) {
+export function StaffAccountDialog({ member, onClose }: { member: StaffMember; onClose: () => void }) {
   const { t } = useI18n();
   const [role, setRole] = useState<StaffAccountUpdateInputRole>((accountRoleValues.includes(member.role as StaffAccountUpdateInputRole) ? member.role : 'teacher') as StaffAccountUpdateInputRole);
   const [linkUserId, setLinkUserId] = useState('');

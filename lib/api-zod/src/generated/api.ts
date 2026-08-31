@@ -745,6 +745,37 @@ export const ListGuardiansResponseItem = zod.object({
 });
 export const ListGuardiansResponse = zod.array(ListGuardiansResponseItem);
 /**
+ * @summary List guardian login accounts and their status
+ */
+export const ListGuardianAccountsResponseItem = zod.object({
+  guardianId: zod.number(),
+  name: zod.string(),
+  phone: zod.string(),
+  email: zod.string().nullish(),
+  clerkUserId: zod.string().nullable(),
+  accountStatus: zod.enum(["unlinked", "active", "disabled"]),
+});
+export const ListGuardianAccountsResponse = zod.array(
+  ListGuardianAccountsResponseItem,
+);
+/**
+ * @summary Activate or disable a guardian's login account
+ */
+export const UpdateGuardianAccountParams = zod.object({
+  id: zod.coerce.number(),
+});
+export const UpdateGuardianAccountBody = zod.object({
+  status: zod.enum(["active", "disabled"]),
+});
+export const UpdateGuardianAccountResponse = zod.object({
+  guardianId: zod.number(),
+  name: zod.string(),
+  phone: zod.string(),
+  email: zod.string().nullish(),
+  clerkUserId: zod.string().nullable(),
+  accountStatus: zod.enum(["unlinked", "active", "disabled"]),
+});
+/**
  * @summary List classrooms
  */
 export const ListClassroomsResponseItem = zod.object({

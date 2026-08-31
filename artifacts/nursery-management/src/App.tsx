@@ -41,6 +41,7 @@ import { Education } from './pages/admin/Education';
 import { Activities } from './pages/admin/Activities';
 import { Reports } from './pages/admin/Reports';
 import { Permissions } from './pages/admin/Permissions';
+import { Users as UsersPage } from './pages/admin/Users';
 import { Settings } from './pages/admin/Settings';
 import { Audit } from './pages/admin/Audit';
 import { SiteGallery } from './pages/admin/SiteGallery';
@@ -74,6 +75,7 @@ const navItems = [
   { href: '/reports', label: 'nav.reports', icon: BarChart3 },
   { href: '/audit', label: 'nav.audit', icon: ShieldCheck },
   { href: '/permissions', label: 'nav.permissions', icon: Users },
+  { href: '/users', label: 'nav.users', icon: Users },
   { href: '/site-gallery', label: 'nav.gallery', icon: Images },
 ] satisfies Array<{ href: string; label: TranslationKey; icon: typeof LayoutDashboard }>;
 const activeLocale = (locale?: Locale) => locale ?? (document.documentElement.lang === 'en' ? 'en' : 'ar');
@@ -574,7 +576,7 @@ function Protected({ children, allowedRole }: { children: React.ReactNode, allow
   if (session.data) {
     const role = session.data.role;
     const isParentRole = role === 'parent';
-    const isAdminRoute = location.startsWith('/dashboard') || location.startsWith('/children') || location.startsWith('/guardians') || location.startsWith('/classrooms') || location.startsWith('/staff') || location.startsWith('/finance') || location.startsWith('/education') || location.startsWith('/activities') || location.startsWith('/reports') || location.startsWith('/permissions') || location.startsWith('/site-gallery') || location.startsWith('/settings') || location.startsWith('/audit') || location.startsWith('/applications');
+    const isAdminRoute = location.startsWith('/dashboard') || location.startsWith('/children') || location.startsWith('/guardians') || location.startsWith('/classrooms') || location.startsWith('/staff') || location.startsWith('/finance') || location.startsWith('/education') || location.startsWith('/activities') || location.startsWith('/reports') || location.startsWith('/permissions') || location.startsWith('/users') || location.startsWith('/site-gallery') || location.startsWith('/settings') || location.startsWith('/audit') || location.startsWith('/applications');
     const isParentRoute = location.startsWith('/parent');
 
     if (role === 'pending') {
@@ -891,6 +893,7 @@ function Router() {
         <Route path="/activities"><Protected allowedRole="admin"><Activities /></Protected></Route>
         <Route path="/reports"><Protected allowedRole="admin"><Reports /></Protected></Route>
         <Route path="/permissions"><Protected allowedRole="admin"><Permissions /></Protected></Route>
+        <Route path="/users"><Protected allowedRole="admin"><UsersPage /></Protected></Route>
         <Route path="/site-gallery"><Protected allowedRole="admin"><SiteGallery /></Protected></Route>
         <Route path="/settings"><Protected allowedRole="admin"><Settings /></Protected></Route>
         <Route path="/audit"><Protected allowedRole="admin"><Audit /></Protected></Route>

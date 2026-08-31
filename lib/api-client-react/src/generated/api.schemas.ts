@@ -459,6 +459,38 @@ export interface Guardian {
   balance: number;
 }
 
+export type GuardianAccountResultAccountStatus =
+  (typeof GuardianAccountResultAccountStatus)[keyof typeof GuardianAccountResultAccountStatus];
+
+export const GuardianAccountResultAccountStatus = {
+  unlinked: "unlinked",
+  active: "active",
+  disabled: "disabled",
+} as const;
+
+export interface GuardianAccountResult {
+  guardianId: number;
+  name: string;
+  phone: string;
+  /** @nullable */
+  email?: string | null;
+  /** @nullable */
+  clerkUserId: string | null;
+  accountStatus: GuardianAccountResultAccountStatus;
+}
+
+export type GuardianAccountUpdateInputStatus =
+  (typeof GuardianAccountUpdateInputStatus)[keyof typeof GuardianAccountUpdateInputStatus];
+
+export const GuardianAccountUpdateInputStatus = {
+  active: "active",
+  disabled: "disabled",
+} as const;
+
+export interface GuardianAccountUpdateInput {
+  status: GuardianAccountUpdateInputStatus;
+}
+
 export type ClassroomSchedule = { [key: string]: unknown };
 
 export interface Classroom {

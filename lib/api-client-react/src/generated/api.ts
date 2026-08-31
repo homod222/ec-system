@@ -47,6 +47,8 @@ import type {
   FinanceSummary,
   GetNurseryReportParams,
   Guardian,
+  GuardianAccountResult,
+  GuardianAccountUpdateInput,
   HealthStatus,
   InternalPaymentInput,
   Invoice,
@@ -2474,6 +2476,166 @@ export function useListGuardians<
 
   return withQueryKey(query, queryOptions.queryKey);
 }
+
+export const getListGuardianAccountsUrl = () => {
+  return `/api/guardians/accounts`;
+};
+
+/**
+ * @summary List guardian login accounts and their status
+ */
+export const listGuardianAccounts = async (
+  options?: Parameters<typeof customFetch>[1],
+): Promise<GuardianAccountResult[]> => {
+  return customFetch<GuardianAccountResult[]>(getListGuardianAccountsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListGuardianAccountsQueryKey = () => {
+  return [`/api/guardians/accounts`] as const;
+};
+
+export const getListGuardianAccountsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listGuardianAccounts>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listGuardianAccounts>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListGuardianAccountsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listGuardianAccounts>>
+  > = ({ signal }) => listGuardianAccounts({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listGuardianAccounts>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListGuardianAccountsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listGuardianAccounts>>
+>;
+export type ListGuardianAccountsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List guardian login accounts and their status
+ */
+
+export function useListGuardianAccounts<
+  TData = Awaited<ReturnType<typeof listGuardianAccounts>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listGuardianAccounts>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListGuardianAccountsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getUpdateGuardianAccountUrl = (id: number) => {
+  return `/api/guardians/${id}/account`;
+};
+
+/**
+ * @summary Activate or disable a guardian's login account
+ */
+export const updateGuardianAccount = async (
+  id: number,
+  guardianAccountUpdateInput: GuardianAccountUpdateInput,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<GuardianAccountResult> => {
+  return customFetch<GuardianAccountResult>(getUpdateGuardianAccountUrl(id), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(guardianAccountUpdateInput),
+  });
+};
+
+export const getUpdateGuardianAccountMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateGuardianAccount>>,
+    TError,
+    { id: number; data: BodyType<GuardianAccountUpdateInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateGuardianAccount>>,
+  TError,
+  { id: number; data: BodyType<GuardianAccountUpdateInput> },
+  TContext
+> => {
+  const mutationKey = ["updateGuardianAccount"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateGuardianAccount>>,
+    { id: number; data: BodyType<GuardianAccountUpdateInput> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateGuardianAccount(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateGuardianAccountMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateGuardianAccount>>
+>;
+export type UpdateGuardianAccountMutationBody =
+  BodyType<GuardianAccountUpdateInput>;
+export type UpdateGuardianAccountMutationError = ErrorType<void>;
+
+export const useUpdateGuardianAccount = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateGuardianAccount>>,
+    TError,
+    { id: number; data: BodyType<GuardianAccountUpdateInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateGuardianAccount>>,
+  TError,
+  { id: number; data: BodyType<GuardianAccountUpdateInput> },
+  TContext
+> => {
+  return useMutation(getUpdateGuardianAccountMutationOptions(options));
+};
 
 export const getListClassroomsUrl = () => {
   return `/api/classrooms`;

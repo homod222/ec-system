@@ -1,0 +1,202 @@
+import { useState } from 'react';
+import {
+  getListGuardianAccountsQueryKey,
+  useListGuardianAccounts,
+  useListStaff,
+  useUpdateGuardianAccount,
+} from '@workspace/api-client-react';
+import type { GuardianAccountResult, StaffMember } from '@workspace/api-client-react';
+import { useQueryClient } from '@tanstack/react-query';
+import { KeyRound, Search, ShieldCheck, UserX } from 'lucide-react';
+import { Shell, Button, Pill, Avatar, QueryState, PageHeader } from '../../App';
+import { accountRoleValues, StaffAccountDialog } from './StaffExpanded';
+import { useI18n } from '../../i18n';
+
+type Tab = 'guardians' | 'staff';
+
+export function Users() {
+  const { t, dir } = useI18n();
+  const [tab, setTab] = useState<Tab>('guardians');
+  const [search, setSearch] = useState('');
+
+  return (
+    <Shell>
+      <PageHeader eyebrow={t('usersPage.eyebrow')} title={t('usersPage.title')} description={t('usersPage.description')} />
+
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="inline-flex rounded-xl border border-border bg-card p-1">
+          <button
+            data-testid="tab-users-guardians"
+            onClick={() => setTab('guardians')}
+            className={`rounded-lg px-4 py-2 text-sm font-bold transition-colors ${tab === 'guardians' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+          >
+            {t('usersPage.tabGuardians')}
+          </button>
+          <button
+            data-testid="tab-users-staff"
+            onClick={() => setTab('staff')}
+            className={`rounded-lg px-4 py-2 text-sm font-bold transition-colors ${tab === 'staff' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+          >
+            {t('usersPage.tabStaff')}
+          </button>
+        </div>
+        <div className="relative w-full max-w-md">
+          <Search size={18} className={`absolute top-3.5 text-muted-foreground ${dir === 'rtl' ? 'right-4' : 'left-4'}`} />
+          <input
+            data-testid="input-search-users"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder={t('usersPage.searchPlaceholder')}
+            className={`w-full rounded-xl border border-border bg-card py-3.5 text-sm font-medium outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 ${dir === 'rtl' ? 'pr-12 pl-4' : 'pl-12 pr-4'}`}
+          />
+        </div>
+      </div>
+
+      {tab === 'guardians' ? <GuardiansTab search={search} /> : <StaffTab search={search} />}
+    </Shell>
+  );
+}
+
+function statusTone(status: GuardianAccountResult['accountStatus']) {
+  return status === 'active' ? 'green' as const : status === 'disabled' ? 'red' as const : 'neutral' as const;
+}
+
+function GuardiansTab({ search }: { search: string }) {
+  const { t } = useI18n();
+  const query = useListGuardianAccounts();
+  const queryClient = useQueryClient();
+  const update = useUpdateGuardianAccount();
+  const [error, setError] = useState<number | null>(null);
+  const accounts = (query.data || []).filter((account) => account.name.includes(search) || account.phone.includes(search));
+
+  const mutate = (guardianId: number, status: 'active' | 'disabled') => {
+    setError(null);
+    update.mutate({ id: guardianId, data: { status } }, {
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: getListGuardianAccountsQueryKey() }),
+      onError: () => setError(guardianId),
+    });
+  };
+
+  return (
+    <QueryState loading={query.isLoading} error={query.isError} empty={!accounts.length} onRetry={() => query.refetch()}>
+      <div className="mb-10 overflow-hidden rounded-[1.5rem] border border-border bg-card shadow-sm">
+        <div className="hidden grid-cols-[1.3fr_.9fr_1fr_.7fr_auto] gap-4 border-b border-border bg-secondary/30 px-6 py-4 text-xs font-bold text-muted-foreground md:grid">
+          <span>{t('usersPage.name')}</span>
+          <span>{t('usersPage.phone')}</span>
+          <span>{t('usersPage.email')}</span>
+          <span>{t('usersPage.status')}</span>
+          <span>{t('usersPage.actions')}</span>
+        </div>
+        {accounts.map((account) => (
+          <div
+            key={account.guardianId}
+            data-testid={`row-guardian-account-${account.guardianId}`}
+            className={`grid gap-3 border-b border-border px-6 py-5 last:border-0 hover:bg-muted/50 md:grid-cols-[1.3fr_.9fr_1fr_.7fr_auto] md:items-center md:gap-4 ${account.accountStatus === 'unlinked' ? 'bg-sky-50/60 dark:bg-sky-950/20' : ''}`}
+          >
+            <div className="flex items-center gap-4">
+              <Avatar name={account.name} className="h-11 w-11" />
+              <p className="font-bold text-foreground">{account.name}</p>
+            </div>
+            <div className="text-sm font-medium text-muted-foreground">{account.phone}</div>
+            <div className="text-sm font-medium text-muted-foreground">{account.email || t('usersPage.noEmail')}</div>
+            <div>
+              <Pill tone={statusTone(account.accountStatus)}>{t(`usersPage.status.${account.accountStatus}` as never)}</Pill>
+              {account.accountStatus === 'unlinked' && (
+                <p className="mt-2 text-[11px] text-muted-foreground">{t('usersPage.awaitingRegistration')}</p>
+              )}
+            </div>
+            <div className="flex gap-2">
+              {account.accountStatus === 'unlinked' ? (
+                <span className="text-muted-foreground">—</span>
+              ) : account.accountStatus === 'disabled' ? (
+                <Button
+                  data-testid={`button-activate-guardian-${account.guardianId}`}
+                  variant="soft"
+                  className="!px-3 !py-2"
+                  disabled={update.isPending}
+                  onClick={() => mutate(account.guardianId, 'active')}
+                >
+                  <ShieldCheck size={16} />{t('usersPage.activate')}
+                </Button>
+              ) : (
+                <Button
+                  data-testid={`button-disable-guardian-${account.guardianId}`}
+                  variant="danger"
+                  className="!px-3 !py-2"
+                  disabled={update.isPending}
+                  onClick={() => mutate(account.guardianId, 'disabled')}
+                >
+                  <UserX size={16} />{t('usersPage.disable')}
+                </Button>
+              )}
+            </div>
+            {error === account.guardianId && (
+              <p className="text-xs font-medium text-destructive md:col-span-5">{t('usersPage.updateError')}</p>
+            )}
+          </div>
+        ))}
+      </div>
+    </QueryState>
+  );
+}
+
+function StaffTab({ search }: { search: string }) {
+  const { t, formatNumber } = useI18n();
+  const query = useListStaff();
+  const [accountMember, setAccountMember] = useState<StaffMember | null>(null);
+  const staff = (query.data || []).filter((member) => member.name.includes(search));
+
+  return (
+    <>
+      <QueryState loading={query.isLoading} error={query.isError} empty={!staff.length} onRetry={() => query.refetch()}>
+        <div className="mb-10 overflow-hidden rounded-[1.5rem] border border-border bg-card shadow-sm">
+          <div className="hidden grid-cols-[1.3fr_.8fr_.9fr_.8fr_auto] gap-4 border-b border-border bg-secondary/30 px-6 py-4 text-xs font-bold text-muted-foreground md:grid">
+            <span>{t('usersPage.name')}</span>
+            <span>{t('usersPage.phone')}</span>
+            <span>{t('usersPage.status')}</span>
+            <span>{t('staffAccounts.attendance')}</span>
+            <span>{t('usersPage.actions')}</span>
+          </div>
+          {staff.map((member) => (
+            <div
+              key={member.id}
+              data-testid={`row-user-staff-${member.id}`}
+              className={`grid gap-3 border-b border-border px-6 py-5 last:border-0 hover:bg-muted/50 md:grid-cols-[1.3fr_.8fr_.9fr_.8fr_auto] md:items-center md:gap-4 ${member.accountStatus === 'pending_verification' ? 'bg-sky-50/60 dark:bg-sky-950/20' : ''}`}
+            >
+              <div className="flex items-center gap-4">
+                <Avatar name={member.name} className="h-11 w-11" />
+                <div>
+                  <p className="font-bold text-foreground">{member.name}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {accountRoleValues.includes(member.role as never) ? t(`staffAccounts.role.${member.role}` as never) : member.role}
+                  </p>
+                </div>
+              </div>
+              <div className="text-sm font-medium text-muted-foreground">{member.phone}</div>
+              <div>
+                <Pill tone={member.accountStatus === 'active' ? 'green' : member.accountStatus === 'disabled' ? 'red' : member.accountStatus === 'pending_verification' ? 'blue' : 'neutral'}>
+                  {t(`staffAccounts.status.${member.accountStatus}` as never)}
+                </Pill>
+              </div>
+              <div className="text-sm font-medium text-muted-foreground">
+                {formatNumber(member.attendanceRate / 100, { style: 'percent', maximumFractionDigits: 0 })}
+              </div>
+              <div>
+                <Button
+                  data-testid={`button-user-account-staff-${member.id}`}
+                  variant={member.accountStatus === 'pending_verification' ? 'soft' : 'ghost'}
+                  className="!p-2"
+                  onClick={() => setAccountMember(member)}
+                >
+                  <KeyRound size={16} />
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </QueryState>
+
+      {accountMember && <StaffAccountDialog member={accountMember} onClose={() => setAccountMember(null)} />}
+    </>
+  );
+}
