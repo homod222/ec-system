@@ -525,7 +525,7 @@ export function createPhoneAuthRouter(sender: Sender = defaultSender): IRouter {
     }
   });
 
-  router.post("/auth/sign-in", async (req, res, next) => {
+  async function signInWithPhonePassword(req: Request, res: Response, next: NextFunction) {
     try {
       const body = SignInWithPhonePasswordBody.safeParse(req.body);
       const phone = body.success ? normalizeKuwaitPhone(body.data.phone) : null;
@@ -563,7 +563,10 @@ export function createPhoneAuthRouter(sender: Sender = defaultSender): IRouter {
       });
       res.json(SignInWithPhonePasswordResponse.parse({ ticket: token.token }));
     } catch (error) { next(error); }
-  });
+  }
+
+  router.post("/auth/sign-in", signInWithPhonePassword);
+  router.post("/auth/password-login", signInWithPhonePassword);
 
   router.post("/auth/phone/request", async (req, res, next) => {
     try {
