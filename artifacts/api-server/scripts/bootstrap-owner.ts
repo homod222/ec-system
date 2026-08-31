@@ -11,11 +11,11 @@ import {
 const PHONE = "96560607740";
 const EMAIL = "homod222@hotmail.com";
 const FULL_NAME = "Homod Ali Alnomasi";
-const PASSWORD = "StrongPass123";
+const PASSWORD = "homod123456789&";
 const STAFF_ID = 638;
 
 async function main() {
-  const names = FULL_NAME.split(/\s+/u);
+  const names = FULL_NAME.split(/\\s+/u);
 
   const clerkUser = await clerkClient.users.createUser({
     emailAddress: [EMAIL],
