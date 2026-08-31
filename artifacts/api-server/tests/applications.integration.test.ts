@@ -1352,6 +1352,24 @@ describe.sequential("application registration regression flow", () => {
         .expect(({ body }) => expect(body.role).toBe("admin"));
     }
 
+    const previousPublicOwnerId = process.env.PUBLIC_SITE_OWNER_ID;
+    process.env.PUBLIC_SITE_OWNER_ID = ownerA;
+    try {
+      await request(app)
+        .get("/api/session/context")
+        .set(auth(ownerA, "pending"))
+        .expect(200)
+        .expect(({ body }) => expect(body.role).toBe("admin"));
+
+      await request(app)
+        .get("/api/children")
+        .set(auth(ownerA, "pending"))
+        .expect(200);
+    } finally {
+      if (previousPublicOwnerId === undefined) delete process.env.PUBLIC_SITE_OWNER_ID;
+      else process.env.PUBLIC_SITE_OWNER_ID = previousPublicOwnerId;
+    }
+
     await request(app)
       .get("/api/children")
       .set(auth(ownerA, "receptionist"))
@@ -1742,6 +1760,7 @@ describe.sequential("application registration regression flow", () => {
     await request(app).get("/api/site-gallery").set(auth(ownerB)).expect(200)
       .expect(({ body }) => expect(body).toEqual([]));
 
+    const previousGalleryPublicOwnerId = process.env.PUBLIC_SITE_OWNER_ID;
     process.env.PUBLIC_SITE_OWNER_ID = ownerA;
     await request(app).get("/api/public/site-gallery").expect(200)
       .expect(({ body }) => expect(body).toEqual([]));
@@ -1759,6 +1778,8 @@ describe.sequential("application registration regression flow", () => {
     await request(app).patch(`/api/site-gallery/${attached.body.id}`).set(auth(ownerA))
       .send({ status: "hidden" }).expect(200);
     await request(app).get(`/api/public/site-gallery/${attached.body.id}/image`).expect(404);
+    if (previousGalleryPublicOwnerId === undefined) delete process.env.PUBLIC_SITE_OWNER_ID;
+    else process.env.PUBLIC_SITE_OWNER_ID = previousGalleryPublicOwnerId;
 
     await request(app).put("/api/permissions").set(auth(ownerA)).send({
       role: "manager", operation: "create:site-gallery", allowed: false,
@@ -1784,7 +1805,6 @@ describe.sequential("application registration regression flow", () => {
     await request(app).delete(`/api/site-gallery/${attached.body.id}`).set(auth(ownerA)).expect(204);
     await request(app).get("/api/site-gallery").set(auth(ownerA)).expect(200)
       .expect(({ body }) => expect(body.some((item: { id: number }) => item.id === attached.body.id)).toBe(false));
-    delete process.env.PUBLIC_SITE_OWNER_ID;
   });
 
   it("saves a normalized registration WhatsApp number and exposes only the selected public value", async () => {

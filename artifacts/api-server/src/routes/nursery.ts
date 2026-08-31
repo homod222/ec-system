@@ -354,6 +354,10 @@ async function clerkIdentity(req: Parameters<typeof getAuth>[0]) {
   if (!auth.userId) return { role: null, verifiedEmails: [] as string[] };
   const claimRole = sessionRole(req);
   const claimEmails = verifiedEmails(sessionClaims(req));
+  const configuredOwnerId = process.env.PUBLIC_SITE_OWNER_ID?.trim();
+  if (configuredOwnerId && auth.userId === configuredOwnerId) {
+    return { role: "owner", verifiedEmails: claimEmails };
+  }
   if (claimRole && claimEmails.length) {
     return { role: claimRole, verifiedEmails: claimEmails };
   }

@@ -269,6 +269,16 @@ export const resolveNurseryContext: RequestHandler = async (req, res, next) => {
       return;
     }
     const fallback = nurseryContext(req);
+    const configuredOwnerId = process.env.PUBLIC_SITE_OWNER_ID?.trim();
+    if (configuredOwnerId && fallback.actorId === configuredOwnerId) {
+      res.locals.operationsContext = {
+        actorId: fallback.actorId,
+        ownerId: configuredOwnerId,
+        role: "owner",
+      };
+      next();
+      return;
+    }
     const user = await clerkClient.users.getUser(fallback.actorId);
     const metadata = user.publicMetadata as Claims;
     const privateMetadataValue = user.privateMetadata;
