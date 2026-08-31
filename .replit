@@ -32,10 +32,10 @@ WHATSAPP_OTP_TEMPLATE_LANGUAGE = "عربي"
 
 [userenv.production]
 PUBLIC_APP_URL = "https://n-zm-dr-l-h-dn.replit.app"
-PUBLIC_SITE_OWNER_ID = "user_3ISsK0CqawdDCVfjKd6o9f7awBQ"
+PUBLIC_SITE_OWNER_ID = "user_3IggJa17kBPGFVUau5rcLURwd02"
 
 [userenv.development]
-PUBLIC_SITE_OWNER_ID = "user_3ISyAkZvLgsqjn66QTWkCZFMMHb"
+PUBLIC_SITE_OWNER_ID = "user_3IggJa17kBPGFVUau5rcLURwd02"
 
 [objectStorage]
 defaultBucketID = "replit-objstore-498fa24e-1bb2-4339-a9e1-92bec0654e03"
