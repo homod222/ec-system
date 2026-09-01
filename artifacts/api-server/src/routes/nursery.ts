@@ -998,6 +998,28 @@ router.patch("/guardians/:id/details", async (req, res): Promise<void> => {
   res.json({ guardianId: updated.id, name: updated.name, phone: updated.phone, email: updated.email });
 });
 
+router.delete("/guardians/:id", async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!id || isNaN(id)) { res.status(400).json({ error: "Invalid guardian ID" }); return; }
+  if (!ownerAccountManager(req)) { res.status(403).json({ error: "Owner access required" }); return; }
+  const { ownerId } = nurseryContext(req);
+  const [guardian] = await db.select().from(guardiansTable).where(and(
+    eq(guardiansTable.id, id), eq(guardiansTable.ownerId, ownerId),
+  )).limit(1);
+  if (!guardian) { res.status(404).json({ error: "Guardian not found" }); return; }
+  // Delete linked auth account
+  await db.delete(publicAuthAccountsTable).where(and(
+    eq(publicAuthAccountsTable.guardianId, id),
+    eq(publicAuthAccountsTable.ownerId, ownerId),
+  ));
+  // Delete guardian record
+  await db.delete(guardiansTable).where(and(
+    eq(guardiansTable.id, id), eq(guardiansTable.ownerId, ownerId),
+  ));
+  await auditNurseryOperation(req, "delete-guardian", "guardian", String(id), { name: guardian.name, phone: guardian.phone }, null);
+  res.json({ ok: true });
+});
+
 router.get("/classrooms", async (req, res): Promise<void> => {
   const ownerId = nurseryContext(req).ownerId;
   const [classrooms, children] = await Promise.all([

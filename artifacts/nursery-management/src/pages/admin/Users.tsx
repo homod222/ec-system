@@ -9,7 +9,7 @@ import {
 } from '@workspace/api-client-react';
 import type { GuardianAccountResult, StaffMember } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
-import { KeyRound, Pencil, Plus, Search, ShieldCheck, UserX, X } from 'lucide-react';
+import { KeyRound, Pencil, Plus, Search, ShieldCheck, Trash2, UserX, X } from 'lucide-react';
 import { Shell, Button, Pill, Avatar, QueryState, PageHeader } from '../../App';
 import { accountRoleValues, StaffAccountDialog } from './StaffExpanded';
 import { useI18n } from '../../i18n';
@@ -86,6 +86,7 @@ function GuardiansTab({ search }: { search: string }) {
   const update = useUpdateGuardianAccount();
   const [error, setError] = useState<number | null>(null);
   const [editAccount, setEditAccount] = useState<GuardianAccountResult | null>(null);
+  const [deleteAccount, setDeleteAccount] = useState<GuardianAccountResult | null>(null);
   const accounts = (query.data || []).filter((account) => account.name.includes(search) || account.phone.includes(search));
 
   const mutate = (guardianId: number, status: 'active' | 'disabled') => {
@@ -133,6 +134,13 @@ function GuardiansTab({ search }: { search: string }) {
               >
                 <Pencil size={16} />
               </Button>
+              <Button
+                variant="ghost"
+                className="!px-2 !py-2 text-destructive hover:text-destructive"
+                onClick={() => setDeleteAccount(account)}
+              >
+                <Trash2 size={16} />
+              </Button>
               {account.accountStatus === 'unlinked' ? (
                 <span className="text-muted-foreground">—</span>
               ) : account.accountStatus === 'disabled' || account.accountStatus === 'pending' ? (
@@ -170,6 +178,14 @@ function GuardiansTab({ search }: { search: string }) {
         account={editAccount}
         onClose={() => setEditAccount(null)}
         onSaved={() => { setEditAccount(null); queryClient.invalidateQueries({ queryKey: getListGuardianAccountsQueryKey() }); }}
+      />
+    )}
+
+    {deleteAccount && (
+      <DeleteGuardianDialog
+        account={deleteAccount}
+        onClose={() => setDeleteAccount(null)}
+        onDeleted={() => { setDeleteAccount(null); queryClient.invalidateQueries({ queryKey: getListGuardianAccountsQueryKey() }); }}
       />
     )}
     </>
@@ -234,6 +250,54 @@ function EditGuardianDialog({ account, onClose, onSaved }: { account: GuardianAc
           </Button>
           {error && <p className="text-sm font-medium text-destructive">{error}</p>}
         </form>
+      </div>
+    </div>
+  );
+}
+
+function DeleteGuardianDialog({ account, onClose, onDeleted }: { account: GuardianAccountResult; onClose: () => void; onDeleted: () => void }) {
+  const { t } = useI18n();
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    setError('');
+    try {
+      const resp = await fetch(`/api/guardians/${account.guardianId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${localStorage.getItem('ec_jwt') || ''}` },
+      });
+      if (!resp.ok) {
+        const data = await resp.json().catch(() => null);
+        throw new Error(data?.error || 'Failed');
+      }
+      onDeleted();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('usersPage.updateError'));
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-primary/40 p-4 backdrop-blur-md">
+      <div className="w-full max-w-md rounded-[2rem] bg-card p-8 shadow-2xl">
+        <div className="mb-5 flex items-start justify-between">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-widest text-destructive">{t('usersPage.deleteTitle')}</p>
+            <h2 className="mt-1 text-xl font-bold">{account.name}</h2>
+          </div>
+          <Button type="button" variant="ghost" onClick={onClose} className="!p-2"><X /></Button>
+        </div>
+        <p className="mb-6 text-sm text-muted-foreground">{t('usersPage.deleteConfirm')}</p>
+        <div className="flex gap-3">
+          <Button variant="ghost" onClick={onClose} className="flex-1">{t('common.cancel')}</Button>
+          <Button variant="danger" disabled={deleting} onClick={handleDelete} className="flex-1">
+            {deleting ? t('common.loading') : t('common.delete')}
+          </Button>
+        </div>
+        {error && <p className="mt-3 text-sm font-medium text-destructive">{error}</p>}
       </div>
     </div>
   );
