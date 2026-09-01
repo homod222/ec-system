@@ -1,4 +1,5 @@
 import { Router, type IRouter, type NextFunction, type Request, type Response } from "express";
+import { logger } from "../lib/logger";
 import { and, eq, gte, isNull, sql } from "drizzle-orm";
 import { createHash, randomInt, randomUUID, timingSafeEqual } from "node:crypto";
 import {
@@ -271,6 +272,7 @@ export function createPhoneAuthRouter(sender: Sender = defaultSender): IRouter {
           }
         }
       }
+      logger.info({ phone, eligible, publicOwnerId, existingCount: existing.length, accountType: body.data.accountType }, "registration eligibility");
       const challenge = await createChallenge(req, {
         purpose: "registration",
         phone,
