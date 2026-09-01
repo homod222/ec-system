@@ -29,7 +29,7 @@ packages = ["freetype", "gumbo", "harfbuzz", "jbig2dec", "libjpeg_turbo", "mupdf
 WHATSAPP_PHONE_NUMBER_ID = "97999225"
 WHATSAPP_OTP_TEMPLATE_NAME = "طارق"
 WHATSAPP_OTP_TEMPLATE_LANGUAGE = "عربي"
-PUBLIC_SITE_OWNER_EMAIL = "homod222@hotmail.com"
+PUBLIC_SITE_OWNER_EMAIL = "homod222@hotmail.com,x1x12@hotmail.com"
 
 [userenv.production]
 PUBLIC_APP_URL = "https://n-zm-dr-l-h-dn.replit.app"
