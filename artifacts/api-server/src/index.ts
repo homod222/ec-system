@@ -34,8 +34,7 @@ async function start(): Promise<void> {
         startBillingPlanScheduler();
       })
       .catch((migrationErr) => {
-        logger.error({ err: migrationErr }, "Migration failed");
-        process.exit(1);
+        logger.error({ err: migrationErr }, "Migration failed — server stays up for healthcheck");
       });
   });
 }

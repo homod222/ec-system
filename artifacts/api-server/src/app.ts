@@ -59,6 +59,10 @@ app.post(
   },
 );
 
+// Healthcheck endpoints — must be before auth middleware so Replit can probe them.
+app.get("/api/health", (_req, res) => { res.json({ ok: true }); });
+app.get("/api", (_req, res) => { res.json({ ok: true }); });
+
 app.use(cors({ credentials: true, origin: true }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
