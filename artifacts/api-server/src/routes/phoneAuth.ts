@@ -249,9 +249,12 @@ export function createPhoneAuthRouter(sender: Sender = defaultSender): IRouter {
             eq(normalizedDbPhone(guardiansTable.phone), phone),
           ))
           .limit(2);
-        if (matchingGuardians.length !== 1 || matchingGuardians[0].clerkUserId) {
-          eligible = false;
+        if (matchingGuardians.length === 1 && matchingGuardians[0].clerkUserId) {
+          eligible = false; // already linked
+        } else if (matchingGuardians.length > 1) {
+          eligible = false; // ambiguous
         }
+        // length === 0 → new guardian self-registration, stays eligible
       } else if (eligible && publicOwnerId) {
         const matchingStaff = await db.select({ id: staffTable.id }).from(staffTable)
           .where(and(
@@ -347,9 +350,13 @@ export function createPhoneAuthRouter(sender: Sender = defaultSender): IRouter {
             eq(normalizedDbPhone(guardiansTable.phone), challenge.normalizedPhone),
           ),
         ).limit(2);
-        if (guardianMatches.length !== 1 || guardianMatches[0].clerkUserId) {
-          return void res.status(409).json({ error: "Guardian record is unavailable; contact the nursery administration" });
+        if (guardianMatches.length === 1 && guardianMatches[0].clerkUserId) {
+          return void res.status(409).json({ error: "Guardian record is already linked to another account" });
         }
+        if (guardianMatches.length > 1) {
+          return void res.status(409).json({ error: "Guardian phone is ambiguous; contact the nursery administration" });
+        }
+        // length === 0 → will create a new guardian record below
       } else {
         staffMatches = await db.select().from(staffTable).where(
           and(
@@ -387,16 +394,30 @@ export function createPhoneAuthRouter(sender: Sender = defaultSender): IRouter {
 
       try {
         if (accountType === "guardian") {
-          const [linked] = await db.update(guardiansTable).set({ clerkUserId: `local_pending` }).where(and(
-            eq(guardiansTable.id, guardianMatches[0].id),
-            eq(guardiansTable.ownerId, publicOwnerId),
-            sql`${guardiansTable.clerkUserId} is null`,
-          )).returning();
-          if (!linked) {
-            throw new Error("Guardian record was linked concurrently");
+          if (guardianMatches.length === 1 && !guardianMatches[0].clerkUserId) {
+            // Link existing guardian record
+            const [linked] = await db.update(guardiansTable).set({ clerkUserId: `local_pending` }).where(and(
+              eq(guardiansTable.id, guardianMatches[0].id),
+              eq(guardiansTable.ownerId, publicOwnerId),
+              sql`${guardiansTable.clerkUserId} is null`,
+            )).returning();
+            if (!linked) {
+              throw new Error("Guardian record was linked concurrently");
+            }
+            ownerId = linked.ownerId;
+            guardianId = linked.id;
+          } else {
+            // Self-registration: create a new guardian record
+            const [created] = await db.insert(guardiansTable).values({
+              ownerId: publicOwnerId,
+              name: challenge.fullName,
+              email: challenge.email,
+              phone: challenge.normalizedPhone,
+              clerkUserId: `local_pending`,
+            }).returning();
+            ownerId = created.ownerId;
+            guardianId = created.id;
           }
-          ownerId = linked.ownerId;
-          guardianId = linked.id;
         } else {
           if (staffMatches.length === 1 && !staffMatches[0].clerkUserId &&
               ["unlinked", "pending_verification"].includes(staffMatches[0].accountStatus)) {
