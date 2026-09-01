@@ -9,7 +9,7 @@ import {
 } from '@workspace/api-client-react';
 import type { GuardianAccountResult, StaffMember } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
-import { KeyRound, Plus, Search, ShieldCheck, UserX, X } from 'lucide-react';
+import { KeyRound, Pencil, Plus, Search, ShieldCheck, UserX, X } from 'lucide-react';
 import { Shell, Button, Pill, Avatar, QueryState, PageHeader } from '../../App';
 import { accountRoleValues, StaffAccountDialog } from './StaffExpanded';
 import { useI18n } from '../../i18n';
@@ -85,6 +85,7 @@ function GuardiansTab({ search }: { search: string }) {
   const queryClient = useQueryClient();
   const update = useUpdateGuardianAccount();
   const [error, setError] = useState<number | null>(null);
+  const [editAccount, setEditAccount] = useState<GuardianAccountResult | null>(null);
   const accounts = (query.data || []).filter((account) => account.name.includes(search) || account.phone.includes(search));
 
   const mutate = (guardianId: number, status: 'active' | 'disabled') => {
@@ -96,6 +97,7 @@ function GuardiansTab({ search }: { search: string }) {
   };
 
   return (
+    <>
     <QueryState loading={query.isLoading} error={query.isError} empty={!accounts.length} onRetry={() => query.refetch()}>
       <div className="mb-10 overflow-hidden rounded-[1.5rem] border border-border bg-card shadow-sm">
         <div className="hidden grid-cols-[1.3fr_.9fr_1fr_.7fr_auto] gap-4 border-b border-border bg-secondary/30 px-6 py-4 text-xs font-bold text-muted-foreground md:grid">
@@ -124,6 +126,13 @@ function GuardiansTab({ search }: { search: string }) {
               )}
             </div>
             <div className="flex gap-2">
+              <Button
+                variant="ghost"
+                className="!px-2 !py-2"
+                onClick={() => setEditAccount(account)}
+              >
+                <Pencil size={16} />
+              </Button>
               {account.accountStatus === 'unlinked' ? (
                 <span className="text-muted-foreground">—</span>
               ) : account.accountStatus === 'disabled' || account.accountStatus === 'pending' ? (
@@ -155,6 +164,78 @@ function GuardiansTab({ search }: { search: string }) {
         ))}
       </div>
     </QueryState>
+
+    {editAccount && (
+      <EditGuardianDialog
+        account={editAccount}
+        onClose={() => setEditAccount(null)}
+        onSaved={() => { setEditAccount(null); queryClient.invalidateQueries({ queryKey: getListGuardianAccountsQueryKey() }); }}
+      />
+    )}
+    </>
+  );
+}
+
+function EditGuardianDialog({ account, onClose, onSaved }: { account: GuardianAccountResult; onClose: () => void; onSaved: () => void }) {
+  const { t } = useI18n();
+  const [name, setName] = useState(account.name);
+  const [phone, setPhone] = useState(account.phone);
+  const [email, setEmail] = useState(account.email || '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setSaving(true);
+    setError('');
+    try {
+      const resp = await fetch(`/api/guardians/${account.guardianId}/details`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('ec_jwt') || ''}` },
+        body: JSON.stringify({ name: name.trim(), phone: phone.trim(), email: email.trim() }),
+      });
+      if (!resp.ok) {
+        const data = await resp.json().catch(() => null);
+        throw new Error(data?.error || 'Failed');
+      }
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('usersPage.updateError'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-primary/40 p-4 backdrop-blur-md">
+      <div className="w-full max-w-lg rounded-[2rem] bg-card p-8 shadow-2xl">
+        <div className="mb-5 flex items-start justify-between">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-widest text-primary">{t('usersPage.editTitle')}</p>
+            <h2 className="mt-1 text-xl font-bold">{account.name}</h2>
+          </div>
+          <Button type="button" variant="ghost" onClick={onClose} className="!p-2"><X /></Button>
+        </div>
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <label className="block text-sm font-bold">{t('usersPage.name')}
+            <input required type="text" value={name} onChange={(e) => setName(e.target.value)}
+              className="mt-2 w-full rounded-xl border border-input bg-background px-4 py-3" />
+          </label>
+          <label className="block text-sm font-bold">{t('usersPage.phone')}
+            <input required type="tel" value={phone} onChange={(e) => setPhone(e.target.value)}
+              className="mt-2 w-full rounded-xl border border-input bg-background px-4 py-3" />
+          </label>
+          <label className="block text-sm font-bold">{t('usersPage.email')}
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+              className="mt-2 w-full rounded-xl border border-input bg-background px-4 py-3" />
+          </label>
+          <Button type="submit" disabled={saving} className="w-full">
+            {saving ? t('common.loading') : t('usersPage.saveChanges')}
+          </Button>
+          {error && <p className="text-sm font-medium text-destructive">{error}</p>}
+        </form>
+      </div>
+    </div>
   );
 }
 

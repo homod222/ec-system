@@ -963,6 +963,41 @@ router.patch("/guardians/:id/account", async (req, res): Promise<void> => {
   res.json(UpdateGuardianAccountResponse.parse(guardianAccountResponse(guardian, account)));
 });
 
+router.patch("/guardians/:id/details", async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!id || isNaN(id)) { res.status(400).json({ error: "Invalid guardian ID" }); return; }
+  const { name, phone, email } = req.body as { name?: string; phone?: string; email?: string };
+  if (!name && !phone && !email) { res.status(400).json({ error: "Provide at least one field to update" }); return; }
+  if (!ownerAccountManager(req)) { res.status(403).json({ error: "Owner access required" }); return; }
+  const { ownerId } = nurseryContext(req);
+  const [guardian] = await db.select().from(guardiansTable).where(and(
+    eq(guardiansTable.id, id), eq(guardiansTable.ownerId, ownerId),
+  )).limit(1);
+  if (!guardian) { res.status(404).json({ error: "Guardian not found" }); return; }
+  const updates: Partial<{ name: string; phone: string; email: string }> = {};
+  if (name && name.trim()) updates.name = name.trim();
+  if (phone && phone.trim()) updates.phone = phone.trim();
+  if (typeof email === "string") updates.email = email.trim() || null as unknown as string;
+  if (Object.keys(updates).length === 0) { res.status(400).json({ error: "No valid updates" }); return; }
+  const [updated] = await db.update(guardiansTable).set(updates).where(and(
+    eq(guardiansTable.id, id), eq(guardiansTable.ownerId, ownerId),
+  )).returning();
+  // Also update publicAuthAccountsTable if account exists
+  if (updated) {
+    const accountUpdates: Partial<{ fullName: string; normalizedPhone: string; email: string }> = {};
+    if (updates.name) accountUpdates.fullName = updates.name;
+    if (updates.phone) accountUpdates.normalizedPhone = updates.phone;
+    if (typeof updates.email === "string") accountUpdates.email = updates.email;
+    if (Object.keys(accountUpdates).length > 0) {
+      await db.update(publicAuthAccountsTable).set(accountUpdates).where(and(
+        eq(publicAuthAccountsTable.guardianId, updated.id),
+        eq(publicAuthAccountsTable.ownerId, ownerId),
+      ));
+    }
+  }
+  res.json({ guardianId: updated.id, name: updated.name, phone: updated.phone, email: updated.email });
+});
+
 router.get("/classrooms", async (req, res): Promise<void> => {
   const ownerId = nurseryContext(req).ownerId;
   const [classrooms, children] = await Promise.all([
