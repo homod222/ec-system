@@ -15,6 +15,8 @@ const stripeSessionCreate = vi.hoisted(() => vi.fn(async (input: Record<string, 
 const clerkFixtures = vi.hoisted(() => ({
   ownerA: `integration-owner-a-${Math.random().toString(36).slice(2)}`,
   ownerB: `integration-owner-b-${Math.random().toString(36).slice(2)}`,
+  ownerEmailUser: `integration-owner-email-${Math.random().toString(36).slice(2)}`,
+  unverifiedOwnerEmailUser: `integration-owner-email-unverified-${Math.random().toString(36).slice(2)}`,
   legacyOwner: `integration-legacy-owner-${Math.random().toString(36).slice(2)}`,
   staffA: `integration-staff-a-${Math.random().toString(36).slice(2)}`,
   staffB: `integration-staff-b-${Math.random().toString(36).slice(2)}`,
@@ -49,6 +51,26 @@ vi.mock("@clerk/express", () => ({
         const users = {
           [clerkFixtures.ownerA]: { id: clerkFixtures.ownerA, publicMetadata: { role: "owner" }, firstName: "Owner", lastName: "A", emailAddresses: [] },
           [clerkFixtures.ownerB]: { id: clerkFixtures.ownerB, publicMetadata: { role: "owner" }, firstName: "Owner", lastName: "B", emailAddresses: [] },
+          [clerkFixtures.ownerEmailUser]: {
+            id: clerkFixtures.ownerEmailUser,
+            publicMetadata: { role: "pending" },
+            firstName: "Configured",
+            lastName: "Owner",
+            emailAddresses: [{
+              emailAddress: "configured-owner@example.test",
+              verification: { status: "verified" },
+            }],
+          },
+          [clerkFixtures.unverifiedOwnerEmailUser]: {
+            id: clerkFixtures.unverifiedOwnerEmailUser,
+            publicMetadata: { role: "pending" },
+            firstName: "Unverified",
+            lastName: "Owner",
+            emailAddresses: [{
+              emailAddress: "configured-owner@example.test",
+              verification: { status: "unverified" },
+            }],
+          },
           [clerkFixtures.legacyOwner]: {
             id: clerkFixtures.legacyOwner,
             publicMetadata: { role: "owner", accountStatus: "legacy" },
@@ -1436,6 +1458,34 @@ describe.sequential("application registration regression flow", () => {
     } finally {
       if (previousPublicOwnerId === undefined) delete process.env.PUBLIC_SITE_OWNER_ID;
       else process.env.PUBLIC_SITE_OWNER_ID = previousPublicOwnerId;
+    }
+
+    const previousEmailOwnerId = process.env.PUBLIC_SITE_OWNER_ID;
+    const previousPublicOwnerEmail = process.env.PUBLIC_SITE_OWNER_EMAIL;
+    process.env.PUBLIC_SITE_OWNER_ID = ownerA;
+    process.env.PUBLIC_SITE_OWNER_EMAIL = "CONFIGURED-OWNER@EXAMPLE.TEST";
+    try {
+      await request(app)
+        .get("/api/session/context")
+        .set(auth(clerkFixtures.ownerEmailUser, "pending"))
+        .expect(200)
+        .expect(({ body }) => expect(body.role).toBe("admin"));
+
+      await request(app)
+        .get("/api/children")
+        .set(auth(clerkFixtures.ownerEmailUser, "pending"))
+        .expect(200);
+
+      await request(app)
+        .get("/api/session/context")
+        .set(auth(clerkFixtures.unverifiedOwnerEmailUser, "pending"))
+        .expect(200)
+        .expect(({ body }) => expect(body.role).toBe("pending"));
+    } finally {
+      if (previousEmailOwnerId === undefined) delete process.env.PUBLIC_SITE_OWNER_ID;
+      else process.env.PUBLIC_SITE_OWNER_ID = previousEmailOwnerId;
+      if (previousPublicOwnerEmail === undefined) delete process.env.PUBLIC_SITE_OWNER_EMAIL;
+      else process.env.PUBLIC_SITE_OWNER_EMAIL = previousPublicOwnerEmail;
     }
 
     await request(app)

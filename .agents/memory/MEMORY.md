@@ -11,3 +11,4 @@
 - [Clerk E2E user provisioning](clerk-e2e-user-provisioning.md) — this managed Clerk instance requires a password when backend tests create temporary users.
 - [Managed staff identity marker](managed-staff-identity-marker.md) — never classify Clerk users as managed staff from a generic public accountStatus field alone.
 - [Password accounts over Clerk](phone-login-over-clerk.md) — password login is daily; WhatsApp OTP is limited to onboarding/recovery; Clerk remains authoritative.
+- [Cross-environment owner identity](cross-environment-owner-identity.md) — recognize the owner by canonical ID or configured Clerk-verified email, and keep routing and authorization aligned.

@@ -101,6 +101,7 @@ import {
 } from "../lib/financePayments";
 import { InvoiceNotPayableError, requireCheckoutPayable } from "../lib/invoiceLedger";
 import { sendDueReminder, sendWhatsAppText } from "../lib/notifications";
+import { configuredOwnerEmails, isConfiguredOwner, verifiedClerkEmails } from "../lib/ownerIdentity";
 import {
   auditNurseryOperation,
   configurableOperations,
@@ -358,11 +359,10 @@ async function clerkIdentity(req: Parameters<typeof getAuth>[0]) {
   if (!auth.userId) return { role: null, verifiedEmails: [] as string[] };
   const claimRole = sessionRole(req);
   const claimEmails = verifiedEmails(sessionClaims(req));
-  const configuredOwnerId = process.env.PUBLIC_SITE_OWNER_ID?.trim();
-  if (configuredOwnerId && auth.userId === configuredOwnerId) {
+  if (isConfiguredOwner(auth.userId, claimEmails)) {
     return { role: "owner", verifiedEmails: claimEmails };
   }
-  if (claimRole && claimEmails.length) {
+  if (claimRole && claimEmails.length && configuredOwnerEmails().length === 0) {
     return { role: claimRole, verifiedEmails: claimEmails };
   }
   const user = await clerkClient.users.getUser(auth.userId);
@@ -370,9 +370,11 @@ async function clerkIdentity(req: Parameters<typeof getAuth>[0]) {
   const role = claimRole ?? (typeof metadataRole === "string" ? metadataRole.trim().toLowerCase() : null);
   const emails = claimEmails.length
     ? claimEmails
-    : user.emailAddresses
-      .filter((entry) => entry.verification?.status === "verified")
-      .map((entry) => entry.emailAddress.trim().toLowerCase());
+    : verifiedClerkEmails(user);
+  const allVerifiedEmails = [...new Set([...claimEmails, ...verifiedClerkEmails(user)])];
+  if (isConfiguredOwner(auth.userId, allVerifiedEmails)) {
+    return { role: "owner", verifiedEmails: allVerifiedEmails };
+  }
   return { role, verifiedEmails: emails };
 }
 

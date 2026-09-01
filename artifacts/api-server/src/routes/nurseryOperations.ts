@@ -64,6 +64,7 @@ import {
   configurableOperationSet,
   permissionCatalog,
 } from "../lib/permissionCatalog";
+import { configuredOwnerId, isConfiguredOwner, verifiedClerkEmails } from "../lib/ownerIdentity";
 
 const router: IRouter = Router();
 const require = createRequire(import.meta.url);
@@ -269,17 +270,26 @@ export const resolveNurseryContext: RequestHandler = async (req, res, next) => {
       return;
     }
     const fallback = nurseryContext(req);
-    const configuredOwnerId = process.env.PUBLIC_SITE_OWNER_ID?.trim();
-    if (configuredOwnerId && fallback.actorId === configuredOwnerId) {
+    const ownerId = configuredOwnerId();
+    if (ownerId && fallback.actorId === ownerId) {
       res.locals.operationsContext = {
         actorId: fallback.actorId,
-        ownerId: configuredOwnerId,
+        ownerId,
         role: "owner",
       };
       next();
       return;
     }
     const user = await clerkClient.users.getUser(fallback.actorId);
+    if (isConfiguredOwner(fallback.actorId, verifiedClerkEmails(user))) {
+      res.locals.operationsContext = {
+        actorId: fallback.actorId,
+        ownerId: ownerId ?? fallback.actorId,
+        role: "owner",
+      };
+      next();
+      return;
+    }
     const metadata = user.publicMetadata as Claims;
     const privateMetadataValue = user.privateMetadata;
     const privateMetadata = privateMetadataValue && typeof privateMetadataValue === "object"
