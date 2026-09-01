@@ -167,7 +167,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
         </div>
         
         <p className="mb-3 px-3 text-[11px] font-bold tracking-[.18em] text-sidebar-foreground/40 uppercase">{t('admin.management')}</p>
-        <nav className="space-y-1">
+        <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto sidebar-scroll">
           {visibleNavItems.map(({ href, label, icon: Icon }) => (
             <Link key={href} href={href} data-testid={`link-nav-${href.slice(1)}`} onClick={() => setOpen(false)} 
               className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-bold transition-colors ${location === href || location.startsWith(`${href}/`) ? 'bg-sidebar-primary text-sidebar-primary-foreground shadow-sm' : 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground'}`}>
