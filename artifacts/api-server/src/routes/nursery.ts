@@ -492,7 +492,9 @@ router.use(async (req, res, next) => {
   try {
     const routePermission = (() => {
       if (req.path.startsWith("/dashboard/")) return "read:dashboard";
-      if (req.path === "/guardians") return "read:children";
+      if (req.path === "/guardians" || req.path.startsWith("/guardians/")) {
+        return req.method === "GET" ? "read:children" : "write:children";
+      }
       if (req.path.startsWith("/children")) {
         return req.method === "GET" ? "read:children"
           : req.method === "DELETE" ? "delete:children" : "write:children";

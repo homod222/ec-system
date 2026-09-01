@@ -484,6 +484,74 @@ describe.sequential("application registration regression flow", () => {
     ]]);
   });
 
+  it("lets the owner review, disable, and reactivate a guardian account", async () => {
+    const previousOwnerId = process.env.PUBLIC_SITE_OWNER_ID;
+    const clerkUserId = `guardian-review-${randomUUID()}`;
+    const phone = `9${Math.floor(1_000_000 + Math.random() * 9_000_000)}`;
+    let guardianId: number | undefined;
+    process.env.PUBLIC_SITE_OWNER_ID = ownerA;
+    clerkUsers.set(clerkUserId, {
+      id: clerkUserId,
+      publicMetadata: { role: "parent", ownerId: ownerA, accountStatus: "disabled" },
+      privateMetadata: {},
+      firstName: "Guardian",
+      lastName: "Review",
+      emailAddresses: [],
+    });
+    try {
+      const guardianEmail = `guardian-review-${randomUUID()}@example.test`;
+      const guardian = await pool.query<{ id: number }>(
+        `insert into guardians (owner_id, name, phone, email, clerk_user_id)
+         values ($1, 'ولي مراجعة مؤقت', $2, $3, $4) returning id`,
+        [ownerA, phone, guardianEmail, clerkUserId],
+      );
+      guardianId = guardian.rows[0].id;
+      await pool.query(
+        `insert into public_auth_accounts (
+           normalized_phone, clerk_user_id, full_name, email, account_type,
+           account_status, owner_id, guardian_id
+         ) values ($1, $2, 'ولي مراجعة مؤقت', $3, 'guardian', 'disabled', null, $4)`,
+        [`965${phone}`, clerkUserId, guardianEmail, guardianId],
+      );
+
+      await request(app).get("/api/guardians/accounts").set(auth(ownerA)).expect(200)
+        .expect(({ body }) => {
+          expect(body).toEqual(expect.arrayContaining([
+            expect.objectContaining({ guardianId, accountStatus: "disabled" }),
+          ]));
+        });
+
+      await request(app).patch(`/api/guardians/${guardianId}/account`).set(auth(ownerA))
+        .send({ status: "active" }).expect(200)
+        .expect(({ body }) => expect(body.accountStatus).toBe("active"));
+      const active = await pool.query<{ account_status: string; owner_id: string | null }>(
+        "select account_status, owner_id from public_auth_accounts where clerk_user_id = $1",
+        [clerkUserId],
+      );
+      expect(active.rows).toEqual([{ account_status: "active", owner_id: ownerA }]);
+      expect(clerkUsers.get(clerkUserId)?.publicMetadata).toMatchObject({
+        role: "parent",
+        ownerId: ownerA,
+        accountStatus: "active",
+      });
+
+      await request(app).patch(`/api/guardians/${guardianId}/account`).set(auth(ownerA))
+        .send({ status: "disabled" }).expect(200)
+        .expect(({ body }) => expect(body.accountStatus).toBe("disabled"));
+      const disabled = await pool.query<{ account_status: string; owner_id: string | null }>(
+        "select account_status, owner_id from public_auth_accounts where clerk_user_id = $1",
+        [clerkUserId],
+      );
+      expect(disabled.rows).toEqual([{ account_status: "disabled", owner_id: null }]);
+    } finally {
+      await pool.query("delete from public_auth_accounts where clerk_user_id = $1", [clerkUserId]);
+      if (guardianId) await pool.query("delete from guardians where id = $1", [guardianId]);
+      clerkUsers.delete(clerkUserId);
+      if (previousOwnerId === undefined) delete process.env.PUBLIC_SITE_OWNER_ID;
+      else process.env.PUBLIC_SITE_OWNER_ID = previousOwnerId;
+    }
+  });
+
   it("lets one active legacy account in the public nursery use phone and Clerk password", async () => {
     const clerkUserId = `legacy-password-user-${randomUUID()}`;
     const phone = `6${Math.floor(1_000_000 + Math.random() * 9_000_000)}`;

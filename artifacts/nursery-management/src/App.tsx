@@ -255,16 +255,20 @@ export function StatCard({ icon: Icon, label, value, detail, tone = 'teal' }: { 
 
 function Dashboard() {
   const { t, formatDate, formatCurrency } = useI18n();
+  const { user } = useUser();
   const summary = useGetDashboardSummary();
   const activity = useGetDashboardActivity();
   const data = summary.data;
   const activities = activity.data || [];
+  const greetingKey = new Date().getHours() >= 12 ? 'dashboard.greetingEvening' : 'dashboard.greetingMorning';
+  const firstName = user?.firstName?.trim().split(/\s+/u)[0] || t('admin.defaultUser');
+  const greeting = t(greetingKey, { name: firstName });
   
   return (
     <Shell>
       <PageHeader 
         eyebrow={formatDate(new Date(), { weekday: 'long' })}
-        title={t('dashboard.greeting')}
+        title={greeting}
         description={t('dashboard.description')}
         action={<Button data-testid="button-dashboard-report" variant="soft" onClick={() => window.print()}><FileText size={17} />{t('dashboard.todayReport')} <ArrowUpRight size={15} /></Button>}
       />
