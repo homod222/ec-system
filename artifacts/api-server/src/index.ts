@@ -20,16 +20,23 @@ if (Number.isNaN(port) || port <= 0) {
 }
 
 async function start(): Promise<void> {
-  await runApplicationMigrations();
   app.listen(port, (err) => {
     if (err) {
       logger.error({ err }, "Error listening on port");
       process.exit(1);
     }
     logger.info({ port }, "Server listening");
-    startScheduledDueReminders();
-    startPaymentReconciliationScheduler();
-    startBillingPlanScheduler();
+    // Run migrations after the port is open so Replit doesn't time out
+    runApplicationMigrations()
+      .then(() => {
+        startScheduledDueReminders();
+        startPaymentReconciliationScheduler();
+        startBillingPlanScheduler();
+      })
+      .catch((migrationErr) => {
+        logger.error({ err: migrationErr }, "Migration failed");
+        process.exit(1);
+      });
   });
 }
 
