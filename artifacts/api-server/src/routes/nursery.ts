@@ -724,13 +724,35 @@ router.post("/children", async (req, res): Promise<void> => {
       const capacity = await checkClassroomCapacity(tx, ownerId, input.classroomId);
       if (capacity.kind !== "available") return capacity;
     }
-    const [guardian] = await tx.insert(guardiansTable).values({
-      ownerId,
-      name: input.guardianName,
-      phone: input.guardianPhone,
-      email: null,
-      balance: 0,
-    }).returning();
+    // Try to find an existing guardian by normalized phone
+    const normalizedPhone = normalizeKuwaitPhone(input.guardianPhone);
+    let guardian: typeof guardiansTable.$inferSelect | undefined;
+    if (normalizedPhone) {
+      const normalizedDbPhoneExpr = sql`'965' || right(regexp_replace(${guardiansTable.phone}, '\\D', '', 'g'), 8)`;
+      const [existing] = await tx.select().from(guardiansTable).where(and(
+        eq(guardiansTable.ownerId, ownerId),
+        eq(normalizedDbPhoneExpr, normalizedPhone),
+      )).limit(1);
+      if (existing) {
+        // Update the existing guardian name if provided
+        const [updated] = await tx.update(guardiansTable).set({
+          name: input.guardianName,
+        }).where(eq(guardiansTable.id, existing.id)).returning();
+        guardian = updated;
+      }
+    }
+    if (!guardian) {
+      const identityKey = normalizedPhone ? `phone:${normalizedPhone}` : null;
+      const [created] = await tx.insert(guardiansTable).values({
+        ownerId,
+        name: input.guardianName,
+        phone: input.guardianPhone,
+        email: null,
+        balance: 0,
+        identityKey,
+      }).returning();
+      guardian = created;
+    }
     const [child] = await tx.insert(childrenTable).values({
       ownerId,
       firstName: input.firstName,
