@@ -1,7 +1,7 @@
 import { Router, type IRouter, type Request, type RequestHandler } from "express";
 import { createRequire } from "node:module";
 import { and, desc, eq, gte, lte, inArray, sql } from "drizzle-orm";
-import { clerkClient, getAuth } from "@clerk/express";
+import { getLocalAuth } from "../lib/localAuth";
 import ExcelJS from "exceljs";
 import PDFDocument from "pdfkit";
 import {
@@ -54,6 +54,7 @@ import {
   nurserySettingsTable,
   guardiansTable,
   operationalRecordsTable,
+  publicAuthAccountsTable,
   rolePermissionsTable,
   userPermissionsTable,
   staffAttendanceTable,
@@ -64,13 +65,11 @@ import {
   configurableOperationSet,
   permissionCatalog,
 } from "../lib/permissionCatalog";
-import { configuredOwnerId, isConfiguredOwner, verifiedClerkEmails } from "../lib/ownerIdentity";
+import { configuredOwnerId, isConfiguredOwner, configuredOwnerEmails } from "../lib/ownerIdentity";
 
 const router: IRouter = Router();
 const require = createRequire(import.meta.url);
 const arabicPdfFont = require.resolve("dejavu-fonts-ttf/ttf/DejaVuSans.ttf");
-type Claims = Record<string, unknown>;
-
 export function nurseryContext(req: Request) {
   const resolved = req.res?.locals.operationsContext as {
     actorId: string;
@@ -78,22 +77,17 @@ export function nurseryContext(req: Request) {
     role: string;
   } | undefined;
   if (resolved) return resolved;
-  const auth = getAuth(req);
-  const claims = (auth.sessionClaims ?? {}) as Claims;
-  const metadataValue = claims.publicMetadata ?? claims.public_metadata;
-  const metadata = metadataValue && typeof metadataValue === "object" ? metadataValue as Claims : {};
-  const roleValue = metadata.role ?? claims.role;
-  const role = typeof roleValue === "string" ? roleValue.toLowerCase() : "staff";
-  const scopedOwner = metadata.ownerId ?? metadata.owner_id ?? claims.ownerId;
+  const auth = getLocalAuth(req);
+  if (!auth) return { actorId: "anonymous", ownerId: "anonymous", role: "pending" };
   return {
-    actorId: auth.userId!,
-    ownerId: typeof scopedOwner === "string" && scopedOwner ? scopedOwner : auth.userId!,
-    role,
+    actorId: auth.sub,
+    ownerId: auth.ownerId ?? auth.sub,
+    role: auth.role || "staff",
   };
 }
 
 const requireAuth: RequestHandler = (req, res, next) => {
-  if (!getAuth(req).userId) {
+  if (!getLocalAuth(req)) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
@@ -200,61 +194,48 @@ export function validRolePermission(role: string, operation: string) {
 
 async function tenantPrincipal(ownerId: string, userId: string) {
   if (userId === ownerId) return { userId, role: "owner" };
-  try {
-    const user = await clerkClient.users.getUser(userId);
-    const metadata = user.publicMetadata as Claims;
-    const userOwnerId = metadata.ownerId ?? metadata.owner_id;
-    const role = metadata.role;
-    if (metadata.accountStatus !== "disabled"
-        && userOwnerId === ownerId && typeof role === "string" && role) {
-      return { userId, role: role.toLowerCase() };
-    }
-  } catch {
-    // A guardian can have a historical Clerk ID that no longer resolves.
-    // Its tenant-scoped database association remains the fallback below.
+  // Check local accounts table
+  const [account] = await db.select().from(publicAuthAccountsTable)
+    .where(and(
+      eq(publicAuthAccountsTable.id, Number(userId) || 0),
+      eq(publicAuthAccountsTable.ownerId, ownerId),
+    )).limit(1);
+  if (account && account.accountStatus !== "disabled" && account.role) {
+    return { userId, role: account.role.toLowerCase() };
   }
+  // Check staff table by local ref
+  const accountRef = `local_${userId}`;
+  const [staff] = await db.select({ id: staffTable.id, role: staffTable.role })
+    .from(staffTable).where(and(
+      eq(staffTable.ownerId, ownerId),
+      eq(staffTable.clerkUserId, accountRef),
+      eq(staffTable.accountStatus, "active"),
+    )).limit(1);
+  if (staff) return { userId, role: staff.role.toLowerCase() };
+  // Check guardians by local ref
   const [guardian] = await db.select({ userId: guardiansTable.clerkUserId })
     .from(guardiansTable).where(and(
       eq(guardiansTable.ownerId, ownerId),
-      eq(guardiansTable.clerkUserId, userId),
+      eq(guardiansTable.clerkUserId, accountRef),
     )).limit(1);
   return guardian?.userId ? { userId: guardian.userId, role: "parent" } : null;
 }
 
-function clerkPrincipalLabel(user: Record<string, unknown>) {
-  const firstName = typeof user.firstName === "string" ? user.firstName.trim() : "";
-  const lastName = typeof user.lastName === "string" ? user.lastName.trim() : "";
-  const name = [firstName, lastName].filter(Boolean).join(" ");
-  if (name) return name;
-  const primaryEmail = user.primaryEmailAddress as { emailAddress?: unknown } | null | undefined;
-  if (typeof primaryEmail?.emailAddress === "string" && primaryEmail.emailAddress) return primaryEmail.emailAddress;
-  const emails = user.emailAddresses as Array<{ emailAddress?: unknown }> | undefined;
-  const email = emails?.find(({ emailAddress }) => typeof emailAddress === "string" && emailAddress);
-  return typeof email?.emailAddress === "string" ? email.emailAddress : "مستخدم معروف";
-}
-
-async function tenantClerkPrincipals(ownerId: string) {
-  const principals: Array<{ userId: string; label: string; role: string }> = [];
-  const limit = 100;
-  let offset = 0;
-  let totalCount = Infinity;
-  while (offset < totalCount) {
-    const page = await clerkClient.users.getUserList({ limit, offset });
-    const users = page.data;
-    for (const user of users) {
-      const metadata = user.publicMetadata as Claims;
-      const userOwnerId = metadata.ownerId ?? metadata.owner_id;
-      const role = metadata.role;
-      if (metadata.accountStatus !== "disabled"
-          && userOwnerId === ownerId && typeof role === "string" && role) {
-        principals.push({ userId: user.id, label: clerkPrincipalLabel(user as unknown as Record<string, unknown>), role: role.toLowerCase() });
-      }
-    }
-    offset += users.length;
-    totalCount = typeof page.totalCount === "number" ? page.totalCount : offset;
-    if (users.length === 0) break;
-  }
-  return principals;
+async function tenantLocalPrincipals(ownerId: string) {
+  // Get all active accounts belonging to this nursery
+  const accounts = await db.select({
+    id: publicAuthAccountsTable.id,
+    fullName: publicAuthAccountsTable.fullName,
+    role: publicAuthAccountsTable.role,
+  }).from(publicAuthAccountsTable).where(and(
+    eq(publicAuthAccountsTable.ownerId, ownerId),
+    sql`${publicAuthAccountsTable.accountStatus} != 'disabled'`,
+  ));
+  return accounts.map((account) => ({
+    userId: String(account.id),
+    label: account.fullName || "مستخدم معروف",
+    role: (account.role || "staff").toLowerCase(),
+  }));
 }
 
 function serializeRecord<T extends { createdAt: Date; updatedAt: Date; ownerId: string }>(row: T) {
@@ -265,66 +246,76 @@ function serializeRecord<T extends { createdAt: Date; updatedAt: Date; ownerId: 
 router.use(requireAuth);
 export const resolveNurseryContext: RequestHandler = async (req, res, next) => {
   try {
-    if (!getAuth(req).userId) {
+    const auth = getLocalAuth(req);
+    if (!auth) {
       res.status(401).json({ error: "Unauthorized" });
       return;
     }
-    const fallback = nurseryContext(req);
+    const actorId = auth.sub;
     const ownerId = configuredOwnerId();
-    if (ownerId && fallback.actorId === ownerId) {
-      res.locals.operationsContext = {
-        actorId: fallback.actorId,
-        ownerId,
-        role: "owner",
-      };
+
+    // Check if actor is the configured owner
+    if (ownerId && actorId === ownerId) {
+      res.locals.operationsContext = { actorId, ownerId, role: "owner" };
       next();
       return;
     }
-    const user = await clerkClient.users.getUser(fallback.actorId);
-    if (isConfiguredOwner(fallback.actorId, verifiedClerkEmails(user))) {
-      res.locals.operationsContext = {
-        actorId: fallback.actorId,
-        ownerId: ownerId ?? fallback.actorId,
-        role: "owner",
-      };
-      next();
-      return;
+
+    // Check owner by email from the account record
+    const accountId = Number(actorId) || 0;
+    if (accountId) {
+      const [account] = await db.select().from(publicAuthAccountsTable)
+        .where(eq(publicAuthAccountsTable.id, accountId)).limit(1);
+      if (account) {
+        const accountEmail = account.email?.toLowerCase();
+        const ownerEmails = configuredOwnerEmails();
+        if (accountEmail && ownerEmails.includes(accountEmail)) {
+          res.locals.operationsContext = {
+            actorId,
+            ownerId: ownerId ?? actorId,
+            role: "owner",
+          };
+          next();
+          return;
+        }
+
+        // Check if this is a managed staff account
+        const accountRef = `local_${account.id}`;
+        const [staff] = await db.select().from(staffTable).where(and(
+          eq(staffTable.clerkUserId, accountRef),
+        )).limit(1);
+
+        if (staff) {
+          const managedAccountStatuses = new Set([
+            "active", "disabled", "unlinked", "pending_verification", "provisioning", "issuing_otp",
+          ]);
+          if (managedAccountStatuses.has(staff.accountStatus)) {
+            res.locals.operationsContext = {
+              actorId,
+              ownerId: staff.ownerId ?? actorId,
+              role: staff.accountStatus === "active" ? staff.role.toLowerCase() : "disabled",
+            };
+            next();
+            return;
+          }
+        }
+
+        // Use JWT-embedded role/ownerId as fallback
+        res.locals.operationsContext = {
+          actorId,
+          ownerId: account.ownerId ?? auth.ownerId ?? actorId,
+          role: (account.role ?? auth.role ?? "staff").toLowerCase(),
+        };
+        next();
+        return;
+      }
     }
-    const metadata = user.publicMetadata as Claims;
-    const privateMetadataValue = user.privateMetadata;
-    const privateMetadata = privateMetadataValue && typeof privateMetadataValue === "object"
-      ? privateMetadataValue as Claims
-      : {};
-    const metadataRole = metadata.role;
-    const metadataOwnerId = metadata.ownerId ?? metadata.owner_id;
-    const staffId = privateMetadata.staffId;
-    const hasStaffMarker = (typeof staffId === "number" && Number.isInteger(staffId))
-      || (typeof staffId === "string" && staffId.length > 0);
-    const managedAccountStatuses = new Set([
-      "active", "disabled", "unlinked", "pending_verification", "provisioning", "issuing_otp",
-    ]);
-    const hasTenantStaffMetadata = typeof metadataOwnerId === "string"
-      && metadataOwnerId.length > 0
-      && metadataOwnerId !== fallback.actorId
-      && typeof metadata.accountStatus === "string"
-      && managedAccountStatuses.has(metadata.accountStatus);
-    const managedStaffAccount = hasStaffMarker || hasTenantStaffMetadata;
-    const activeManagedStaffAccount = managedStaffAccount
-      && metadata.accountStatus === "active"
-      && typeof metadataOwnerId === "string"
-      && metadataOwnerId.length > 0;
+
+    // Final fallback from JWT payload
     res.locals.operationsContext = {
-      actorId: fallback.actorId,
-      ownerId: managedStaffAccount
-        ? typeof metadataOwnerId === "string" && metadataOwnerId ? metadataOwnerId : fallback.actorId
-        : fallback.ownerId !== fallback.actorId
-          ? fallback.ownerId
-          : typeof metadataOwnerId === "string" && metadataOwnerId ? metadataOwnerId : fallback.ownerId,
-      role: managedStaffAccount
-        ? activeManagedStaffAccount && typeof metadataRole === "string" && metadataRole
-          ? metadataRole.toLowerCase()
-          : "disabled"
-        : fallback.role,
+      actorId,
+      ownerId: auth.ownerId ?? actorId,
+      role: auth.role || "staff",
     };
     next();
   } catch (error) {
@@ -921,8 +912,8 @@ router.get("/permission-principals", async (req, res): Promise<void> => {
     res.status(403).json({ error: "Administrative access required" });
     return;
   }
-  const [clerkPrincipals, linkedStaff, guardians] = await Promise.all([
-    tenantClerkPrincipals(ownerId),
+  const [localPrincipals, linkedStaff, guardians] = await Promise.all([
+    tenantLocalPrincipals(ownerId),
     db.select({
       userId: staffTable.clerkUserId,
       label: staffTable.name,
@@ -937,7 +928,7 @@ router.get("/permission-principals", async (req, res): Promise<void> => {
   ]);
   const principals = [{ userId: ownerId, label: "مالك الحضانة", role: "owner" }, ...linkedStaff
     .filter((member): member is { userId: string; label: string; role: string } => Boolean(member.userId))
-    .map((member) => ({ ...member, role: member.role.toLowerCase() })), ...clerkPrincipals, ...guardians
+    .map((member) => ({ ...member, role: member.role.toLowerCase() })), ...localPrincipals, ...guardians
     .filter((guardian): guardian is { userId: string; label: string } => Boolean(guardian.userId))
     .map((guardian) => ({ userId: guardian.userId, label: guardian.label || "مستخدم معروف", role: "parent" }))];
   res.json(ListPermissionPrincipalsResponse.parse(Array.from(new Map(principals.map((principal) => [principal.userId, principal])).values())));

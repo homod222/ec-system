@@ -1,7 +1,7 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { Router, type IRouter, type RequestHandler } from "express";
 import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
-import { clerkClient, getAuth } from "@clerk/express";
+import { getLocalAuth, hashPassword } from "../lib/localAuth";
 import {
   CreateChildBody,
   CreateChildResponse,
@@ -104,7 +104,7 @@ import {
 } from "../lib/financePayments";
 import { InvoiceNotPayableError, requireCheckoutPayable } from "../lib/invoiceLedger";
 import { sendDueReminder, sendWhatsAppText } from "../lib/notifications";
-import { configuredOwnerEmails, isConfiguredOwner, verifiedClerkEmails } from "../lib/ownerIdentity";
+import { configuredOwnerEmails, isConfiguredOwner } from "../lib/ownerIdentity";
 import {
   auditNurseryOperation,
   configurableOperations,
@@ -214,130 +214,110 @@ router.post("/admin/create-account", async (req, res): Promise<void> => {
     return;
   }
 
-  // Create Clerk user
-  let clerkUser;
-  try {
-    clerkUser = await clerkClient.users.createUser({
-      phoneNumber: [`+${phone}`],
-      password: body.data.password,
-      firstName: names[0],
-      lastName: names.slice(1).join(" ") || undefined,
-      skipPasswordChecks: true,
-      publicMetadata: { role, ownerId, accountStatus: "active" },
-    });
-  } catch (error: unknown) {
-    const clerkErrors = error && typeof error === "object" && "errors" in error ? (error as { errors?: unknown[] }).errors : null;
-    const errorMsg = Array.isArray(clerkErrors) && clerkErrors[0] && typeof clerkErrors[0] === "object" && "message" in clerkErrors[0]
-      ? String((clerkErrors[0] as { message: string }).message)
-      : "Failed to create Clerk user";
-    res.status(409).json({ error: errorMsg });
-    return;
-  }
+  // Hash password locally
+  const pwHash = await hashPassword(body.data.password);
 
   let recordId: number;
-  try {
-    if (accountType === "staff") {
-      // Find existing unlinked staff with this phone, or create new
-      const existingStaff = await db.select().from(staffTable).where(and(
+  if (accountType === "staff") {
+    // Find existing unlinked staff with this phone, or create new
+    const existingStaff = await db.select().from(staffTable).where(and(
+      eq(staffTable.ownerId, ownerId),
+      eq(staffTable.accountStatus, "unlinked"),
+      sql`${staffTable.clerkUserId} is null`,
+    ));
+    const match = existingStaff.find(s => {
+      const digits = s.phone.replace(/\D/g, "");
+      const local = digits.startsWith("00965") ? digits.slice(5) : digits.startsWith("965") && digits.length > 8 ? digits.slice(3) : digits.replace(/^0+/, "");
+      return `965${local}` === phone;
+    });
+    if (match) {
+      const [linked] = await db.update(staffTable).set({
+        clerkUserId: `local_pending`,
+        role,
+        accountStatus: "active",
+        otpHash: null,
+        otpExpiresAt: null,
+        otpAttempts: 0,
+      }).where(and(
+        eq(staffTable.id, match.id),
         eq(staffTable.ownerId, ownerId),
-        eq(staffTable.accountStatus, "unlinked"),
         sql`${staffTable.clerkUserId} is null`,
-      ));
-      const match = existingStaff.find(s => {
-        const digits = s.phone.replace(/\D/g, "");
-        const local = digits.startsWith("00965") ? digits.slice(5) : digits.startsWith("965") && digits.length > 8 ? digits.slice(3) : digits.replace(/^0+/, "");
-        return `965${local}` === phone;
-      });
-      if (match) {
-        const [linked] = await db.update(staffTable).set({
-          clerkUserId: clerkUser.id,
-          role,
-          accountStatus: "active",
-          otpHash: null,
-          otpExpiresAt: null,
-          otpAttempts: 0,
-        }).where(and(
-          eq(staffTable.id, match.id),
-          eq(staffTable.ownerId, ownerId),
-          sql`${staffTable.clerkUserId} is null`,
-        )).returning();
-        recordId = linked.id;
-        await clerkClient.users.updateUserMetadata(clerkUser.id, {
-          privateMetadata: { staffId: linked.id },
-        });
-      } else {
-        const [created] = await db.insert(staffTable).values({
-          ownerId,
-          name: fullName,
-          role,
-          phone,
-          clerkUserId: clerkUser.id,
-          accountStatus: "active",
-        }).returning();
-        recordId = created.id;
-        await clerkClient.users.updateUserMetadata(clerkUser.id, {
-          privateMetadata: { staffId: created.id },
-        });
-      }
+      )).returning();
+      recordId = linked.id;
     } else {
-      // Guardian: find existing unlinked guardian or create new
-      const existingGuardians = await db.select().from(guardiansTable).where(and(
+      const [created] = await db.insert(staffTable).values({
+        ownerId,
+        name: fullName,
+        role,
+        phone,
+        clerkUserId: `local_pending`,
+        accountStatus: "active",
+      }).returning();
+      recordId = created.id;
+    }
+  } else {
+    // Guardian: find existing unlinked guardian or create new
+    const existingGuardians = await db.select().from(guardiansTable).where(and(
+      eq(guardiansTable.ownerId, ownerId),
+      sql`${guardiansTable.clerkUserId} is null`,
+    ));
+    const match = existingGuardians.find(g => {
+      const digits = g.phone.replace(/\D/g, "");
+      const local = digits.startsWith("00965") ? digits.slice(5) : digits.startsWith("965") && digits.length > 8 ? digits.slice(3) : digits.replace(/^0+/, "");
+      return `965${local}` === phone;
+    });
+    if (match) {
+      await db.update(guardiansTable).set({ clerkUserId: `local_pending` }).where(and(
+        eq(guardiansTable.id, match.id),
         eq(guardiansTable.ownerId, ownerId),
         sql`${guardiansTable.clerkUserId} is null`,
       ));
-      const match = existingGuardians.find(g => {
-        const digits = g.phone.replace(/\D/g, "");
-        const local = digits.startsWith("00965") ? digits.slice(5) : digits.startsWith("965") && digits.length > 8 ? digits.slice(3) : digits.replace(/^0+/, "");
-        return `965${local}` === phone;
-      });
-      if (match) {
-        await db.update(guardiansTable).set({ clerkUserId: clerkUser.id }).where(and(
-          eq(guardiansTable.id, match.id),
-          eq(guardiansTable.ownerId, ownerId),
-          sql`${guardiansTable.clerkUserId} is null`,
-        ));
-        recordId = match.id;
-      } else {
-        const [created] = await db.insert(guardiansTable).values({
-          ownerId,
-          name: fullName,
-          phone,
-          clerkUserId: clerkUser.id,
-        }).returning();
-        recordId = created.id;
-      }
+      recordId = match.id;
+    } else {
+      const [created] = await db.insert(guardiansTable).values({
+        ownerId,
+        name: fullName,
+        phone,
+        clerkUserId: `local_pending`,
+      }).returning();
+      recordId = created.id;
     }
-
-    // Record in public_auth_accounts
-    await db.insert(publicAuthAccountsTable).values({
-      normalizedPhone: phone,
-      clerkUserId: clerkUser.id,
-      fullName,
-      email,
-      accountType,
-      accountStatus: "active",
-      ownerId,
-      guardianId: accountType === "guardian" ? recordId : null,
-      staffId: accountType === "staff" ? recordId : null,
-    });
-
-    await auditNurseryOperation(req, "admin-create-account", `${accountType}-account`, String(recordId), null, {
-      phone, accountType, role, name: fullName,
-    });
-
-    res.status(201).json(AdminCreateAccountResponse.parse({
-      id: recordId,
-      accountType,
-      phone,
-      accountStatus: "active",
-      role,
-      name: fullName,
-    }));
-  } catch (error) {
-    // Rollback: delete Clerk user if DB operations fail
-    await clerkClient.users.deleteUser(clerkUser.id).catch(() => undefined);
-    throw error;
   }
+
+  // Record in public_auth_accounts with local password hash
+  const [account] = await db.insert(publicAuthAccountsTable).values({
+    normalizedPhone: phone,
+    fullName,
+    email,
+    passwordHash: pwHash,
+    accountType,
+    accountStatus: "active",
+    role,
+    ownerId,
+    guardianId: accountType === "guardian" ? recordId : null,
+    staffId: accountType === "staff" ? recordId : null,
+  }).returning();
+
+  // Update staff/guardian with account reference
+  const accountRef = `local_${account.id}`;
+  if (accountType === "staff") {
+    await db.update(staffTable).set({ clerkUserId: accountRef }).where(eq(staffTable.id, recordId));
+  } else {
+    await db.update(guardiansTable).set({ clerkUserId: accountRef }).where(eq(guardiansTable.id, recordId));
+  }
+
+  await auditNurseryOperation(req, "admin-create-account", `${accountType}-account`, String(recordId), null, {
+    phone, accountType, role, name: fullName,
+  });
+
+  res.status(201).json(AdminCreateAccountResponse.parse({
+    id: recordId,
+    accountType,
+    phone,
+    accountStatus: "active",
+    role,
+    name: fullName,
+  }));
 });
 
 router.post("/staff/password-reset/request", async (req, res, next): Promise<void> => {
@@ -441,12 +421,19 @@ router.post("/staff/password-reset/complete", async (req, res, next): Promise<vo
       res.status(400).json({ error: "Invalid or already used password reset link" });
       return;
     }
-    // The token remains consumed on every Clerk outcome. A network error can be
-    // ambiguous after Clerk commits, so restoring it would violate single use.
-    await clerkClient.users.updateUser(member.clerkUserId, { password: body.data.password });
+    // Update password hash locally
+    const newPwHash = await hashPassword(body.data.password);
+    const accountRef = member.clerkUserId;
+    if (accountRef) {
+      const accountId = accountRef.startsWith("local_") ? Number(accountRef.slice(6)) : null;
+      if (accountId) {
+        await db.update(publicAuthAccountsTable).set({ passwordHash: newPwHash })
+          .where(eq(publicAuthAccountsTable.id, accountId));
+      }
+    }
     await db.insert(auditLogsTable).values({
       ownerId: member.ownerId,
-      actorId: member.clerkUserId,
+      actorId: member.clerkUserId || String(member.id),
       actorRole: member.role,
       operation: "reset-staff-password",
       entityType: "staff-account",
@@ -461,102 +448,58 @@ router.post("/staff/password-reset/complete", async (req, res, next): Promise<vo
 });
 
 const requireAuth: RequestHandler = (req, res, next) => {
-  const auth = getAuth(req);
-  if (!auth.userId) {
+  const auth = getLocalAuth(req);
+  if (!auth) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
   next();
 };
 
-type Claims = Record<string, unknown>;
-
-function sessionClaims(req: Parameters<typeof getAuth>[0]): Claims {
-  return (getAuth(req).sessionClaims ?? {}) as Claims;
+async function localIdentity(req: Parameters<typeof getLocalAuth>[0]) {
+  const auth = getLocalAuth(req);
+  if (!auth) return { role: null };
+  // Check if configured owner
+  if (isConfiguredOwner(auth.sub, [])) {
+    return { role: "owner" };
+  }
+  // Look up account for role
+  const [account] = await db.select().from(publicAuthAccountsTable)
+    .where(eq(publicAuthAccountsTable.id, Number(auth.sub))).limit(1);
+  if (!account) return { role: auth.role || null };
+  const ownerEmails = configuredOwnerEmails();
+  if (ownerEmails.length && account.email && ownerEmails.includes(account.email.toLowerCase())) {
+    return { role: "owner" };
+  }
+  return { role: account.role || auth.role || null };
 }
 
-function publicMetadata(claims: Claims): Claims {
-  const value = claims.publicMetadata ?? claims.public_metadata;
-  return value && typeof value === "object" ? value as Claims : {};
-}
-
-function sessionRole(req: Parameters<typeof getAuth>[0]): string | null {
-  const claims = sessionClaims(req);
-  const metadata = publicMetadata(claims);
-  const value = metadata.role ?? claims.role;
-  if (typeof value === "string") return value.trim().toLowerCase();
-  const roles = metadata.roles ?? claims.roles;
-  if (Array.isArray(roles)) {
-    const firstRole = roles.find((role): role is string => typeof role === "string");
-    if (firstRole) return firstRole.trim().toLowerCase();
-  }
-  return null;
-}
-
-function verifiedEmails(claims: Claims): string[] {
-  const emails = new Set<string>();
-  const add = (value: unknown) => {
-    if (typeof value === "string" && value.includes("@")) emails.add(value.trim().toLowerCase());
-  };
-  if (claims.email_verified === true || claims.email_verified === "true" || claims.verified === true) {
-    add(claims.email ?? claims.email_address);
-  }
-  const candidates = [claims.primary_email_address, ...(Array.isArray(claims.email_addresses) ? claims.email_addresses : [])];
-  for (const candidate of candidates) {
-    if (!candidate || typeof candidate !== "object") continue;
-    const entry = candidate as Claims;
-    const verification = entry.verification && typeof entry.verification === "object"
-      ? entry.verification as Claims
-      : {};
-    if (entry.verified === true || verification.status === "verified") {
-      add(entry.email_address ?? entry.email);
-    }
-  }
-  return [...emails];
-}
-
-async function clerkIdentity(req: Parameters<typeof getAuth>[0]) {
-  const auth = getAuth(req);
-  if (!auth.userId) return { role: null, verifiedEmails: [] as string[] };
-  const claimRole = sessionRole(req);
-  const claimEmails = verifiedEmails(sessionClaims(req));
-  if (isConfiguredOwner(auth.userId, claimEmails)) {
-    return { role: "owner", verifiedEmails: claimEmails };
-  }
-  if (claimRole && claimEmails.length && configuredOwnerEmails().length === 0) {
-    return { role: claimRole, verifiedEmails: claimEmails };
-  }
-  const user = await clerkClient.users.getUser(auth.userId);
-  const metadataRole = user.publicMetadata.role;
-  const role = claimRole ?? (typeof metadataRole === "string" ? metadataRole.trim().toLowerCase() : null);
-  const emails = claimEmails.length
-    ? claimEmails
-    : verifiedClerkEmails(user);
-  const allVerifiedEmails = [...new Set([...claimEmails, ...verifiedClerkEmails(user)])];
-  if (isConfiguredOwner(auth.userId, allVerifiedEmails)) {
-    return { role: "owner", verifiedEmails: allVerifiedEmails };
-  }
-  return { role, verifiedEmails: emails };
-}
-
-async function resolveGuardian(req: Parameters<typeof getAuth>[0], _emails: string[]) {
-  const auth = getAuth(req);
-  if (!auth.userId) return null;
+async function resolveGuardian(req: Parameters<typeof getLocalAuth>[0]) {
+  const auth = getLocalAuth(req);
+  if (!auth) return null;
+  const accountRef = `local_${auth.sub}`;
   const [linked] = await db.select().from(guardiansTable)
-    .where(eq(guardiansTable.clerkUserId, auth.userId)).limit(1);
+    .where(eq(guardiansTable.clerkUserId, accountRef)).limit(1);
   if (linked) return linked;
-
+  // Also check by guardianId in account
+  const [account] = await db.select().from(publicAuthAccountsTable)
+    .where(eq(publicAuthAccountsTable.id, Number(auth.sub))).limit(1);
+  if (account?.guardianId) {
+    const [guardian] = await db.select().from(guardiansTable)
+      .where(eq(guardiansTable.id, account.guardianId)).limit(1);
+    return guardian || null;
+  }
   return null;
 }
 
 const requireParentGuardian: RequestHandler = async (req, res, next) => {
   try {
-    const identity = await clerkIdentity(req);
-    if (identity.role && identity.role !== "parent" && identity.role !== "guardian") {
+    const identity = await localIdentity(req);
+    if (identity.role && identity.role !== "parent" && identity.role !== "guardian" && identity.role !== "pending") {
       res.status(403).json({ error: "Parent access required" });
       return;
     }
-    const guardian = await resolveGuardian(req, identity.verifiedEmails);
+    const guardian = await resolveGuardian(req);
     if (!guardian) {
       res.status(403).json({ error: "No guardian record is linked to this verified account" });
       return;
@@ -617,7 +560,7 @@ async function childRows(ownerId: string) {
 router.use(requireAuth);
 router.get("/session/context", resolveNurseryContext, async (req, res, next): Promise<void> => {
   try {
-    const identity = await clerkIdentity(req);
+    const identity = await localIdentity(req);
     const effectivePermissions = await Promise.all(configurableOperations.map(async (operation) =>
       await permitted(req, operation) ? operation : null,
     )).then((operations) => operations.filter(
@@ -632,7 +575,7 @@ router.get("/session/context", resolveNurseryContext, async (req, res, next): Pr
       return;
     }
     if (!identity.role || identity.role === "parent" || identity.role === "guardian") {
-      const guardian = await resolveGuardian(req, identity.verifiedEmails);
+      const guardian = await resolveGuardian(req);
       if (guardian) {
         res.json(GetSessionContextResponse.parse({ role: "parent", effectivePermissions }));
         return;
@@ -1000,24 +943,20 @@ router.patch("/guardians/:id/account", async (req, res): Promise<void> => {
   const [guardian] = await db.select().from(guardiansTable).where(and(
     eq(guardiansTable.id, params.data.id), eq(guardiansTable.ownerId, ownerId),
   )).limit(1);
-  if (!guardian || !guardian.clerkUserId) {
+  if (!guardian) {
     res.status(404).json({ error: "Linked guardian account not found" });
     return;
   }
   const status = body.data.status;
-  const user = await clerkClient.users.getUser(guardian.clerkUserId);
-  await clerkClient.users.updateUserMetadata(user.id, {
-    publicMetadata: {
-      ...(user.publicMetadata as Claims),
-      role: "parent",
-      ownerId,
-      accountStatus: status,
-    },
-  });
+  // Update account in publicAuthAccountsTable by guardianId
   const [account] = await db.update(publicAuthAccountsTable).set({
     accountStatus: status,
+    role: "parent",
     ownerId,
-  }).where(eq(publicAuthAccountsTable.clerkUserId, guardian.clerkUserId)).returning();
+  }).where(and(
+    eq(publicAuthAccountsTable.guardianId, guardian.id),
+    eq(publicAuthAccountsTable.ownerId, ownerId),
+  )).returning();
   await auditNurseryOperation(req, "update-guardian-account", "guardian-account", String(guardian.id),
     { accountStatus: account ? (status === "active" ? "disabled" : "active") : null },
     { accountStatus: status });
@@ -1135,21 +1074,28 @@ router.post("/staff/:id/account", async (req, res): Promise<void> => {
     res.status(409).json({ error: "Unlink the current account before linking another user" });
     return;
   }
-  const user = await clerkClient.users.getUser(body.data.clerkUserId);
-  const metadata = user.publicMetadata as Claims;
-  const existingOwnerId = metadata.ownerId ?? metadata.owner_id;
-  if (existingOwnerId && existingOwnerId !== ownerId) {
-    res.status(409).json({ error: "Clerk user already belongs to another nursery" });
+  // body.data.clerkUserId now treated as the local account reference (accountId)
+  const accountRef = body.data.clerkUserId;
+  const accountId = accountRef.startsWith("local_") ? Number(accountRef.slice(6)) : Number(accountRef);
+  const [account] = await db.select().from(publicAuthAccountsTable)
+    .where(eq(publicAuthAccountsTable.id, accountId)).limit(1);
+  if (!account) {
+    res.status(404).json({ error: "Account not found" });
     return;
   }
+  if (account.ownerId && account.ownerId !== ownerId) {
+    res.status(409).json({ error: "Account already belongs to another nursery" });
+    return;
+  }
+  const localRef = `local_${account.id}`;
   const [linkedElsewhere] = await db.select({ id: staffTable.id }).from(staffTable)
-    .where(eq(staffTable.clerkUserId, user.id)).limit(1);
+    .where(eq(staffTable.clerkUserId, localRef)).limit(1);
   if (linkedElsewhere && linkedElsewhere.id !== member.id) {
-    res.status(409).json({ error: "Clerk user is already linked to another staff record" });
+    res.status(409).json({ error: "Account is already linked to another staff record" });
     return;
   }
-  let [reserved] = await db.update(staffTable).set({
-    clerkUserId: user.id, role, accountStatus: "provisioning", otpHash: null, otpExpiresAt: null, otpAttempts: 0,
+  const [reserved] = await db.update(staffTable).set({
+    clerkUserId: localRef, role, accountStatus: "active", otpHash: null, otpExpiresAt: null, otpAttempts: 0,
   }).where(and(
     eq(staffTable.id, member.id),
     eq(staffTable.ownerId, ownerId),
@@ -1160,30 +1106,10 @@ router.post("/staff/:id/account", async (req, res): Promise<void> => {
     res.status(409).json({ error: "Staff account state changed; reload and try again" });
     return;
   }
-  try {
-    await clerkClient.users.updateUserMetadata(user.id, {
-      publicMetadata: { ...metadata, ownerId, role, accountStatus: "active" },
-      privateMetadata: { ...(user.privateMetadata as Claims), staffId: member.id },
-    });
-  } catch (error) {
-    await db.update(staffTable).set({ clerkUserId: null, accountStatus: member.accountStatus })
-      .where(and(
-        eq(staffTable.id, member.id),
-        eq(staffTable.clerkUserId, user.id),
-        eq(staffTable.accountStatus, "provisioning"),
-      ));
-    throw error;
-  }
-  [reserved] = await db.update(staffTable).set({ accountStatus: "active" })
-    .where(and(
-      eq(staffTable.id, member.id),
-      eq(staffTable.clerkUserId, user.id),
-      eq(staffTable.accountStatus, "provisioning"),
-    )).returning();
-  if (!reserved) {
-    res.status(409).json({ error: "Unable to finalize staff account link" });
-    return;
-  }
+  // Update the account record
+  await db.update(publicAuthAccountsTable).set({
+    ownerId, role, accountStatus: "active", staffId: member.id,
+  }).where(eq(publicAuthAccountsTable.id, account.id));
   const updated = reserved;
   await auditNurseryOperation(req, "link-staff-account", "staff-account", String(member.id),
     { clerkUserId: member.clerkUserId, accountStatus: member.accountStatus },
@@ -1212,18 +1138,7 @@ router.patch("/staff/:id/account", async (req, res): Promise<void> => {
   }
   const role = body.data.role ?? member.role.toLowerCase();
   const accountStatus = body.data.status ?? member.accountStatus;
-  const user = await clerkClient.users.getUser(member.clerkUserId);
   if (accountStatus === "unlinked") {
-    await clerkClient.users.updateUserMetadata(user.id, {
-      publicMetadata: {
-        ...(user.publicMetadata as Claims),
-        ownerId: null,
-        owner_id: null,
-        role: null,
-        accountStatus: "unlinked",
-      },
-      privateMetadata: { ...(user.privateMetadata as Claims), staffId: member.id },
-    });
     const [updated] = await db.update(staffTable).set({
       clerkUserId: null,
       accountStatus: "unlinked",
@@ -1231,19 +1146,23 @@ router.patch("/staff/:id/account", async (req, res): Promise<void> => {
       otpExpiresAt: null,
       otpAttempts: 0,
     }).where(eq(staffTable.id, member.id)).returning();
-    await db.update(publicAuthAccountsTable).set({
-      accountStatus: "pending",
-      ownerId: null,
-    }).where(eq(publicAuthAccountsTable.clerkUserId, member.clerkUserId));
+    // Update the linked account record
+    if (member.clerkUserId) {
+      const accountId = member.clerkUserId.startsWith("local_") ? Number(member.clerkUserId.slice(6)) : null;
+      if (accountId) {
+        await db.update(publicAuthAccountsTable).set({
+          accountStatus: "pending",
+          ownerId: null,
+          staffId: null,
+        }).where(eq(publicAuthAccountsTable.id, accountId));
+      }
+    }
     await auditNurseryOperation(req, "unlink-staff-account", "staff-account", String(member.id),
       { role: member.role, accountStatus: member.accountStatus, clerkUserId: member.clerkUserId },
       { role: updated.role, accountStatus: updated.accountStatus, clerkUserId: null });
     res.json(UpdateStaffAccountResponse.parse(accountResult(updated)));
     return;
   }
-  await clerkClient.users.updateUserMetadata(user.id, {
-    publicMetadata: { ...(user.publicMetadata as Claims), ownerId, role, accountStatus },
-  });
   const [updated] = await db.update(staffTable).set({
     role,
     accountStatus,
@@ -1251,10 +1170,17 @@ router.patch("/staff/:id/account", async (req, res): Promise<void> => {
     otpExpiresAt: null,
     otpAttempts: 0,
   }).where(eq(staffTable.id, member.id)).returning();
-  await db.update(publicAuthAccountsTable).set({
-    accountStatus: accountStatus === "active" ? "active" : "pending",
-    ownerId: accountStatus === "active" ? ownerId : null,
-  }).where(eq(publicAuthAccountsTable.clerkUserId, member.clerkUserId));
+  // Update the linked account record
+  if (member.clerkUserId) {
+    const accountId = member.clerkUserId.startsWith("local_") ? Number(member.clerkUserId.slice(6)) : null;
+    if (accountId) {
+      await db.update(publicAuthAccountsTable).set({
+        accountStatus: accountStatus === "active" ? "active" : "pending",
+        role,
+        ownerId: accountStatus === "active" ? ownerId : null,
+      }).where(eq(publicAuthAccountsTable.id, accountId));
+    }
+  }
   await auditNurseryOperation(req, "update-staff-account", "staff-account", String(member.id),
     { role: member.role, accountStatus: member.accountStatus },
     { role: updated.role, accountStatus: updated.accountStatus });

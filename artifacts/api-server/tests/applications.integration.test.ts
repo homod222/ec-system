@@ -35,92 +35,37 @@ const sendWhatsAppOtp = vi.hoisted(() => vi.fn(async (to: string, otp: string) =
   return { ok: true as const };
 }));
 
-vi.mock("@clerk/express", () => ({
-  clerkMiddleware: () => (req: unknown, _res: unknown, next: () => void) => next(),
-  getAuth: (req: { headers: Record<string, string | undefined> }) => ({
-    userId: req.headers["x-test-user"] ?? null,
-    sessionClaims: { role: req.headers["x-test-role"] ?? "owner" },
-  }),
-  clerkClient: {
-    signInTokens: {
-      createSignInToken: clerkSignInTokenCreate,
-    },
-    users: {
-      verifyPassword: clerkVerifyPassword,
-      getUser: vi.fn(async (userId: string) => {
-        const users = {
-          [clerkFixtures.ownerA]: { id: clerkFixtures.ownerA, publicMetadata: { role: "owner" }, firstName: "Owner", lastName: "A", emailAddresses: [] },
-          [clerkFixtures.ownerB]: { id: clerkFixtures.ownerB, publicMetadata: { role: "owner" }, firstName: "Owner", lastName: "B", emailAddresses: [] },
-          [clerkFixtures.ownerEmailUser]: {
-            id: clerkFixtures.ownerEmailUser,
-            publicMetadata: { role: "pending" },
-            firstName: "Configured",
-            lastName: "Owner",
-            emailAddresses: [{
-              emailAddress: "configured-owner@example.test",
-              verification: { status: "verified" },
-            }],
-          },
-          [clerkFixtures.unverifiedOwnerEmailUser]: {
-            id: clerkFixtures.unverifiedOwnerEmailUser,
-            publicMetadata: { role: "pending" },
-            firstName: "Unverified",
-            lastName: "Owner",
-            emailAddresses: [{
-              emailAddress: "configured-owner@example.test",
-              verification: { status: "unverified" },
-            }],
-          },
-          [clerkFixtures.legacyOwner]: {
-            id: clerkFixtures.legacyOwner,
-            publicMetadata: { role: "owner", accountStatus: "legacy" },
-            privateMetadata: {},
-            firstName: "Legacy",
-            lastName: "Owner",
-            emailAddresses: [],
-          },
-          [clerkFixtures.staffA]: { id: clerkFixtures.staffA, publicMetadata: { ownerId: clerkFixtures.ownerA, role: "Teacher" }, firstName: "Tenant", lastName: "A", emailAddresses: [] },
-          [clerkFixtures.staffB]: { id: clerkFixtures.staffB, publicMetadata: { owner_id: clerkFixtures.ownerB, role: "Manager" }, emailAddresses: [{ emailAddress: "tenant-b@example.test" }] },
-        };
-        return clerkUsers.get(userId) ?? users[userId as keyof typeof users] ?? {
-          id: userId, publicMetadata: { role: "owner" }, privateMetadata: {},
-          emailAddresses: [{ emailAddress: "integration@example.test", verification: { status: "verified" } }],
-        };
-      }),
-      updateUserMetadata: vi.fn(async (
-        userId: string,
-        input: { publicMetadata?: Record<string, unknown>; privateMetadata?: Record<string, unknown> },
-      ) => {
-        const current = clerkUsers.get(userId) ?? {
-          id: userId,
-          publicMetadata: {},
-          privateMetadata: {},
-          emailAddresses: [],
-        };
-        const updated = {
-          ...current,
-          publicMetadata: input.publicMetadata ?? current.publicMetadata,
-          privateMetadata: input.privateMetadata ?? current.privateMetadata,
-        };
-        clerkUsers.set(userId, updated);
-        return updated;
-      }),
-      getUserList: vi.fn(async ({ limit = 100, offset = 0 }: { limit?: number; offset?: number }) => {
-        const data = [
-          { id: clerkFixtures.ownerA, publicMetadata: { role: "owner" }, firstName: "Owner", lastName: "A" },
-          { id: clerkFixtures.ownerB, publicMetadata: { role: "owner" }, firstName: "Owner", lastName: "B" },
-          { id: clerkFixtures.staffA, publicMetadata: { ownerId: clerkFixtures.ownerA, role: "Teacher" }, firstName: "Tenant", lastName: "A" },
-          { id: clerkFixtures.staffB, publicMetadata: { owner_id: clerkFixtures.ownerB, role: "Manager" }, emailAddresses: [{ emailAddress: "tenant-b@example.test" }] },
-        ];
-        return { data: data.slice(offset, offset + limit), totalCount: data.length };
-      }),
-    },
+vi.mock("../src/lib/localAuth", () => ({
+  jwtMiddleware: (req: any, _res: unknown, next: () => void) => {
+    const userId = req.headers["x-test-user"];
+    if (userId) {
+      (req as any).auth = {
+        sub: userId,
+        role: req.headers["x-test-role"] ?? "owner",
+        ownerId: req.headers["x-test-owner"] ?? userId,
+      };
+    }
+    next();
   },
-}));
-
-vi.mock("../src/middlewares/clerkProxyMiddleware", () => ({
-  CLERK_PROXY_PATH: "/__clerk",
-  clerkProxyMiddleware: () => (_req: unknown, _res: unknown, next: () => void) => next(),
+  getLocalAuth: (req: any) => {
+    if (req.auth) return req.auth;
+    const userId = req.headers?.["x-test-user"];
+    if (!userId) return null;
+    return {
+      sub: userId,
+      role: req.headers["x-test-role"] ?? "owner",
+      ownerId: req.headers["x-test-owner"] ?? userId,
+    };
+  },
+  hashPassword: vi.fn(async () => "hashed"),
+  verifyPassword: vi.fn(async () => true),
+  signJwt: vi.fn(() => "test-jwt-token"),
+  verifyJwt: vi.fn(() => null),
+  requireLocalAuth: (req: any, res: any, next: () => void) => {
+    const userId = req.headers["x-test-user"];
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+    next();
+  },
 }));
 
 vi.mock("../src/lib/stripeClient", () => ({

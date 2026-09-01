@@ -1,12 +1,10 @@
 import {
-  deleteGalleryTestUsers,
+  deleteGalleryTestUser,
   galleryRunIdEnvironmentVariable,
-  getGalleryRunIdentity,
-} from './clerk-test-user';
+} from './test-user';
 
 export default async function globalTeardown() {
-  const secretKey = process.env.CLERK_SECRET_KEY;
-  if (secretKey && process.env[galleryRunIdEnvironmentVariable]) {
-    await deleteGalleryTestUsers(secretKey, getGalleryRunIdentity().email);
+  if (process.env[galleryRunIdEnvironmentVariable]) {
+    await deleteGalleryTestUser();
   }
 }

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Router, type IRouter, type RequestHandler } from "express";
 import { and, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
-import { getAuth } from "@clerk/express";
+import { getLocalAuth } from "../lib/localAuth";
 import {
   CancelInvoiceBody, CancelInvoiceParams, CancelInvoiceResponse,
   CreateChildContactBody, CreateChildContactParams, CreateChildContactResponse,
@@ -47,7 +47,7 @@ function normalizeRegistrationWhatsApp(value: string): string {
 }
 
 const requireAuth: RequestHandler = (req, res, next) => {
-  if (!getAuth(req).userId) {
+  if (!getLocalAuth(req)) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
@@ -578,10 +578,11 @@ router.put("/nursery/settings", requireNurseryPermission("write:setting"), async
   res.json(SetNurserySettingsResponse.parse({ ...data, updatedAt: updatedAt.toISOString() }));
 });
 
-async function linkedGuardian(req: Parameters<typeof getAuth>[0]) {
-  const userId = getAuth(req).userId;
-  if (!userId) return null;
-  const [guardian] = await db.select().from(guardiansTable).where(eq(guardiansTable.clerkUserId, userId));
+async function linkedGuardian(req: import("express").Request) {
+  const auth = getLocalAuth(req);
+  if (!auth) return null;
+  const accountRef = `local_${auth.sub}`;
+  const [guardian] = await db.select().from(guardiansTable).where(eq(guardiansTable.clerkUserId, accountRef));
   return guardian ?? null;
 }
 

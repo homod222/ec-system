@@ -1,5 +1,5 @@
 import { Link, Redirect } from 'wouter';
-import { useAuth, useUser } from '@clerk/react';
+import { useAuth } from '@/lib/auth-context';
 import { ArrowUpRight, Check, CalendarCheck, ShieldCheck, Sparkles, Star, ChevronRight, ChevronLeft } from 'lucide-react';
 import {
   getGetPublicSiteSettingsQueryKey,
@@ -163,8 +163,7 @@ function Pill({ children, tone = 'neutral' }: { children: React.ReactNode; tone?
 
 export function Landing() {
   const { dir, t } = useI18n();
-  const { isSignedIn } = useAuth(); 
-  const { user } = useUser();
+  const { isSignedIn, user } = useAuth();
   const session = useGetSessionContext({
     query: {
       enabled: Boolean(isSignedIn),
@@ -186,7 +185,7 @@ export function Landing() {
     ? publicGallery.data.map((item) => ({ src: item.imageUrl, alt: item.altText }))
     : galleryImages;
 
-  if (isSignedIn && user) {
+  if (isSignedIn) {
     if (session.isLoading) return <div className="grid min-h-[100dvh] place-items-center bg-background"><div className="h-12 w-12 animate-pulse rounded-2xl bg-primary/20" /></div>;
     if (session.data?.role === 'parent') {
       return <Redirect to="/parent" />;

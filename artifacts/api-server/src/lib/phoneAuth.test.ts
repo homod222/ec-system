@@ -8,7 +8,7 @@ vi.mock("@workspace/db", () => ({
   publicAuthAccountsTable: {},
   staffTable: {},
 }));
-vi.mock("@clerk/express", () => ({ clerkClient: {}, getAuth: vi.fn() }));
+vi.mock("./localAuth", () => ({ getLocalAuth: vi.fn(), hashPassword: vi.fn(), verifyPassword: vi.fn(), signJwt: vi.fn() }));
 vi.mock("./notifications", () => ({ sendWhatsAppOtp: vi.fn() }));
 
 describe("phone authentication", async () => {

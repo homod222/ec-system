@@ -1,6 +1,5 @@
-import { clerk } from '@clerk/testing/playwright';
 import { expect, test, type Page } from '@playwright/test';
-import { getGalleryRunIdentity } from './clerk-test-user';
+import { getGalleryRunIdentity, signInGalleryTestUser } from './test-user';
 
 const galleryIdentity = getGalleryRunIdentity();
 const png = Buffer.from(
@@ -9,8 +8,12 @@ const png = Buffer.from(
 );
 
 async function signInAsGalleryAdmin(page: Page) {
+  const { token, user } = await signInGalleryTestUser();
   await page.goto('/');
-  await clerk.signIn({ page, emailAddress: galleryIdentity.email });
+  await page.evaluate(({ t, u }) => {
+    localStorage.setItem('ec_jwt', t);
+    localStorage.setItem('ec_user', JSON.stringify(u));
+  }, { t: token, u: user });
   await page.goto('/site-gallery');
   await expect(page.getByRole('heading', { name: 'ألبوم الصور' })).toBeVisible();
 }

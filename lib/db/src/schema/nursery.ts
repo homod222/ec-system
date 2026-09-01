@@ -64,15 +64,17 @@ export const phoneOtpChallengesTable = pgTable("phone_otp_challenges", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-/** Public password accounts. Password material remains exclusively in Clerk. */
+/** Public password accounts. Passwords are stored as scrypt hashes. */
 export const publicAuthAccountsTable = pgTable("public_auth_accounts", {
   id: serial("id").primaryKey(),
   normalizedPhone: text("normalized_phone").notNull(),
-  clerkUserId: text("clerk_user_id").notNull(),
+  clerkUserId: text("clerk_user_id"),
   fullName: text("full_name").notNull(),
   email: text("email").notNull(),
+  passwordHash: text("password_hash"),
   accountType: text("account_type").notNull(),
   accountStatus: text("account_status").notNull().default("pending"),
+  role: text("role").notNull().default("pending"),
   ownerId: text("owner_id"),
   guardianId: integer("guardian_id"),
   staffId: integer("staff_id"),
@@ -80,7 +82,6 @@ export const publicAuthAccountsTable = pgTable("public_auth_accounts", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 }, (table) => [
   uniqueIndex("public_auth_accounts_normalized_phone_key").on(table.normalizedPhone),
-  uniqueIndex("public_auth_accounts_clerk_user_id_key").on(table.clerkUserId),
   uniqueIndex("public_auth_accounts_email_unique").on(sql`lower(${table.email})`),
 ]);
 

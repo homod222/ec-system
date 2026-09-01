@@ -1,9 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
-import { ClerkProvider, SignIn, useAuth, useClerk, useUser } from '@clerk/react';
-import { arSA, enUS } from '@clerk/localizations';
-import * as ClerkInternal from '@clerk/react/internal';
-import { shadcn } from '@clerk/themes';
 import {
   Activity as ActivityIcon, ArrowUpRight, Baby, BarChart3, Bell, BookOpen,
   CalendarCheck, Check, ChevronLeft, ChevronRight, CircleAlert, CircleDollarSign, Clock3,
@@ -52,15 +48,18 @@ import {
   requestRegistration,
   signInWithPassword,
   verifyRegistration,
-  type AuthTicketResponse,
+  type AuthTokenResponse,
   type RegistrationAccountType,
 } from '@/lib/auth-api';
+import { AuthProvider, useAuth, type AuthUser } from '@/lib/auth-context';
+import { setAuthTokenGetter } from '@workspace/api-client-react';
+import { getStoredToken } from '@/lib/auth-context';
 
 const queryClient = new QueryClient();
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
-const clerkKeyResolver = (ClerkInternal as unknown as { publishableKeyFromHost?: (host: string, key?: string) => string }).publishableKeyFromHost ?? ((_: string, key?: string) => key || '');
-const clerkPubKey = clerkKeyResolver(window.location.hostname, import.meta.env.VITE_CLERK_PUBLISHABLE_KEY);
-const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
+
+// Wire up the generated API client to include the JWT on every request
+setAuthTokenGetter(() => getStoredToken());
 
 const navItems = [
   { href: '/dashboard', label: 'nav.dashboard', icon: LayoutDashboard },
@@ -139,9 +138,7 @@ export function QueryState({ loading, error, empty, children, onRetry }: { loadi
 export function Shell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const [location] = useLocation();
-  const { user } = useUser();
-  const { isSignedIn } = useAuth();
-  const { signOut } = useClerk();
+  const { user, isSignedIn, signOut } = useAuth();
   const { dir, t } = useI18n();
   const session = useGetSessionContext({ query: { enabled: Boolean(isSignedIn), queryKey: getGetSessionContextQueryKey(), retry: false } });
   const visibleNavItems = navItems.filter((item) => item.href !== '/site-gallery' || session.data?.effectivePermissions?.includes('read:site-gallery'));
@@ -181,7 +178,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
         <div className="mt-auto space-y-1 pt-6 border-t border-sidebar-border">
           <LanguageSwitcher inverted className="mb-3 w-full justify-center" />
           <Link href="/settings" data-testid="link-nav-settings" className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-bold text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"><SettingsIcon size={18} />{t('admin.settings')}</Link>
-          <button data-testid="button-sign-out" onClick={() => signOut({ redirectUrl: basePath || '/' })} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-bold text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"><LogOut size={18} />{t('admin.signOut')}</button>
+          <button data-testid="button-sign-out" onClick={() => { signOut(); window.location.assign(basePath || '/'); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-bold text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"><LogOut size={18} />{t('admin.signOut')}</button>
         </div>
       </aside>
       
@@ -201,7 +198,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
               <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-destructive border-2 border-card" />
             </button>
             <div className="hidden text-start sm:block">
-               <p data-testid="text-user-name" className="text-sm font-bold text-foreground">{user?.firstName || t('admin.defaultUser')}</p>
+               <p data-testid="text-user-name" className="text-sm font-bold text-foreground">{user?.firstName?.split(/\s+/u)[0] || t('admin.defaultUser')}</p>
                <p className="text-[11px] font-medium text-muted-foreground">{t('admin.seniorManagement')}</p>
             </div>
              <img
@@ -210,7 +207,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
                data-testid="image-admin-mobile-logo"
                className="h-11 w-11 rounded-lg bg-white object-contain p-1 shadow-sm sm:hidden"
              />
-             <Avatar name={user?.firstName || t('admin.defaultUser')} className="hidden bg-primary text-primary-foreground sm:inline-flex" />
+             <Avatar name={user?.firstName?.split(/\s+/u)[0] || t('admin.defaultUser')} className="hidden bg-primary text-primary-foreground sm:inline-flex" />
           </div>
         </header>
         <div className="mx-auto max-w-[1500px] p-5 sm:p-8 lg:p-10 animate-rise">{children}</div>
@@ -256,7 +253,7 @@ export function StatCard({ icon: Icon, label, value, detail, tone = 'teal' }: { 
 
 function Dashboard() {
   const { t, formatDate, formatCurrency } = useI18n();
-  const { user } = useUser();
+  const { user } = useAuth();
   const summary = useGetDashboardSummary();
   const activity = useGetDashboardActivity();
   const data = summary.data;
@@ -608,7 +605,7 @@ function Protected({ children, allowedRole }: { children: React.ReactNode, allow
 }
 
 function AccessPending() {
-  const { signOut } = useClerk();
+  const { signOut } = useAuth();
   const { dir, t } = useI18n();
   return (
     <div dir={dir} className="grid min-h-[100dvh] place-items-center bg-background px-5">
@@ -616,7 +613,7 @@ function AccessPending() {
         <ShieldCheck className="mx-auto mb-5 text-primary" size={42} />
         <h1 data-testid="text-access-pending-title" className="text-2xl font-bold text-foreground">{t('auth.pendingTitle')}</h1>
         <p className="mt-3 text-sm leading-7 text-muted-foreground">{t('auth.pendingBody')}</p>
-        <Button data-testid="button-access-pending-sign-out" className="mt-7" onClick={() => signOut({ redirectUrl: basePath || '/' })}>{t('admin.signOut')}</Button>
+        <Button data-testid="button-access-pending-sign-out" className="mt-7" onClick={() => { signOut(); window.location.assign(basePath || '/'); }}>{t('admin.signOut')}</Button>
       </div>
     </div>
   );
@@ -631,11 +628,7 @@ function OwnerRecovery() {
   if (isSignedIn) {
     return <Redirect to="/dashboard" />;
   }
-  return (
-    <div className="grid min-h-[100dvh] place-items-center bg-background p-4">
-      <SignIn routing="path" path={`${basePath}/owner-recovery`} />
-    </div>
-  );
+  return <Redirect to="/sign-in" />;
 }
 
 function normalizeKuwaitPhone(value: string): string | null {
@@ -643,23 +636,26 @@ function normalizeKuwaitPhone(value: string): string | null {
   return /^[24569]\d{7}$/.test(digits) ? `+965${digits}` : null;
 }
 
-function routeForAuthResult(result: AuthTicketResponse): string {
+function routeForAuthResult(result: AuthTokenResponse): string {
   if (result.status === 'pending' || result.role === 'pending') return '/access-pending';
   if (result.accountType === 'guardian' || result.role === 'guardian' || result.role === 'parent') return '/parent';
   return '/dashboard';
 }
 
-async function activateTicket(clerk: ReturnType<typeof useClerk>, result: AuthTicketResponse) {
-  if (!clerk.loaded || !result.ticket) throw new Error('Authentication unavailable');
-  const attempt = await clerk.client.signIn.create({ strategy: 'ticket', ticket: result.ticket });
-  if (attempt.status !== 'complete' || !attempt.createdSessionId) throw new Error('Authentication incomplete');
-  await clerk.setActive({ session: attempt.createdSessionId });
+function handleAuthResult(signIn: (token: string, user: AuthUser) => void, result: AuthTokenResponse) {
+  signIn(result.token, {
+    id: String(result.accountId),
+    firstName: result.fullName?.split(/\s+/u)[0] || '',
+    role: result.role || 'pending',
+    ownerId: result.ownerId,
+    accountType: result.accountType,
+  });
   window.location.assign(`${basePath}${routeForAuthResult(result)}`);
 }
 
 function PhoneSignIn() {
   const { t } = useI18n();
-  const clerk = useClerk();
+  const { signIn } = useAuth();
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
@@ -675,7 +671,7 @@ function PhoneSignIn() {
     setBusy(true); setError('');
     try {
       const result = await signInWithPassword({ phone: normalizedPhone, password });
-      await activateTicket(clerk, result);
+      handleAuthResult(signIn, result);
     } catch {
       setError(t('auth.signInError'));
     } finally { setBusy(false); }
@@ -721,7 +717,7 @@ function PhoneSignIn() {
 
 function RegistrationForm() {
   const { t } = useI18n();
-  const clerk = useClerk();
+  const { signIn } = useAuth();
   const [accountType, setAccountType] = useState<RegistrationAccountType>('guardian');
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -767,7 +763,7 @@ function RegistrationForm() {
     setBusy(true); setError('');
     try {
       const result = await verifyRegistration({ challengeId, otp, password });
-      await activateTicket(clerk, result);
+      handleAuthResult(signIn, result);
     } catch (error) {
       setError(error instanceof AuthApiError && error.code === 'password_policy'
         ? t('auth.passwordInvalid')
@@ -925,73 +921,15 @@ function Router() {
   ); 
 }
 
-const appearance = { 
-  theme: shadcn, 
-  cssLayerName: 'clerk', 
-  options: { 
-    logoPlacement: 'inside' as const, 
-    logoLinkUrl: basePath || '/', 
-    logoImageUrl: `${window.location.origin}${basePath}/ec-official-logo-v2.png`
-  }, 
-  variables: { 
-    colorPrimary: '#165032', 
-    colorForeground: '#0f2416', 
-    colorMutedForeground: '#607d6a', 
-    colorDanger: '#a02c2c', 
-    colorBackground: '#fbfaf7', 
-    colorInput: '#ffffff', 
-    colorInputForeground: '#0f2416', 
-    colorNeutral: '#e6dccb', 
-    fontFamily: 'IBM Plex Sans Arabic', 
-    borderRadius: '1rem' 
-  }, 
-  elements: { 
-    rootBox: 'w-full flex justify-center', 
-    socialButtons: '!hidden',
-    cardBox: 'bg-card border border-border rounded-[2rem] w-full max-w-[460px] overflow-hidden shadow-2xl', 
-    card: '!shadow-none !border-0 !bg-transparent !p-8', 
-    footer: '!shadow-none !border-0 !bg-transparent !px-8 !pb-8 !pt-0', 
-    headerTitle: '!text-foreground !font-bold !text-2xl', 
-    headerSubtitle: '!text-muted-foreground !text-sm !mt-2', 
-    socialButtonsBlockButtonText: '!text-foreground !font-bold', 
-    formFieldLabel: '!text-foreground !font-bold !mb-2', 
-    footerActionLink: '!text-primary !font-bold hover:!underline', 
-    footerActionText: '!text-muted-foreground', 
-    dividerText: '!text-muted-foreground', 
-    formFieldInput: '!bg-background !text-foreground !border-input !h-12 !px-4 !font-medium focus:!ring-primary/20', 
-    formButtonPrimary: '!bg-primary !text-primary-foreground hover:!bg-primary/90 !h-12 !font-bold !text-base transition-all', 
-    socialButtonsBlockButton: '!border-input !bg-background hover:!bg-muted !h-12 transition-all', 
-    alertText: '!text-destructive !font-bold', 
-    main: '!bg-transparent' 
-  } 
-};
-
 function App() { 
-  const { locale, t } = useI18n();
-  const clerkLocalization = locale === 'ar' ? arSA : enUS;
-  const localization = {
-    ...clerkLocalization,
-    formFieldInputPlaceholder__emailAddress: t('auth.emailPlaceholder'),
-    socialButtonsBlockButton: t('auth.continueWith'),
-    signIn: { ...clerkLocalization.signIn, start: { ...clerkLocalization.signIn?.start, title: t('auth.signIn') } },
-    signUp: { ...clerkLocalization.signUp, start: { ...clerkLocalization.signUp?.start, title: t('auth.signUp') } },
-  };
   return (
     <WouterRouter base={basePath}>
-      <ClerkProvider 
-        publishableKey={clerkPubKey} 
-        proxyUrl={clerkProxyUrl} 
-        appearance={appearance} 
-        signInUrl={`${basePath}/sign-in`} 
-        signUpUrl={`${basePath}/sign-in`}
-        localization={localization}
-        routerPush={(to: string) => { window.history.pushState({}, '', to); window.dispatchEvent(new PopStateEvent('popstate')); }} 
-        routerReplace={(to: string) => { window.history.replaceState({}, '', to); window.dispatchEvent(new PopStateEvent('popstate')); }}>
+      <AuthProvider>
         <QueryClientProvider client={queryClient}>
           <Router />
           <Toaster />
         </QueryClientProvider>
-      </ClerkProvider>
+      </AuthProvider>
     </WouterRouter>
   ); 
 }

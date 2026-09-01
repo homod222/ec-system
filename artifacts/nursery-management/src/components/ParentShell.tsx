@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'wouter';
-import { useClerk, useUser } from '@clerk/react';
+import { useAuth } from '@/lib/auth-context';
 import { 
   Home, 
   Calendar, 
@@ -31,8 +31,7 @@ const parentNavItems = [
 export function ParentShell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const [location] = useLocation();
-  const { user } = useUser();
-  const { signOut } = useClerk();
+  const { user, signOut } = useAuth();
   const { dir, t } = useI18n();
 
   // Reassuring, warm styling for the parent portal
@@ -97,7 +96,7 @@ export function ParentShell({ children }: { children: React.ReactNode }) {
         </nav>
         
         <div className="mt-auto space-y-2 pt-6 border-t border-[#165032]/10">
-          <button data-testid="button-parent-sign-out" onClick={() => signOut({ redirectUrl: basePath || '/' })} className="flex w-full items-center gap-3.5 rounded-2xl px-4 py-3.5 text-sm font-bold text-red-600/80 hover:bg-red-50 hover:text-red-700 transition-colors">
+          <button data-testid="button-parent-sign-out" onClick={() => { signOut(); window.location.assign(basePath || '/'); }} className="flex w-full items-center gap-3.5 rounded-2xl px-4 py-3.5 text-sm font-bold text-red-600/80 hover:bg-red-50 hover:text-red-700 transition-colors">
             <LogOut size={20} />
             {t('admin.signOut')}
           </button>

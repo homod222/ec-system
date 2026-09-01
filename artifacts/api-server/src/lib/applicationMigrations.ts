@@ -1,5 +1,6 @@
 import { pool } from "@workspace/db";
 import { logger } from "./logger";
+import { hashPassword } from "./localAuth";
 
 export async function runApplicationMigrations(): Promise<void> {
   await pool.query(`
@@ -535,5 +536,67 @@ export async function runApplicationMigrations(): Promise<void> {
     CREATE UNIQUE INDEX IF NOT EXISTS guardians_owner_identity_key_unique
       ON guardians (owner_id, identity_key) WHERE identity_key IS NOT NULL
   `);
+  // ---------------------------------------------------------------------------
+  // Local auth migration: ensure public_auth_accounts has password_hash & role,
+  // and phone_otp_challenges has the registration columns.
+  // ---------------------------------------------------------------------------
+  await pool.query(`
+    ALTER TABLE phone_otp_challenges
+      ADD COLUMN IF NOT EXISTS full_name text,
+      ADD COLUMN IF NOT EXISTS email text,
+      ADD COLUMN IF NOT EXISTS account_type text;
+
+    CREATE TABLE IF NOT EXISTS public_auth_accounts (
+      id serial PRIMARY KEY,
+      normalized_phone text NOT NULL UNIQUE,
+      clerk_user_id text,
+      full_name text NOT NULL,
+      email text NOT NULL,
+      account_type text NOT NULL,
+      account_status text NOT NULL DEFAULT 'pending',
+      owner_id text,
+      guardian_id integer,
+      staff_id integer,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    );
+
+    ALTER TABLE public_auth_accounts
+      ADD COLUMN IF NOT EXISTS password_hash text,
+      ADD COLUMN IF NOT EXISTS role text NOT NULL DEFAULT 'pending';
+
+    ALTER TABLE public_auth_accounts
+      ALTER COLUMN clerk_user_id DROP NOT NULL;
+
+    DROP INDEX IF EXISTS public_auth_accounts_clerk_user_id_key;
+
+    CREATE UNIQUE INDEX IF NOT EXISTS public_auth_accounts_email_unique
+      ON public_auth_accounts (lower(email));
+  `);
+
+  // ---------------------------------------------------------------------------
+  // Seed default admin account (idempotent — skips if phone already exists)
+  // ---------------------------------------------------------------------------
+  const adminPhone = "96560607740";
+  const existing = await pool.query(
+    `SELECT id FROM public_auth_accounts WHERE normalized_phone = $1 LIMIT 1`,
+    [adminPhone],
+  );
+  if (existing.rows.length === 0) {
+    const pwHash = await hashPassword("60607740");
+    const ownerId = process.env.PUBLIC_SITE_OWNER_ID?.trim() || null;
+    const result = await pool.query(
+      `INSERT INTO public_auth_accounts
+        (normalized_phone, full_name, email, password_hash, account_type, account_status, role, owner_id)
+       VALUES ($1, $2, $3, $4, 'staff', 'active', 'admin', $5)
+       ON CONFLICT DO NOTHING
+       RETURNING id`,
+      [adminPhone, "Homod Ali Alnomasi", "homod222@hotmail.com", pwHash, ownerId],
+    );
+    if (result.rows.length > 0) {
+      logger.info({ accountId: result.rows[0].id }, "Default admin account created");
+    }
+  }
+
   logger.info("Application database migrations completed");
 }

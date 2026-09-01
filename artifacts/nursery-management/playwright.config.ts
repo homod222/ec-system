@@ -1,5 +1,5 @@
 import { defineConfig } from '@playwright/test';
-import { initializeGalleryRunIdentity } from './tests/e2e/clerk-test-user';
+import { initializeGalleryRunIdentity } from './tests/e2e/test-user';
 
 const apiPort = 5180;
 const galleryRunIdentity = initializeGalleryRunIdentity();
