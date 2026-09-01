@@ -78,15 +78,9 @@ function registrationResponseFloorMs() {
 }
 
 function normalizedDbPhone(column: typeof guardiansTable.phone | typeof staffTable.phone) {
-  return sql`
-    CASE
-      WHEN regexp_replace(${column}, '\\D', '', 'g') LIKE '00965%'
-        THEN '965' || substring(regexp_replace(${column}, '\\D', '', 'g') FROM 6)
-      WHEN regexp_replace(${column}, '\\D', '', 'g') LIKE '965%'
-        AND length(regexp_replace(${column}, '\\D', '', 'g')) > 8
-        THEN regexp_replace(${column}, '\\D', '', 'g')
-      ELSE '965' || ltrim(regexp_replace(${column}, '\\D', '', 'g'), '0')
-    END`;
+  // Extract last 8 digits (local Kuwait number) from the stored phone,
+  // then prepend '965' so it always matches the normalizeKuwaitPhone() output format.
+  return sql`'965' || right(regexp_replace(${column}, '\\D', '', 'g'), 8)`;
 }
 
 async function resolvePublicOwnerId(): Promise<string | null> {
