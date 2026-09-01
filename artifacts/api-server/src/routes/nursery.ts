@@ -978,7 +978,7 @@ router.get("/guardians/accounts", async (req, res): Promise<void> => {
   const { ownerId } = nurseryContext(req);
   const guardians = await db.select().from(guardiansTable).where(eq(guardiansTable.ownerId, ownerId));
   const accounts = await db.select().from(publicAuthAccountsTable)
-    .where(eq(publicAuthAccountsTable.accountType, "guardian"));
+    .where(and(eq(publicAuthAccountsTable.accountType, "guardian"), eq(publicAuthAccountsTable.ownerId, ownerId)));
   const accountsByGuardianId = new Map(accounts.filter((account) => account.guardianId !== null)
     .map((account) => [account.guardianId as number, account]));
   res.json(ListGuardianAccountsResponse.parse(guardians.map((guardian) =>

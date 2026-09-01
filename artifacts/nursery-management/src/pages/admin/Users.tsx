@@ -329,7 +329,7 @@ function ManualAccountDialog({ onClose }: { onClose: () => void }) {
           </Button>
         </form>
 
-        {createAccount.isError && <p className="mt-4 text-sm font-medium text-destructive">{t('usersPage.createError')}</p>}
+        {createAccount.isError && <p className="mt-4 text-sm font-medium text-destructive">{(createAccount.error as { data?: { error?: string } })?.data?.error || t('usersPage.createError')}</p>}
         {message && <p data-testid="text-create-account-result" className="mt-4 rounded-xl bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-800">{message}</p>}
       </div>
     </div>
