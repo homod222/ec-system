@@ -2617,6 +2617,9 @@ export type UpdateGuardianAccountMutationBody =
   BodyType<GuardianAccountUpdateInput>;
 export type UpdateGuardianAccountMutationError = ErrorType<void>;
 
+/**
+ * @summary Activate or disable a guardian's login account
+ */
 export const useUpdateGuardianAccount = <
   TError = ErrorType<void>,
   TContext = unknown,

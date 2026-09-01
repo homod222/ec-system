@@ -616,6 +616,23 @@ function AccessPending() {
     </div>
   );
 }
+
+function OwnerRecovery() {
+  const { isLoaded, isSignedIn } = useAuth();
+
+  if (!isLoaded) {
+    return <div className="grid min-h-[100dvh] place-items-center bg-background"><Skeleton className="h-32 w-32 rounded-3xl" /></div>;
+  }
+  if (isSignedIn) {
+    return <Redirect to="/dashboard" />;
+  }
+  return (
+    <div className="grid min-h-[100dvh] place-items-center bg-background p-4">
+      <SignIn routing="path" path={`${basePath}/owner-recovery`} />
+    </div>
+  );
+}
+
 function normalizeKuwaitPhone(value: string): string | null {
   const digits = value.replace(/\D/g, '').replace(/^965/, '');
   return /^[24569]\d{7}$/.test(digits) ? `+965${digits}` : null;
@@ -862,11 +879,7 @@ function Router() {
         <Route path="/sign-up/*?" component={SignUpPage} />
         <Route path="/register/*?" component={SignUpPage} />
         <Route path="/staff-password-reset" component={StaffPasswordReset} />
-        <Route path="/owner-recovery/*?" component={() => (
-          <div className="grid min-h-[100dvh] place-items-center bg-background p-4">
-            <SignIn routing="path" path={`${basePath}/owner-recovery`} />
-          </div>
-        )} />
+        <Route path="/owner-recovery/*?" component={OwnerRecovery} />
         <Route path="/access-pending"><Protected><AccessPending /></Protected></Route>
 
         {/* Parent Portal Routes */}
