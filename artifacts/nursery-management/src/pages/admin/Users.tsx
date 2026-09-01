@@ -6,6 +6,8 @@ import {
   useListGuardianAccounts,
   useListStaff,
   useUpdateGuardianAccount,
+  useUpdateStaff,
+  useDeleteStaff,
 } from '@workspace/api-client-react';
 import type { GuardianAccountResult, StaffMember } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -306,7 +308,10 @@ function DeleteGuardianDialog({ account, onClose, onDeleted }: { account: Guardi
 function StaffTab({ search }: { search: string }) {
   const { t, formatNumber } = useI18n();
   const query = useListStaff();
+  const queryClient = useQueryClient();
   const [accountMember, setAccountMember] = useState<StaffMember | null>(null);
+  const [editMember, setEditMember] = useState<StaffMember | null>(null);
+  const [deleteMember, setDeleteMember] = useState<StaffMember | null>(null);
   const staff = (query.data || []).filter((member) => member.name.includes(search));
 
   return (
@@ -344,7 +349,21 @@ function StaffTab({ search }: { search: string }) {
               <div className="text-sm font-medium text-muted-foreground">
                 {formatNumber(member.attendanceRate / 100, { style: 'percent', maximumFractionDigits: 0 })}
               </div>
-              <div>
+              <div className="flex gap-2">
+                <Button
+                  variant="ghost"
+                  className="!px-2 !py-2"
+                  onClick={() => setEditMember(member)}
+                >
+                  <Pencil size={16} />
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="!px-2 !py-2 text-destructive hover:text-destructive"
+                  onClick={() => setDeleteMember(member)}
+                >
+                  <Trash2 size={16} />
+                </Button>
                 <Button
                   data-testid={`button-user-account-staff-${member.id}`}
                   variant={member.accountStatus === 'pending_verification' ? 'soft' : 'ghost'}
@@ -360,7 +379,109 @@ function StaffTab({ search }: { search: string }) {
       </QueryState>
 
       {accountMember && <StaffAccountDialog member={accountMember} onClose={() => setAccountMember(null)} />}
+
+      {editMember && (
+        <EditStaffDialog
+          member={editMember}
+          onClose={() => setEditMember(null)}
+          onSaved={() => { setEditMember(null); queryClient.invalidateQueries({ queryKey: getListStaffQueryKey() }); }}
+        />
+      )}
+
+      {deleteMember && (
+        <DeleteStaffDialog
+          member={deleteMember}
+          onClose={() => setDeleteMember(null)}
+          onDeleted={() => { setDeleteMember(null); queryClient.invalidateQueries({ queryKey: getListStaffQueryKey() }); }}
+        />
+      )}
     </>
+  );
+}
+
+function EditStaffDialog({ member, onClose, onSaved }: { member: StaffMember; onClose: () => void; onSaved: () => void }) {
+  const { t } = useI18n();
+  const [name, setName] = useState(member.name);
+  const [phone, setPhone] = useState(member.phone);
+  const [email, setEmail] = useState(member.email || '');
+  const updateStaff = useUpdateStaff();
+  const [error, setError] = useState('');
+
+  const handleSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
+    setError('');
+    updateStaff.mutate(
+      { id: member.id, data: { name: name.trim(), phone: phone.trim(), email: email.trim() || null, role: member.role, status: member.status as 'present' | 'absent' | 'leave' } },
+      { onSuccess: () => onSaved(), onError: () => setError(t('usersPage.updateError')) },
+    );
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-primary/40 p-4 backdrop-blur-md">
+      <div className="w-full max-w-lg rounded-[2rem] bg-card p-8 shadow-2xl">
+        <div className="mb-5 flex items-start justify-between">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-widest text-primary">{t('usersPage.editStaffTitle')}</p>
+            <h2 className="mt-1 text-xl font-bold">{member.name}</h2>
+          </div>
+          <Button type="button" variant="ghost" onClick={onClose} className="!p-2"><X /></Button>
+        </div>
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <label className="block text-sm font-bold">{t('usersPage.name')}
+            <input required type="text" value={name} onChange={(e) => setName(e.target.value)}
+              className="mt-2 w-full rounded-xl border border-input bg-background px-4 py-3" />
+          </label>
+          <label className="block text-sm font-bold">{t('usersPage.phone')}
+            <input required type="tel" value={phone} onChange={(e) => setPhone(e.target.value)}
+              className="mt-2 w-full rounded-xl border border-input bg-background px-4 py-3" />
+          </label>
+          <label className="block text-sm font-bold">{t('usersPage.email')}
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+              className="mt-2 w-full rounded-xl border border-input bg-background px-4 py-3" />
+          </label>
+          <Button type="submit" disabled={updateStaff.isPending} className="w-full">
+            {updateStaff.isPending ? t('common.loading') : t('usersPage.saveChanges')}
+          </Button>
+          {error && <p className="text-sm font-medium text-destructive">{error}</p>}
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function DeleteStaffDialog({ member, onClose, onDeleted }: { member: StaffMember; onClose: () => void; onDeleted: () => void }) {
+  const { t } = useI18n();
+  const deleteStaff = useDeleteStaff();
+  const [error, setError] = useState('');
+
+  const handleDelete = () => {
+    setError('');
+    deleteStaff.mutate(
+      { id: member.id },
+      { onSuccess: () => onDeleted(), onError: () => setError(t('usersPage.deleteStaffError')) },
+    );
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-primary/40 p-4 backdrop-blur-md">
+      <div className="w-full max-w-md rounded-[2rem] bg-card p-8 shadow-2xl">
+        <div className="mb-5 flex items-start justify-between">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-widest text-destructive">{t('usersPage.deleteStaffTitle')}</p>
+            <h2 className="mt-1 text-xl font-bold">{member.name}</h2>
+          </div>
+          <Button type="button" variant="ghost" onClick={onClose} className="!p-2"><X /></Button>
+        </div>
+        <p className="mb-6 text-sm text-muted-foreground">{t('usersPage.deleteStaffConfirm')}</p>
+        <div className="flex gap-3">
+          <Button variant="ghost" onClick={onClose} className="flex-1">{t('common.cancel')}</Button>
+          <Button variant="danger" disabled={deleteStaff.isPending} onClick={handleDelete} className="flex-1">
+            {deleteStaff.isPending ? t('common.loading') : t('common.delete')}
+          </Button>
+        </div>
+        {error && <p className="mt-3 text-sm font-medium text-destructive">{error}</p>}
+      </div>
+    </div>
   );
 }
 
