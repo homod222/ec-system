@@ -58,7 +58,11 @@ export function Users() {
 }
 
 function statusTone(status: GuardianAccountResult['accountStatus']) {
-  return status === 'active' ? 'green' as const : status === 'disabled' ? 'red' as const : 'neutral' as const;
+  return status === 'active'
+    ? 'green' as const
+    : status === 'disabled'
+      ? 'red' as const
+      : status === 'pending' ? 'blue' as const : 'neutral' as const;
 }
 
 function GuardiansTab({ search }: { search: string }) {
@@ -108,7 +112,7 @@ function GuardiansTab({ search }: { search: string }) {
             <div className="flex gap-2">
               {account.accountStatus === 'unlinked' ? (
                 <span className="text-muted-foreground">—</span>
-              ) : account.accountStatus === 'disabled' ? (
+              ) : account.accountStatus === 'disabled' || account.accountStatus === 'pending' ? (
                 <Button
                   data-testid={`button-activate-guardian-${account.guardianId}`}
                   variant="soft"

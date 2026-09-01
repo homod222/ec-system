@@ -15,7 +15,7 @@ export interface PublicRegistrationVerify {
   /** @pattern ^\d{6}$ */
   otp: string;
   /**
-     * @minLength 8
+     * @minLength 15
      * @maxLength 128
      */
   password: string;

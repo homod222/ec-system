@@ -48,6 +48,7 @@ import { SiteGallery } from './pages/admin/SiteGallery';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { useI18n, type Locale, type TranslationKey } from '@/i18n';
 import {
+  AuthApiError,
   requestRegistration,
   signInWithPassword,
   verifyRegistration,
@@ -755,7 +756,7 @@ function RegistrationForm() {
 
   const completeRegistration = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (password.length < 8) {
+    if (password.length < 15) {
       setError(t('auth.passwordInvalid'));
       return;
     }
@@ -767,8 +768,12 @@ function RegistrationForm() {
     try {
       const result = await verifyRegistration({ challengeId, otp, password });
       await activateTicket(clerk, result);
-    } catch {
-      setError(t('auth.registrationVerifyError'));
+    } catch (error) {
+      setError(error instanceof AuthApiError && error.code === 'password_policy'
+        ? t('auth.passwordInvalid')
+        : error instanceof AuthApiError && error.code === 'email_exists'
+          ? t('auth.emailAlreadyRegistered')
+          : t('auth.registrationVerifyError'));
     } finally { setBusy(false); }
   };
 
@@ -818,11 +823,11 @@ function RegistrationForm() {
               className="mt-2 w-full rounded-xl border border-input bg-background px-4 py-3 text-center font-mono text-2xl tracking-[.45em] outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" dir="ltr" />
           </label>
           <label className="block text-sm font-bold">{t('auth.password')}
-            <input required minLength={8} type="password" autoComplete="new-password" value={password} onChange={event => setPassword(event.target.value)}
+            <input required minLength={15} type="password" autoComplete="new-password" value={password} onChange={event => setPassword(event.target.value)}
               className="mt-2 w-full rounded-xl border border-input bg-background px-4 py-3 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
           </label>
           <label className="block text-sm font-bold">{t('auth.confirmPassword')}
-            <input required minLength={8} type="password" autoComplete="new-password" value={confirmation} onChange={event => setConfirmation(event.target.value)}
+            <input required minLength={15} type="password" autoComplete="new-password" value={confirmation} onChange={event => setConfirmation(event.target.value)}
               className="mt-2 w-full rounded-xl border border-input bg-background px-4 py-3 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
           </label>
           <Button className="w-full" disabled={busy || otp.length !== 6}>{busy ? t('common.loading') : t('auth.completeRegistration')}</Button>

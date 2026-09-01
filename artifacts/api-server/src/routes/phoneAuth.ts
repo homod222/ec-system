@@ -76,6 +76,19 @@ function registrationResponseFloorMs() {
   return process.env.NODE_ENV === "test" ? 20 : DEFAULT_REGISTRATION_RESPONSE_FLOOR_MS;
 }
 
+function clerkRegistrationErrorCode(error: unknown): string | null {
+  if (typeof error !== "object" || error === null || !("errors" in error)) return null;
+  const errors = (error as { errors?: unknown }).errors;
+  if (!Array.isArray(errors)) return null;
+  for (const item of errors) {
+    if (typeof item === "object" && item !== null && "code" in item && typeof item.code === "string") {
+      if (item.code.includes("password")) return "password_policy";
+      if (item.code.includes("identifier") || item.code.includes("email")) return "email_exists";
+    }
+  }
+  return "identity_provider_rejected";
+}
+
 async function resolveIdentity(phone: string): Promise<Identity | null> {
   const owners = await db.select().from(phoneLoginIdentitiesTable)
     .where(eq(phoneLoginIdentitiesTable.normalizedPhone, phone));
@@ -425,9 +438,28 @@ export function createPhoneAuthRouter(sender: Sender = defaultSender): IRouter {
           sql`${phoneOtpChallengesTable.consumedAt} is not null`,
           sql`${phoneOtpChallengesTable.expiresAt} > now()`,
         ));
+        const clerkErrorCode = clerkRegistrationErrorCode(error);
+        if (clerkErrorCode === "password_policy") {
+          return void res.status(400).json({
+            code: clerkErrorCode,
+            error: "Password must be at least 15 characters and must not be compromised",
+          });
+        }
+        if (clerkErrorCode === "email_exists") {
+          return void res.status(409).json({
+            code: clerkErrorCode,
+            error: "Email is already registered",
+          });
+        }
+        if (clerkErrorCode) {
+          return void res.status(422).json({
+            code: clerkErrorCode,
+            error: "The identity provider rejected the registration",
+          });
+        }
         throw error;
       }
-      let status: "active" | "pending" = "pending";
+      const status = "pending" as const;
       let ownerId: string | null = null;
       let guardianId: number | null = null;
       let staffId: number | null = null;
@@ -442,7 +474,6 @@ export function createPhoneAuthRouter(sender: Sender = defaultSender): IRouter {
           if (!linked) {
             throw new Error("Guardian record was linked concurrently");
           }
-          status = "active";
           ownerId = linked.ownerId;
           guardianId = linked.id;
         } else {
@@ -492,9 +523,7 @@ export function createPhoneAuthRouter(sender: Sender = defaultSender): IRouter {
           staffId,
         });
         await clerkClient.users.updateUserMetadata(created.id, {
-          publicMetadata: status === "active"
-            ? { role: "parent", ownerId, accountStatus: "active" }
-            : { role: "pending", accountStatus: "pending" },
+          publicMetadata: { role: "pending", ownerId, accountStatus: "pending" },
           privateMetadata: staffId ? { staffId } : {},
         });
       } catch (error) {

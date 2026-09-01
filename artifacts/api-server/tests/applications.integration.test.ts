@@ -747,7 +747,7 @@ describe.sequential("application registration regression flow", () => {
       await request(app).post("/api/auth/register/verify").send({
         challengeId,
         otp,
-        password: "safe-password",
+        password: "safe-password-123",
       }).expect(409);
     } finally {
       delete process.env.PUBLIC_SITE_OWNER_ID;

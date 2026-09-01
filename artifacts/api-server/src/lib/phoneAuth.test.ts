@@ -73,8 +73,13 @@ describe("replacement authentication contracts", async () => {
     expect(VerifyPublicRegistrationBody.safeParse({
       challengeId: "12345678-1234-1234-1234-123456789012",
       otp: "123456",
-      password: "safe-password",
+      password: "safe-password-123",
     }).success).toBe(true);
+    expect(VerifyPublicRegistrationBody.safeParse({
+      challengeId: "12345678-1234-1234-1234-123456789012",
+      otp: "123456",
+      password: "12345678",
+    }).success).toBe(false);
   });
 
   it("requires phone and password for subsequent sign-in", () => {

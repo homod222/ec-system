@@ -807,7 +807,9 @@ function guardianAccountResponse(
     clerkUserId: guardian.clerkUserId,
     accountStatus: !guardian.clerkUserId
       ? "unlinked" as const
-      : account?.accountStatus === "disabled" ? "disabled" as const : "active" as const,
+      : account?.accountStatus === "pending"
+        ? "pending" as const
+        : account?.accountStatus === "disabled" ? "disabled" as const : "active" as const,
   };
 }
 

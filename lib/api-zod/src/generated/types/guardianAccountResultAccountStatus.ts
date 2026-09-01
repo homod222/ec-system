@@ -11,6 +11,7 @@ export type GuardianAccountResultAccountStatus = typeof GuardianAccountResultAcc
 
 export const GuardianAccountResultAccountStatus = {
   unlinked: 'unlinked',
+  pending: 'pending',
   active: 'active',
   disabled: 'disabled',
 } as const;

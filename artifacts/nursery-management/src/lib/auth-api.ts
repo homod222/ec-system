@@ -34,11 +34,13 @@ export interface AuthTicketResponse {
 
 export class AuthApiError extends Error {
   readonly status: number;
+  readonly code?: string;
 
-  constructor(status: number) {
+  constructor(status: number, code?: string) {
     super('Authentication request failed');
     this.name = 'AuthApiError';
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -50,7 +52,8 @@ async function postJson<TResponse, TInput>(path: string, input: TInput): Promise
   });
 
   if (!response.ok) {
-    throw new AuthApiError(response.status);
+    const data = await response.json().catch(() => null) as { code?: unknown } | null;
+    throw new AuthApiError(response.status, typeof data?.code === 'string' ? data.code : undefined);
   }
 
   return response.json() as Promise<TResponse>;

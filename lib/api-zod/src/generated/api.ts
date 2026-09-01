@@ -45,7 +45,7 @@ export const RequestPublicRegistrationResponse = zod.object({
 export const verifyPublicRegistrationBodyChallengeIdMin = 32;
 export const verifyPublicRegistrationBodyChallengeIdMax = 64;
 export const verifyPublicRegistrationBodyOtpRegExp = new RegExp("^\\d{6}$");
-export const verifyPublicRegistrationBodyPasswordMin = 8;
+export const verifyPublicRegistrationBodyPasswordMin = 15;
 export const verifyPublicRegistrationBodyPasswordMax = 128;
 export const VerifyPublicRegistrationBody = zod.object({
   challengeId: zod
@@ -753,7 +753,7 @@ export const ListGuardianAccountsResponseItem = zod.object({
   phone: zod.string(),
   email: zod.string().nullish(),
   clerkUserId: zod.string().nullable(),
-  accountStatus: zod.enum(["unlinked", "active", "disabled"]),
+  accountStatus: zod.enum(["unlinked", "pending", "active", "disabled"]),
 });
 export const ListGuardianAccountsResponse = zod.array(
   ListGuardianAccountsResponseItem,
@@ -773,7 +773,7 @@ export const UpdateGuardianAccountResponse = zod.object({
   phone: zod.string(),
   email: zod.string().nullish(),
   clerkUserId: zod.string().nullable(),
-  accountStatus: zod.enum(["unlinked", "active", "disabled"]),
+  accountStatus: zod.enum(["unlinked", "pending", "active", "disabled"]),
 });
 /**
  * @summary List classrooms

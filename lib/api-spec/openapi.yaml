@@ -1723,7 +1723,7 @@ components:
       properties:
         challengeId: { type: string, minLength: 32, maxLength: 64 }
         otp: { type: string, pattern: '^\d{6}$' }
-        password: { type: string, minLength: 8, maxLength: 128 }
+        password: { type: string, minLength: 15, maxLength: 128 }
     PublicRegistrationChallenge:
       type: object
       required: [challengeId, expiresInSeconds]
@@ -2003,7 +2003,7 @@ components:
         clerkUserId: { type: ["string", "null"] }
         accountStatus:
           type: string
-          enum: [unlinked, active, disabled]
+          enum: [unlinked, pending, active, disabled]
     GuardianAccountUpdateInput:
       type: object
       required: [status]
