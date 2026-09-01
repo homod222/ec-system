@@ -728,6 +728,13 @@ function RegistrationForm() {
   const [confirmation, setConfirmation] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [resendCountdown, setResendCountdown] = useState(0);
+
+  useEffect(() => {
+    if (resendCountdown <= 0) return;
+    const timer = setTimeout(() => setResendCountdown(resendCountdown - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [resendCountdown]);
 
   const requestOtp = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -745,6 +752,7 @@ function RegistrationForm() {
       const result = await requestRegistration({ phone: normalizedPhone, fullName: fullName.trim(), email: email.trim(), accountType });
       if (!result.challengeId) throw new Error('Missing challenge');
       setChallengeId(result.challengeId);
+      setResendCountdown(60);
     } catch {
       setError(t('auth.registrationRequestError'));
     } finally { setBusy(false); }
@@ -827,7 +835,19 @@ function RegistrationForm() {
               className="mt-2 w-full rounded-xl border border-input bg-background px-4 py-3 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
           </label>
           <Button className="w-full" disabled={busy || otp.length !== 6}>{busy ? t('common.loading') : t('auth.completeRegistration')}</Button>
-          <button type="button" onClick={() => { setChallengeId(''); setOtp(''); setPassword(''); setConfirmation(''); setError(''); }} className="w-full text-sm font-bold text-primary hover:underline">{t('auth.changeDetails')}</button>
+          <button type="button" disabled={busy || resendCountdown > 0} onClick={async () => {
+            const normalizedPhone = normalizeKuwaitPhone(phone);
+            if (!normalizedPhone) return;
+            setBusy(true); setError('');
+            try {
+              const result = await requestRegistration({ phone: normalizedPhone, fullName: fullName.trim(), email: email.trim(), accountType });
+              if (result.challengeId) { setChallengeId(result.challengeId); setOtp(''); }
+              setResendCountdown(60);
+            } catch { setError(t('auth.resendOtpError')); } finally { setBusy(false); }
+          }} className="w-full text-sm font-bold text-primary hover:underline disabled:text-muted-foreground disabled:no-underline">
+            {resendCountdown > 0 ? t('auth.resendOtpCountdown', { seconds: String(resendCountdown) }) : t('auth.resendOtp')}
+          </button>
+          <button type="button" onClick={() => { setChallengeId(''); setOtp(''); setPassword(''); setConfirmation(''); setError(''); setResendCountdown(0); }} className="w-full text-sm font-bold text-primary hover:underline">{t('auth.changeDetails')}</button>
         </form>
       )}
       {error && <p role="alert" className="mt-4 text-center text-sm font-bold text-destructive">{error}</p>}
