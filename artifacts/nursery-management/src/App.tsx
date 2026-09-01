@@ -756,7 +756,7 @@ function RegistrationForm() {
 
   const completeRegistration = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (password.length < 15) {
+    if (password.length < 4 || password.length > 15) {
       setError(t('auth.passwordInvalid'));
       return;
     }
@@ -823,11 +823,11 @@ function RegistrationForm() {
               className="mt-2 w-full rounded-xl border border-input bg-background px-4 py-3 text-center font-mono text-2xl tracking-[.45em] outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" dir="ltr" />
           </label>
           <label className="block text-sm font-bold">{t('auth.password')}
-            <input required minLength={15} type="password" autoComplete="new-password" value={password} onChange={event => setPassword(event.target.value)}
+            <input required minLength={4} maxLength={15} type="password" autoComplete="new-password" value={password} onChange={event => setPassword(event.target.value)}
               className="mt-2 w-full rounded-xl border border-input bg-background px-4 py-3 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
           </label>
           <label className="block text-sm font-bold">{t('auth.confirmPassword')}
-            <input required minLength={15} type="password" autoComplete="new-password" value={confirmation} onChange={event => setConfirmation(event.target.value)}
+            <input required minLength={4} maxLength={15} type="password" autoComplete="new-password" value={confirmation} onChange={event => setConfirmation(event.target.value)}
               className="mt-2 w-full rounded-xl border border-input bg-background px-4 py-3 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
           </label>
           <Button className="w-full" disabled={busy || otp.length !== 6}>{busy ? t('common.loading') : t('auth.completeRegistration')}</Button>

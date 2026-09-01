@@ -1723,7 +1723,7 @@ components:
       properties:
         challengeId: { type: string, minLength: 32, maxLength: 64 }
         otp: { type: string, pattern: '^\d{6}$' }
-        password: { type: string, minLength: 15, maxLength: 128 }
+        password: { type: string, minLength: 4, maxLength: 15 }
     PublicRegistrationChallenge:
       type: object
       required: [challengeId, expiresInSeconds]
@@ -1745,7 +1745,7 @@ components:
       additionalProperties: false
       properties:
         phone: { type: string, minLength: 8, maxLength: 30 }
-        password: { type: string, minLength: 8, maxLength: 128 }
+        password: { type: string, minLength: 4, maxLength: 15 }
     PhoneLoginRequest:
       type: object
       required: [phone]
@@ -2109,7 +2109,7 @@ components:
       properties:
         staffId: { type: integer, minimum: 1 }
         token: { type: string, minLength: 32, maxLength: 256 }
-        password: { type: string, minLength: 8, maxLength: 128 }
+        password: { type: string, minLength: 4, maxLength: 15 }
     StaffPasswordResetCompleteResult:
       type: object
       required: [updated]

@@ -52,7 +52,7 @@ export function StaffPasswordReset() {
               <label className="mt-6 block text-sm font-bold text-emerald-950">{t('passwordReset.password')}
                 <div className="relative mt-2">
                   <LockKeyhole className="absolute right-3 top-3.5 text-emerald-800/50" size={18} />
-                  <input autoComplete="new-password" data-testid="input-reset-password" type="password" required minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} className="w-full rounded-xl border border-emerald-900/15 bg-white py-3 pl-4 pr-10 outline-none focus:border-emerald-600" />
+                  <input autoComplete="new-password" data-testid="input-reset-password" type="password" required minLength={4} maxLength={15} value={password} onChange={(event) => setPassword(event.target.value)} className="w-full rounded-xl border border-emerald-900/15 bg-white py-3 pl-4 pr-10 outline-none focus:border-emerald-600" />
                 </div>
               </label>
             ) : (

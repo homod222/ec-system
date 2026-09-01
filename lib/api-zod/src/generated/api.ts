@@ -45,8 +45,8 @@ export const RequestPublicRegistrationResponse = zod.object({
 export const verifyPublicRegistrationBodyChallengeIdMin = 32;
 export const verifyPublicRegistrationBodyChallengeIdMax = 64;
 export const verifyPublicRegistrationBodyOtpRegExp = new RegExp("^\\d{6}$");
-export const verifyPublicRegistrationBodyPasswordMin = 15;
-export const verifyPublicRegistrationBodyPasswordMax = 128;
+export const verifyPublicRegistrationBodyPasswordMin = 4;
+export const verifyPublicRegistrationBodyPasswordMax = 15;
 export const VerifyPublicRegistrationBody = zod.object({
   challengeId: zod
     .string()
@@ -68,8 +68,8 @@ export const VerifyPublicRegistrationResponse = zod.object({
  */
 export const signInWithPhonePasswordBodyPhoneMin = 8;
 export const signInWithPhonePasswordBodyPhoneMax = 30;
-export const signInWithPhonePasswordBodyPasswordMin = 8;
-export const signInWithPhonePasswordBodyPasswordMax = 128;
+export const signInWithPhonePasswordBodyPasswordMin = 4;
+export const signInWithPhonePasswordBodyPasswordMax = 15;
 export const SignInWithPhonePasswordBody = zod.object({
   phone: zod
     .string()
@@ -934,8 +934,8 @@ export const RequestStaffPasswordResetResponse = zod.object({
 });
 export const completeStaffPasswordResetBodyTokenMin = 32;
 export const completeStaffPasswordResetBodyTokenMax = 256;
-export const completeStaffPasswordResetBodyPasswordMin = 8;
-export const completeStaffPasswordResetBodyPasswordMax = 128;
+export const completeStaffPasswordResetBodyPasswordMin = 4;
+export const completeStaffPasswordResetBodyPasswordMax = 15;
 export const CompleteStaffPasswordResetBody = zod.object({
   staffId: zod.number().int().min(1),
   token: zod
