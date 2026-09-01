@@ -227,6 +227,7 @@ async function tenantLocalPrincipals(ownerId: string) {
     id: publicAuthAccountsTable.id,
     fullName: publicAuthAccountsTable.fullName,
     role: publicAuthAccountsTable.role,
+    accountType: publicAuthAccountsTable.accountType,
   }).from(publicAuthAccountsTable).where(and(
     eq(publicAuthAccountsTable.ownerId, ownerId),
     sql`${publicAuthAccountsTable.accountStatus} != 'disabled'`,
@@ -234,7 +235,7 @@ async function tenantLocalPrincipals(ownerId: string) {
   return accounts.map((account) => ({
     userId: String(account.id),
     label: account.fullName || "مستخدم معروف",
-    role: (account.role || "staff").toLowerCase(),
+    role: account.accountType === "guardian" ? "parent" : (account.role || "staff").toLowerCase(),
   }));
 }
 
@@ -912,25 +913,8 @@ router.get("/permission-principals", async (req, res): Promise<void> => {
     res.status(403).json({ error: "Administrative access required" });
     return;
   }
-  const [localPrincipals, linkedStaff, guardians] = await Promise.all([
-    tenantLocalPrincipals(ownerId),
-    db.select({
-      userId: staffTable.clerkUserId,
-      label: staffTable.name,
-      role: staffTable.role,
-    }).from(staffTable).where(and(
-      eq(staffTable.ownerId, ownerId),
-      eq(staffTable.accountStatus, "active"),
-      sql`${staffTable.clerkUserId} is not null`,
-    )),
-    db.select({ userId: guardiansTable.clerkUserId, label: guardiansTable.name })
-      .from(guardiansTable).where(and(eq(guardiansTable.ownerId, ownerId), sql`${guardiansTable.clerkUserId} is not null`)),
-  ]);
-  const principals = [{ userId: ownerId, label: "مالك الحضانة", role: "owner" }, ...linkedStaff
-    .filter((member): member is { userId: string; label: string; role: string } => Boolean(member.userId))
-    .map((member) => ({ ...member, role: member.role.toLowerCase() })), ...localPrincipals, ...guardians
-    .filter((guardian): guardian is { userId: string; label: string } => Boolean(guardian.userId))
-    .map((guardian) => ({ userId: guardian.userId, label: guardian.label || "مستخدم معروف", role: "parent" }))];
+  const localPrincipals = await tenantLocalPrincipals(ownerId);
+  const principals = [{ userId: ownerId, label: "مالك الحضانة", role: "owner" }, ...localPrincipals];
   res.json(ListPermissionPrincipalsResponse.parse(Array.from(new Map(principals.map((principal) => [principal.userId, principal])).values())));
 });
 

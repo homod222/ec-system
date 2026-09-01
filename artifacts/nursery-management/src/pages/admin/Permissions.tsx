@@ -474,7 +474,27 @@ export function Permissions() {
                      className="flex-1 bg-background border rounded-xl px-4 py-2.5 text-sm font-medium outline-none focus:border-primary transition-all shadow-sm"
                    >
                      <option value="">{t('permissions.selectUser')}</option>
-                     {(principals.data || []).map((principal) => <option key={principal.userId} value={principal.userId}>{principal.label}</option>)}
+                     {(() => {
+                       const all = principals.data || [];
+                       const owner = all.filter((p) => p.role === 'owner');
+                       const staff = all.filter((p) => p.role !== 'owner' && p.role !== 'parent');
+                       const parents = all.filter((p) => p.role === 'parent');
+                       return (
+                         <>
+                           {owner.map((p) => <option key={p.userId} value={p.userId}>{p.label}</option>)}
+                           {staff.length > 0 && (
+                             <optgroup label={t('usersPage.tabStaff')}>
+                               {staff.map((p) => <option key={p.userId} value={p.userId}>{p.label} — {roleName(p.role, t)}</option>)}
+                             </optgroup>
+                           )}
+                           {parents.length > 0 && (
+                             <optgroup label={t('usersPage.tabGuardians')}>
+                               {parents.map((p) => <option key={p.userId} value={p.userId}>{p.label}</option>)}
+                             </optgroup>
+                           )}
+                         </>
+                       );
+                     })()}
                    </select>
                  </div>
                </div>
