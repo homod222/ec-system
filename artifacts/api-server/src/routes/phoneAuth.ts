@@ -442,7 +442,7 @@ export function createPhoneAuthRouter(sender: Sender = defaultSender): IRouter {
         if (clerkErrorCode === "password_policy") {
           return void res.status(400).json({
             code: clerkErrorCode,
-            error: "Password must be at least 15 characters and must not be compromised",
+            error: "Password must be 4–15 characters",
           });
         }
         if (clerkErrorCode === "email_exists") {

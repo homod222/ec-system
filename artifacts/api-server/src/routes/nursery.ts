@@ -1016,7 +1016,7 @@ router.patch("/guardians/:id/account", async (req, res): Promise<void> => {
   });
   const [account] = await db.update(publicAuthAccountsTable).set({
     accountStatus: status,
-    ownerId: status === "active" ? ownerId : null,
+    ownerId,
   }).where(eq(publicAuthAccountsTable.clerkUserId, guardian.clerkUserId)).returning();
   await auditNurseryOperation(req, "update-guardian-account", "guardian-account", String(guardian.id),
     { accountStatus: account ? (status === "active" ? "disabled" : "active") : null },

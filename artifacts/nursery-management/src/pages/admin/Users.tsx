@@ -282,6 +282,7 @@ function ManualAccountDialog({ onClose }: { onClose: () => void }) {
             <input
               required
               type="tel"
+              autoComplete="tel"
               value={phone}
               onChange={(event) => setPhone(event.target.value)}
               placeholder="96550001234"
@@ -293,6 +294,7 @@ function ManualAccountDialog({ onClose }: { onClose: () => void }) {
             <input
               required
               type="password"
+              autoComplete="new-password"
               minLength={4}
               maxLength={15}
               value={password}
