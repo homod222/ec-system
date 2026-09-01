@@ -1,13 +1,15 @@
 import { useState } from 'react';
 import {
   getListGuardianAccountsQueryKey,
+  getListStaffQueryKey,
+  useAdminCreateAccount,
   useListGuardianAccounts,
   useListStaff,
   useUpdateGuardianAccount,
 } from '@workspace/api-client-react';
 import type { GuardianAccountResult, StaffMember } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
-import { KeyRound, Search, ShieldCheck, UserX } from 'lucide-react';
+import { KeyRound, Plus, Search, ShieldCheck, UserX, X } from 'lucide-react';
 import { Shell, Button, Pill, Avatar, QueryState, PageHeader } from '../../App';
 import { accountRoleValues, StaffAccountDialog } from './StaffExpanded';
 import { useI18n } from '../../i18n';
@@ -18,12 +20,14 @@ export function Users() {
   const { t, dir } = useI18n();
   const [tab, setTab] = useState<Tab>('guardians');
   const [search, setSearch] = useState('');
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
 
   return (
     <Shell>
       <PageHeader eyebrow={t('usersPage.eyebrow')} title={t('usersPage.title')} description={t('usersPage.description')} />
 
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
         <div className="inline-flex rounded-xl border border-border bg-card p-1">
           <button
             data-testid="tab-users-guardians"
@@ -40,6 +44,14 @@ export function Users() {
             {t('usersPage.tabStaff')}
           </button>
         </div>
+        <Button
+          data-testid="button-add-account"
+          onClick={() => setShowCreateDialog(true)}
+          className="!px-4 !py-2.5"
+        >
+          <Plus size={18} />{t('usersPage.addAccount')}
+        </Button>
+        </div>
         <div className="relative w-full max-w-md">
           <Search size={18} className={`absolute top-3.5 text-muted-foreground ${dir === 'rtl' ? 'right-4' : 'left-4'}`} />
           <input
@@ -53,6 +65,8 @@ export function Users() {
       </div>
 
       {tab === 'guardians' ? <GuardiansTab search={search} /> : <StaffTab search={search} />}
+
+      {showCreateDialog && <ManualAccountDialog onClose={() => setShowCreateDialog(false)} />}
     </Shell>
   );
 }
@@ -202,5 +216,122 @@ function StaffTab({ search }: { search: string }) {
 
       {accountMember && <StaffAccountDialog member={accountMember} onClose={() => setAccountMember(null)} />}
     </>
+  );
+}
+
+function ManualAccountDialog({ onClose }: { onClose: () => void }) {
+  const { t } = useI18n();
+  const queryClient = useQueryClient();
+  const createAccount = useAdminCreateAccount();
+  const [accountType, setAccountType] = useState<'staff' | 'guardian'>('staff');
+  const [phone, setPhone] = useState('');
+  const [password, setPassword] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [role, setRole] = useState<string>('teacher');
+  const [message, setMessage] = useState('');
+
+  const handleSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
+    setMessage('');
+    createAccount.mutate({
+      data: {
+        phone,
+        password,
+        accountType,
+        fullName: fullName || undefined,
+        role: accountType === 'staff' ? role as 'admin' | 'manager' | 'supervisor' | 'teacher' | 'accountant' | 'receptionist' : undefined,
+      },
+    }, {
+      onSuccess: async () => {
+        setMessage(t('usersPage.createSuccess'));
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: getListGuardianAccountsQueryKey() }),
+          queryClient.invalidateQueries({ queryKey: getListStaffQueryKey() }),
+        ]);
+        setPhone('');
+        setPassword('');
+        setFullName('');
+      },
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-primary/40 p-4 backdrop-blur-md">
+      <div className="w-full max-w-lg rounded-[2rem] bg-card p-8 shadow-2xl">
+        <div className="mb-5 flex items-start justify-between">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-widest text-primary">{t('usersPage.addAccountTitle')}</p>
+            <p className="mt-2 text-sm text-muted-foreground">{t('usersPage.addAccountDesc')}</p>
+          </div>
+          <Button type="button" variant="ghost" onClick={onClose} className="!p-2"><X /></Button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <label className="block text-sm font-bold">{t('usersPage.accountType')}
+            <select
+              value={accountType}
+              onChange={(event) => setAccountType(event.target.value as 'staff' | 'guardian')}
+              className="mt-2 w-full rounded-xl border border-input bg-background px-4 py-3"
+            >
+              <option value="staff">{t('usersPage.accountType.staff')}</option>
+              <option value="guardian">{t('usersPage.accountType.guardian')}</option>
+            </select>
+          </label>
+
+          <label className="block text-sm font-bold">{t('usersPage.phoneNumber')}
+            <input
+              required
+              type="tel"
+              value={phone}
+              onChange={(event) => setPhone(event.target.value)}
+              placeholder="96550001234"
+              className="mt-2 w-full rounded-xl border border-input bg-background px-4 py-3"
+            />
+          </label>
+
+          <label className="block text-sm font-bold">{t('usersPage.password')}
+            <input
+              required
+              type="password"
+              minLength={4}
+              maxLength={15}
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              className="mt-2 w-full rounded-xl border border-input bg-background px-4 py-3"
+            />
+          </label>
+
+          <label className="block text-sm font-bold">{t('usersPage.fullName')}
+            <input
+              type="text"
+              value={fullName}
+              onChange={(event) => setFullName(event.target.value)}
+              className="mt-2 w-full rounded-xl border border-input bg-background px-4 py-3"
+            />
+          </label>
+
+          {accountType === 'staff' && (
+            <label className="block text-sm font-bold">{t('usersPage.staffRole')}
+              <select
+                value={role}
+                onChange={(event) => setRole(event.target.value)}
+                className="mt-2 w-full rounded-xl border border-input bg-background px-4 py-3"
+              >
+                {accountRoleValues.map((item) => (
+                  <option key={item} value={item}>{t(`staffAccounts.role.${item}` as never)}</option>
+                ))}
+              </select>
+            </label>
+          )}
+
+          <Button type="submit" disabled={createAccount.isPending} className="w-full">
+            {createAccount.isPending ? t('usersPage.creating') : t('usersPage.createAccount')}
+          </Button>
+        </form>
+
+        {createAccount.isError && <p className="mt-4 text-sm font-medium text-destructive">{t('usersPage.createError')}</p>}
+        {message && <p data-testid="text-create-account-result" className="mt-4 rounded-xl bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-800">{message}</p>}
+      </div>
+    </div>
   );
 }

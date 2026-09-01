@@ -71,7 +71,10 @@ import {
   RequestStaffPasswordResetResponse,
   CompleteStaffPasswordResetBody,
   CompleteStaffPasswordResetResponse,
+  AdminCreateAccountBody,
+  AdminCreateAccountResponse,
 } from "@workspace/api-zod";
+import { normalizeKuwaitPhone } from "./phoneAuth";
 import {
   activitiesTable,
   announcementsTable,
@@ -178,6 +181,164 @@ function accountResult(member: typeof staffTable.$inferSelect) {
 function ownerAccountManager(req: Parameters<typeof nurseryContext>[0]) {
   return ["owner", "superadmin"].includes(nurseryContext(req).role);
 }
+
+router.post("/admin/create-account", async (req, res): Promise<void> => {
+  const body = AdminCreateAccountBody.safeParse(req.body);
+  if (!body.success) {
+    res.status(400).json({ error: body.error.message });
+    return;
+  }
+  if (!ownerAccountManager(req)) {
+    res.status(403).json({ error: "Owner access required" });
+    return;
+  }
+  const { ownerId } = nurseryContext(req);
+  const phone = normalizeKuwaitPhone(body.data.phone);
+  if (!phone) {
+    res.status(400).json({ error: "Invalid Kuwait mobile number" });
+    return;
+  }
+  const accountType = body.data.accountType;
+  const role = body.data.role?.toLowerCase() || (accountType === "staff" ? "teacher" : "parent");
+  const fullName = body.data.fullName?.trim() || phone;
+  const names = fullName.split(/\s+/u);
+  const email = `manual_${phone}@placeholder.local`;
+
+  // Check if phone is already used
+  const [existingAccount] = await db.select({ id: publicAuthAccountsTable.id })
+    .from(publicAuthAccountsTable)
+    .where(eq(publicAuthAccountsTable.normalizedPhone, phone))
+    .limit(1);
+  if (existingAccount) {
+    res.status(409).json({ error: "Phone number already has an account" });
+    return;
+  }
+
+  // Create Clerk user
+  let clerkUser;
+  try {
+    clerkUser = await clerkClient.users.createUser({
+      phoneNumber: [`+${phone}`],
+      password: body.data.password,
+      firstName: names[0],
+      lastName: names.slice(1).join(" ") || undefined,
+      skipPasswordChecks: true,
+      publicMetadata: { role, ownerId, accountStatus: "active" },
+    });
+  } catch (error: unknown) {
+    const clerkErrors = error && typeof error === "object" && "errors" in error ? (error as { errors?: unknown[] }).errors : null;
+    const errorMsg = Array.isArray(clerkErrors) && clerkErrors[0] && typeof clerkErrors[0] === "object" && "message" in clerkErrors[0]
+      ? String((clerkErrors[0] as { message: string }).message)
+      : "Failed to create Clerk user";
+    res.status(409).json({ error: errorMsg });
+    return;
+  }
+
+  let recordId: number;
+  try {
+    if (accountType === "staff") {
+      // Find existing unlinked staff with this phone, or create new
+      const existingStaff = await db.select().from(staffTable).where(and(
+        eq(staffTable.ownerId, ownerId),
+        eq(staffTable.accountStatus, "unlinked"),
+        sql`${staffTable.clerkUserId} is null`,
+      ));
+      const match = existingStaff.find(s => {
+        const digits = s.phone.replace(/\D/g, "");
+        const local = digits.startsWith("00965") ? digits.slice(5) : digits.startsWith("965") && digits.length > 8 ? digits.slice(3) : digits.replace(/^0+/, "");
+        return `965${local}` === phone;
+      });
+      if (match) {
+        const [linked] = await db.update(staffTable).set({
+          clerkUserId: clerkUser.id,
+          role,
+          accountStatus: "active",
+          otpHash: null,
+          otpExpiresAt: null,
+          otpAttempts: 0,
+        }).where(and(
+          eq(staffTable.id, match.id),
+          eq(staffTable.ownerId, ownerId),
+          sql`${staffTable.clerkUserId} is null`,
+        )).returning();
+        recordId = linked.id;
+        await clerkClient.users.updateUserMetadata(clerkUser.id, {
+          privateMetadata: { staffId: linked.id },
+        });
+      } else {
+        const [created] = await db.insert(staffTable).values({
+          ownerId,
+          name: fullName,
+          role,
+          phone,
+          clerkUserId: clerkUser.id,
+          accountStatus: "active",
+        }).returning();
+        recordId = created.id;
+        await clerkClient.users.updateUserMetadata(clerkUser.id, {
+          privateMetadata: { staffId: created.id },
+        });
+      }
+    } else {
+      // Guardian: find existing unlinked guardian or create new
+      const existingGuardians = await db.select().from(guardiansTable).where(and(
+        eq(guardiansTable.ownerId, ownerId),
+        sql`${guardiansTable.clerkUserId} is null`,
+      ));
+      const match = existingGuardians.find(g => {
+        const digits = g.phone.replace(/\D/g, "");
+        const local = digits.startsWith("00965") ? digits.slice(5) : digits.startsWith("965") && digits.length > 8 ? digits.slice(3) : digits.replace(/^0+/, "");
+        return `965${local}` === phone;
+      });
+      if (match) {
+        await db.update(guardiansTable).set({ clerkUserId: clerkUser.id }).where(and(
+          eq(guardiansTable.id, match.id),
+          eq(guardiansTable.ownerId, ownerId),
+          sql`${guardiansTable.clerkUserId} is null`,
+        ));
+        recordId = match.id;
+      } else {
+        const [created] = await db.insert(guardiansTable).values({
+          ownerId,
+          name: fullName,
+          phone,
+          clerkUserId: clerkUser.id,
+        }).returning();
+        recordId = created.id;
+      }
+    }
+
+    // Record in public_auth_accounts
+    await db.insert(publicAuthAccountsTable).values({
+      normalizedPhone: phone,
+      clerkUserId: clerkUser.id,
+      fullName,
+      email,
+      accountType,
+      accountStatus: "active",
+      ownerId,
+      guardianId: accountType === "guardian" ? recordId : null,
+      staffId: accountType === "staff" ? recordId : null,
+    });
+
+    await auditNurseryOperation(req, "admin-create-account", `${accountType}-account`, String(recordId), null, {
+      phone, accountType, role, name: fullName,
+    });
+
+    res.status(201).json(AdminCreateAccountResponse.parse({
+      id: recordId,
+      accountType,
+      phone,
+      accountStatus: "active",
+      role,
+      name: fullName,
+    }));
+  } catch (error) {
+    // Rollback: delete Clerk user if DB operations fail
+    await clerkClient.users.deleteUser(clerkUser.id).catch(() => undefined);
+    throw error;
+  }
+});
 
 router.post("/staff/password-reset/request", async (req, res, next): Promise<void> => {
   const requestStartedAt = Date.now();

@@ -124,6 +124,8 @@ import type {
   UserPermissionBulkInput,
   UserPermissionBulkResult,
   UserPermissionInput,
+  AdminCreateAccountInput,
+  AdminCreateAccountResult,
 } from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
@@ -9540,3 +9542,83 @@ export function useGetPublicSiteGalleryImage<
 
   return withQueryKey(query, queryOptions.queryKey);
 }
+
+export const getAdminCreateAccountUrl = () => {
+  return `/api/admin/create-account`;
+};
+
+export const adminCreateAccount = async (
+  adminCreateAccountInput: AdminCreateAccountInput,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<AdminCreateAccountResult> => {
+  return customFetch<AdminCreateAccountResult>(getAdminCreateAccountUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(adminCreateAccountInput),
+  });
+};
+
+export const getAdminCreateAccountMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof adminCreateAccount>>,
+    TError,
+    { data: BodyType<AdminCreateAccountInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof adminCreateAccount>>,
+  TError,
+  { data: BodyType<AdminCreateAccountInput> },
+  TContext
+> => {
+  const mutationKey = ["adminCreateAccount"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof adminCreateAccount>>,
+    { data: BodyType<AdminCreateAccountInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return adminCreateAccount(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type AdminCreateAccountMutationResult = NonNullable<
+  Awaited<ReturnType<typeof adminCreateAccount>>
+>;
+export type AdminCreateAccountMutationBody = BodyType<AdminCreateAccountInput>;
+export type AdminCreateAccountMutationError = ErrorType<unknown>;
+
+export const useAdminCreateAccount = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof adminCreateAccount>>,
+    TError,
+    { data: BodyType<AdminCreateAccountInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof adminCreateAccount>>,
+  TError,
+  { data: BodyType<AdminCreateAccountInput> },
+  TContext
+> => {
+  return useMutation(getAdminCreateAccountMutationOptions(options));
+};

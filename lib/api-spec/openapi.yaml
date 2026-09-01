@@ -681,6 +681,20 @@ paths:
         "403": { description: Owner access required }
         "404": { description: Staff member or linked account not found }
         "409": { description: Account lifecycle conflict }
+  /admin/create-account:
+    post:
+      operationId: adminCreateAccount
+      tags: [staff]
+      summary: Manually create a Clerk account for a staff member or guardian without phone verification
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/AdminCreateAccountInput" } } }
+      responses:
+        "201":
+          description: Account created
+          content: { application/json: { schema: { $ref: "#/components/schemas/AdminCreateAccountResult" } } }
+        "400": { description: Invalid input }
+        "409": { description: Phone already registered or account conflict }
   /staff/password-reset/request:
     post:
       operationId: requestStaffPasswordReset
@@ -2093,6 +2107,26 @@ components:
           enum: [unlinked, pending_verification, active, disabled]
         role: { type: string }
         setupComplete: { type: boolean }
+    AdminCreateAccountInput:
+      type: object
+      required: [phone, password, accountType]
+      additionalProperties: false
+      properties:
+        phone: { type: string, minLength: 8, maxLength: 30 }
+        password: { type: string, minLength: 4, maxLength: 15 }
+        accountType: { type: string, enum: [guardian, staff] }
+        fullName: { type: string, minLength: 1, maxLength: 200 }
+        role: { type: string, enum: [admin, manager, supervisor, teacher, accountant, receptionist] }
+    AdminCreateAccountResult:
+      type: object
+      required: [id, accountType, phone, accountStatus]
+      properties:
+        id: { type: integer }
+        accountType: { type: string, enum: [guardian, staff] }
+        phone: { type: string }
+        accountStatus: { type: string }
+        role: { type: string }
+        name: { type: string }
     StaffPasswordResetRequest:
       type: object
       required: [email]

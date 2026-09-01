@@ -1992,3 +1992,43 @@ export type ListAuditLogsParams = {
   operation?: string;
   entityType?: string;
 };
+
+export type AdminCreateAccountInputAccountType =
+  (typeof AdminCreateAccountInputAccountType)[keyof typeof AdminCreateAccountInputAccountType];
+
+export const AdminCreateAccountInputAccountType = {
+  guardian: "guardian",
+  staff: "staff",
+} as const;
+
+export type AdminCreateAccountInputRole =
+  (typeof AdminCreateAccountInputRole)[keyof typeof AdminCreateAccountInputRole];
+
+export const AdminCreateAccountInputRole = {
+  admin: "admin",
+  manager: "manager",
+  supervisor: "supervisor",
+  teacher: "teacher",
+  accountant: "accountant",
+  receptionist: "receptionist",
+} as const;
+
+export interface AdminCreateAccountInput {
+  /** @minLength 8 @maxLength 30 */
+  phone: string;
+  /** @minLength 4 @maxLength 15 */
+  password: string;
+  accountType: AdminCreateAccountInputAccountType;
+  /** @minLength 1 @maxLength 200 */
+  fullName?: string;
+  role?: AdminCreateAccountInputRole;
+}
+
+export interface AdminCreateAccountResult {
+  id: number;
+  accountType: string;
+  phone: string;
+  accountStatus: string;
+  role?: string;
+  name?: string;
+}

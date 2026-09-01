@@ -951,6 +951,37 @@ export const CompleteStaffPasswordResetResponse = zod.object({
   updated: zod.boolean(),
 });
 /**
+ * @summary Manually create a Clerk account for a staff member or guardian without phone verification
+ */
+export const adminCreateAccountBodyPhoneMin = 8;
+export const adminCreateAccountBodyPhoneMax = 30;
+export const adminCreateAccountBodyPasswordMin = 4;
+export const adminCreateAccountBodyPasswordMax = 15;
+export const adminCreateAccountBodyFullNameMax = 200;
+export const AdminCreateAccountBody = zod.object({
+  phone: zod
+    .string()
+    .min(adminCreateAccountBodyPhoneMin)
+    .max(adminCreateAccountBodyPhoneMax),
+  password: zod
+    .string()
+    .min(adminCreateAccountBodyPasswordMin)
+    .max(adminCreateAccountBodyPasswordMax),
+  accountType: zod.enum(["guardian", "staff"]),
+  fullName: zod.string().min(1).max(adminCreateAccountBodyFullNameMax).optional(),
+  role: zod
+    .enum(["admin", "manager", "supervisor", "teacher", "accountant", "receptionist"])
+    .optional(),
+});
+export const AdminCreateAccountResponse = zod.object({
+  id: zod.number().int(),
+  accountType: zod.enum(["guardian", "staff"]),
+  phone: zod.string(),
+  accountStatus: zod.string(),
+  role: zod.string().optional(),
+  name: zod.string().optional(),
+});
+/**
  * @summary Get today's child attendance
  */
 export const getTodayAttendanceResponsePickupOverrideDefault = false;
