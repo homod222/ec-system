@@ -9,8 +9,6 @@
 export interface OrganizationInput {
   /** @minLength 1 */
   name: string;
-  /** @minLength 1 */
-  code: string;
   type?: string;
   /** @nullable */
   address?: string | null;

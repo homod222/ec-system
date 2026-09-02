@@ -443,7 +443,6 @@ export const branchesTable = pgTable("nursery_branches", {
   address: text("address"),
   phone: text("phone"),
   capacity: integer("capacity").notNull().default(0),
-  managerName: text("manager_name"),
   active: boolean("active").notNull().default(true),
   settings: jsonb("settings").$type<Record<string, unknown>>().notNull().default({}),
   legacyRecordId: integer("legacy_record_id"),

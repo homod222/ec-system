@@ -122,11 +122,12 @@ export async function runApplicationMigrations(): Promise<void> {
       ON organizations (owner_id, lower(code));
     ALTER TABLE nursery_branches
       ADD COLUMN IF NOT EXISTS organization_id integer,
-      ADD COLUMN IF NOT EXISTS manager_name text,
       ADD COLUMN IF NOT EXISTS legacy_record_id integer;
     CREATE UNIQUE INDEX IF NOT EXISTS nursery_branches_legacy_record_unique
       ON nursery_branches (legacy_record_id)
       WHERE legacy_record_id IS NOT NULL;
+    ALTER TABLE nursery_branches
+      DROP COLUMN IF EXISTS manager_name;
     CREATE TABLE IF NOT EXISTS nursery_stages (
       id serial PRIMARY KEY,
       owner_id text NOT NULL,
