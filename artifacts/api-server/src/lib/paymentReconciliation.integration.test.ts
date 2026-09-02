@@ -100,6 +100,7 @@ describe("MyFatoorah durable payment reconciliation", () => {
     const guardian = {
       id: invoice.guardianId,
       ownerId: invoice.ownerId,
+      branchId: null,
       name: "KNET Test Guardian",
       phone: "96550000000",
       email: "knet@example.test",

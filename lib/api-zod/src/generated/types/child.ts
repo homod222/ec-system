@@ -19,6 +19,8 @@ export interface Child {
   /** @nullable */
   classroomId: number | null;
   /** @nullable */
+  branchId?: number | null;
+  /** @nullable */
   classroomName: string | null;
   guardianName: string;
   guardianPhone: string;

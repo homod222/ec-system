@@ -343,9 +343,16 @@ export async function generateBillingInstallment(
     ));
     if (!plan) return { kind: "missing" as const };
     if (plan.status !== "active") return { kind: "inactive" as const };
+    const [child] = await tx.select({ branchId: childrenTable.branchId })
+      .from(childrenTable)
+      .where(and(
+        eq(childrenTable.id, plan.childId),
+        eq(childrenTable.ownerId, plan.ownerId),
+      ));
     const now = new Date();
     const [invoice] = await tx.insert(invoicesTable).values({
       ownerId: plan.ownerId,
+      branchId: child?.branchId ?? null,
       invoiceNumber: `INV-${dateOnly(now).replaceAll("-", "")}-${randomUUID().slice(0, 8).toUpperCase()}`,
       guardianId: plan.guardianId,
       childId: plan.childId,

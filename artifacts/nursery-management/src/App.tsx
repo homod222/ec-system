@@ -55,6 +55,7 @@ import {
 import { AuthProvider, useAuth, type AuthUser } from '@/lib/auth-context';
 import { setAuthTokenGetter } from '@workspace/api-client-react';
 import { getStoredToken } from '@/lib/auth-context';
+import { BranchSelect, branchIdPayload } from './components/BranchSelect';
 
 const queryClient = new QueryClient();
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
@@ -415,7 +416,8 @@ function ChildForm({ child, onClose }: { child?: Child; onClose: () => void }) {
     firstName: child?.firstName || '', lastName: child?.lastName || '', 
     gender: child?.gender || 'female', birthDate: child?.birthDate || '', 
     guardianName: child?.guardianName || '', guardianPhone: child?.guardianPhone || '', 
-    level: child?.level || DEFAULT_ACADEMIC_LEVEL, notes: child?.notes || '', classroomId: child?.classroomId?.toString() || ''
+    level: child?.level || DEFAULT_ACADEMIC_LEVEL, notes: child?.notes || '', classroomId: child?.classroomId?.toString() || '',
+    branchId: child?.branchId?.toString() || '',
   });
   
   const classrooms = useListClassrooms();
@@ -424,10 +426,20 @@ function ChildForm({ child, onClose }: { child?: Child; onClose: () => void }) {
   const qc = useQueryClient();
   
   const set = (key: string, value: string) => setForm((f) => ({ ...f, [key]: value }));
+  const handleBranchChange = (branchId: string) => setForm((current) => {
+    const classroom = (classrooms.data || []).find((item) => String(item.id) === current.classroomId);
+    const compatible = !branchId || !classroom || classroom.branchId == null || classroom.branchId === Number(branchId);
+    return { ...current, branchId, classroomId: compatible ? current.classroomId : '' };
+  });
   
   const submit = (e: React.FormEvent) => { 
     e.preventDefault(); 
-    const payload = { ...form, classroomId: form.classroomId ? Number(form.classroomId) : null, notes: form.notes || null } as any; 
+    const payload = {
+      ...form,
+      classroomId: form.classroomId ? Number(form.classroomId) : null,
+      branchId: branchIdPayload(form.branchId),
+      notes: form.notes || null,
+    } as any;
     if (child) {
       update.mutate({ id: child.id, data: payload }, { 
         onSuccess: () => { qc.invalidateQueries({ queryKey: getGetChildQueryKey(child.id) }); qc.invalidateQueries({ queryKey: getListChildrenQueryKey() }); onClose(); } 
@@ -480,9 +492,10 @@ function ChildForm({ child, onClose }: { child?: Child; onClose: () => void }) {
             {t('application.classroom')}
             <select data-testid="select-child-classroom" value={form.classroomId} onChange={(e) => set('classroomId', e.target.value)} className="mt-2 w-full rounded-xl border border-input bg-background px-4 py-3 text-sm font-medium outline-none focus:border-primary focus:ring-2 focus:ring-primary/20">
               <option value="">{t('application.unspecified')}</option>
-              {(classrooms.data || []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {(form.branchId === '' ? classrooms.data || [] : (classrooms.data || []).filter((c) => c.branchId == null || c.branchId === Number(form.branchId))).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </label>
+          <BranchSelect value={form.branchId} onChange={handleBranchChange} testId="select-child-branch" required={!child} />
         </div>
         
         <label className="mt-5 block text-sm font-bold text-foreground">

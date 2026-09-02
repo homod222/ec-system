@@ -5,6 +5,7 @@ import { BookOpen, Users, Plus, LayoutGrid, Search, X } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { OperationalManager } from '../../components/OperationalManager';
 import { useI18n } from '../../i18n';
+import { BranchSelect, branchIdPayload } from '../../components/BranchSelect';
 
 export function ClassroomsExpanded() {
   const { t, formatNumber } = useI18n();
@@ -81,13 +82,13 @@ export function ClassroomsExpanded() {
 
 function ClassroomForm({ onClose }: { onClose: () => void }) {
   const { t } = useI18n();
-  const [form, setForm] = useState({ name: '', level: '', teacherName: '', capacity: '20', color: '#165032' });
+  const [form, setForm] = useState({ name: '', level: '', teacherName: '', capacity: '20', color: '#165032', branchId: '' });
   const create = useCreateClassroom();
   const qc = useQueryClient();
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    create.mutate({ data: { ...form, capacity: Number(form.capacity) } }, {
+    create.mutate({ data: { ...form, capacity: Number(form.capacity), branchId: branchIdPayload(form.branchId) } }, {
       onSuccess: () => {
         qc.invalidateQueries({ queryKey: getListClassroomsQueryKey() });
         onClose();
@@ -106,6 +107,7 @@ function ClassroomForm({ onClose }: { onClose: () => void }) {
           <label className="block text-sm font-bold">{t('expanded.classroomName')} <input required data-testid="input-classroom-name" value={form.name} onChange={(e) => setForm({...form, name: e.target.value})} className="mt-2 w-full rounded-xl border border-input bg-background px-4 py-3 outline-none" /></label>
           <label className="block text-sm font-bold">{t('expanded.level')} <input required data-testid="input-classroom-level" value={form.level} onChange={(e) => setForm({...form, level: e.target.value})} className="mt-2 w-full rounded-xl border border-input bg-background px-4 py-3 outline-none" /></label>
           <label className="block text-sm font-bold">{t('expanded.mainTeacher')} <input required data-testid="input-classroom-teacher" value={form.teacherName} onChange={(e) => setForm({...form, teacherName: e.target.value})} className="mt-2 w-full rounded-xl border border-input bg-background px-4 py-3 outline-none" /></label>
+          <BranchSelect value={form.branchId} onChange={(branchId) => setForm({ ...form, branchId })} testId="select-classroom-branch" required />
           <div className="grid grid-cols-2 gap-4">
             <label className="block text-sm font-bold">{t('expanded.capacityLabel')} <input required type="number" data-testid="input-classroom-capacity" value={form.capacity} onChange={(e) => setForm({...form, capacity: e.target.value})} className="mt-2 w-full rounded-xl border border-input bg-background px-4 py-3 outline-none" /></label>
             <label className="block text-sm font-bold">{t('expanded.color')} <input required type="color" data-testid="input-classroom-color" value={form.color} onChange={(e) => setForm({...form, color: e.target.value})} className="mt-2 h-12 w-full rounded-xl border border-input bg-background p-1 outline-none" /></label>

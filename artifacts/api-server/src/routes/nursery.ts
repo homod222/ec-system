@@ -96,6 +96,7 @@ import {
   staffTable,
 } from "@workspace/db";
 import { checkClassroomCapacity } from "../lib/classroomCapacity";
+import { classroomBranchMismatch, defaultBranchId, resolveBranchId } from "../lib/branchScope";
 import {
   createInvoiceCheckoutSession,
   isAllowedReturnUrl,
@@ -252,6 +253,7 @@ router.post("/admin/create-account", async (req, res): Promise<void> => {
         phone,
         clerkUserId: `local_pending`,
         accountStatus: "active",
+        branchId: await defaultBranchId(db, ownerId),
       }).returning();
       recordId = created.id;
     }
@@ -279,6 +281,7 @@ router.post("/admin/create-account", async (req, res): Promise<void> => {
         name: fullName,
         phone,
         clerkUserId: `local_pending`,
+        branchId: await defaultBranchId(db, ownerId),
       }).returning();
       recordId = created.id;
     }
@@ -546,6 +549,7 @@ async function childRows(ownerId: string) {
       birthDate: child.birthDate,
       status: child.status,
       classroomId: classroom?.id ?? null,
+      branchId: child.branchId,
       classroomName: classroom?.name ?? null,
       guardianName: guardian?.name ?? "ولي أمر غير مسجل",
       guardianPhone: guardian?.phone ?? "",
@@ -724,7 +728,12 @@ router.post("/children", async (req, res): Promise<void> => {
   const input = parsed.data;
   const ownerId = nurseryContext(req).ownerId;
   const result = await db.transaction(async (tx) => {
+    const branch = await resolveBranchId(tx, ownerId, input.branchId);
+    if (branch.kind === "missing") return { kind: "branchMissing" as const };
     if (input.classroomId != null) {
+      if (await classroomBranchMismatch(tx, ownerId, input.classroomId, branch.branchId)) {
+        return { kind: "branchMismatch" as const };
+      }
       const capacity = await checkClassroomCapacity(tx, ownerId, input.classroomId);
       if (capacity.kind !== "available") return capacity;
     }
@@ -754,6 +763,7 @@ router.post("/children", async (req, res): Promise<void> => {
         email: null,
         balance: 0,
         identityKey,
+        branchId: branch.branchId,
       }).returning();
       guardian = created;
     }
@@ -764,12 +774,21 @@ router.post("/children", async (req, res): Promise<void> => {
       gender: input.gender,
       birthDate: input.birthDate,
       classroomId: input.classroomId ?? null,
+      branchId: branch.branchId,
       guardianId: guardian.id,
       level: input.level,
       notes: input.notes ?? null,
     }).returning();
     return { kind: "created" as const, child };
   });
+  if (result.kind === "branchMissing") {
+    res.status(400).json({ error: "Branch not found" });
+    return;
+  }
+  if (result.kind === "branchMismatch") {
+    res.status(409).json({ error: "Classroom belongs to another branch" });
+    return;
+  }
   if (result.kind === "missing") {
     res.status(404).json({ error: "Classroom not found" });
     return;
@@ -819,13 +838,21 @@ router.patch("/children/:id", async (req, res): Promise<void> => {
     return;
   }
   const updateResult = await db.transaction(async (tx) => {
+    const targetBranchId = body.data.branchId ?? current.branchId;
+    const branch = await resolveBranchId(tx, ownerId, targetBranchId);
+    if (branch.kind === "missing") return { kind: "branchMissing" as const };
     const targetClassroomId = body.data.classroomId === undefined
       ? current.classroomId
       : body.data.classroomId;
     const targetStatus = body.data.status ?? current.status;
-    if (targetClassroomId != null && targetStatus === "active") {
-      const capacity = await checkClassroomCapacity(tx, ownerId, targetClassroomId, current.id);
-      if (capacity.kind !== "available") return capacity;
+    if (targetClassroomId != null) {
+      if (await classroomBranchMismatch(tx, ownerId, targetClassroomId, targetBranchId)) {
+        return { kind: "branchMismatch" as const };
+      }
+      if (targetStatus === "active") {
+        const capacity = await checkClassroomCapacity(tx, ownerId, targetClassroomId, current.id);
+        if (capacity.kind !== "available") return capacity;
+      }
     }
     if (body.data.guardianName !== undefined || body.data.guardianPhone !== undefined) {
       await tx.update(guardiansTable).set({
@@ -842,6 +869,7 @@ router.patch("/children/:id", async (req, res): Promise<void> => {
       ...(body.data.gender !== undefined ? { gender: body.data.gender } : {}),
       ...(body.data.birthDate !== undefined ? { birthDate: body.data.birthDate } : {}),
       ...(body.data.classroomId !== undefined ? { classroomId: body.data.classroomId } : {}),
+      branchId: branch.branchId,
       ...(body.data.level !== undefined ? { level: body.data.level } : {}),
       ...(body.data.status !== undefined ? { status: body.data.status } : {}),
       ...(body.data.notes !== undefined ? { notes: body.data.notes } : {}),
@@ -851,6 +879,14 @@ router.patch("/children/:id", async (req, res): Promise<void> => {
     ));
     return { kind: "updated" as const };
   });
+  if (updateResult.kind === "branchMissing") {
+    res.status(400).json({ error: "Branch not found" });
+    return;
+  }
+  if (updateResult.kind === "branchMismatch") {
+    res.status(409).json({ error: "Classroom belongs to another branch" });
+    return;
+  }
   if (updateResult.kind === "missing") {
     res.status(404).json({ error: "Classroom not found" });
     return;
@@ -922,6 +958,7 @@ router.get("/guardians", async (req, res): Promise<void> => {
     email: guardian.email,
     childrenCount: children.filter((child) => child.guardianId === guardian.id).length,
     balance: guardian.balance,
+    branchId: guardian.branchId,
   }))));
 });
 
@@ -1071,7 +1108,16 @@ router.post("/staff", async (req, res): Promise<void> => {
     return;
   }
   const { ownerId } = nurseryContext(req);
-  const [created] = await db.insert(staffTable).values({ ownerId, ...body.data }).returning();
+  const branch = await resolveBranchId(db, ownerId, body.data.branchId);
+  if (branch.kind === "missing") {
+    res.status(400).json({ error: "Branch not found" });
+    return;
+  }
+  const [created] = await db.insert(staffTable).values({
+    ownerId,
+    ...body.data,
+    branchId: branch.branchId,
+  }).returning();
   await auditNurseryOperation(req, "create-staff", "staff", String(created.id), null, {
     id: created.id, name: created.name, role: created.role, accountStatus: created.accountStatus,
   });
@@ -1097,7 +1143,15 @@ router.patch("/staff/:id", async (req, res): Promise<void> => {
     res.status(409).json({ error: "Use staff account management to change a linked account role" });
     return;
   }
-  const [updated] = await db.update(staffTable).set(body.data).where(and(
+  const branch = await resolveBranchId(db, ownerId, body.data.branchId ?? existing.branchId);
+  if (branch.kind === "missing") {
+    res.status(400).json({ error: "Branch not found" });
+    return;
+  }
+  const [updated] = await db.update(staffTable).set({
+    ...body.data,
+    branchId: branch.branchId,
+  }).where(and(
     eq(staffTable.id, existing.id), eq(staffTable.ownerId, ownerId),
   )).returning();
   await auditNurseryOperation(req, "update-staff", "staff", String(updated.id),

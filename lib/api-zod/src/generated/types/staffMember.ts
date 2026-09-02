@@ -26,4 +26,6 @@ export interface StaffMember {
   /** @nullable */
   clerkUserId?: string | null;
   accountStatus: StaffMemberAccountStatus;
+  /** @nullable */
+  branchId?: number | null;
 }

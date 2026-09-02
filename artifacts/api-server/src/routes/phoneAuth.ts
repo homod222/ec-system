@@ -26,6 +26,7 @@ import {
   GetPhoneEnrollmentResponse,
 } from "@workspace/api-zod";
 import { hashPassword, verifyPassword, signJwt, getLocalAuth } from "../lib/localAuth";
+import { defaultBranchId } from "../lib/branchScope";
 
 type Sender = (to: string, otp: string) => Promise<{ ok: true } | { ok: false; error: string }>;
 type Identity = { accountId: string; firstName: string };
@@ -404,6 +405,7 @@ export function createPhoneAuthRouter(sender: Sender = defaultSender): IRouter {
             // Self-registration: create a new guardian record
             const [created] = await db.insert(guardiansTable).values({
               ownerId: publicOwnerId,
+              branchId: await defaultBranchId(db, publicOwnerId),
               name: challenge.fullName,
               email: challenge.email,
               phone: challenge.normalizedPhone,
@@ -435,6 +437,7 @@ export function createPhoneAuthRouter(sender: Sender = defaultSender): IRouter {
           } else if (staffMatches.length === 0 && newStaffOwnerId) {
             const [createdStaff] = await db.insert(staffTable).values({
               ownerId: newStaffOwnerId,
+              branchId: await defaultBranchId(db, newStaffOwnerId),
               name: challenge.fullName,
               role: "pending",
               email: challenge.email,

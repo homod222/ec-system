@@ -20,6 +20,7 @@ import type { StaffAccountUpdateInputRole, StaffMember } from '@workspace/api-cl
 import { OperationalManager } from '../../components/OperationalManager';
 import { useI18n } from '../../i18n';
 import { Link } from 'wouter';
+import { BranchSelect, branchIdPayload } from '../../components/BranchSelect';
 
 export const accountRoleValues: StaffAccountUpdateInputRole[] = ['admin', 'manager', 'supervisor', 'teacher', 'accountant', 'receptionist'];
 
@@ -134,6 +135,7 @@ function StaffForm({ member, onClose }: { member: StaffMember | null; onClose: (
     email: member?.email || '',
     jobTitle: member?.jobTitle || '',
     hireDate: member?.hireDate || '',
+    branchId: member?.branchId?.toString() || '',
   });
   const create = useCreateStaff();
   const update = useUpdateStaff();
@@ -141,7 +143,13 @@ function StaffForm({ member, onClose }: { member: StaffMember | null; onClose: (
   const pending = create.isPending || update.isPending;
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
-    const data = { ...form, email: form.email || null, jobTitle: form.jobTitle || null, hireDate: form.hireDate || null };
+    const data = {
+      ...form,
+      email: form.email || null,
+      jobTitle: form.jobTitle || null,
+      hireDate: form.hireDate || null,
+      branchId: branchIdPayload(form.branchId),
+    };
     const done = () => {
       queryClient.invalidateQueries({ queryKey: getListStaffQueryKey() });
       onClose();
@@ -163,6 +171,7 @@ function StaffForm({ member, onClose }: { member: StaffMember | null; onClose: (
               {accountRoleValues.map((role) => <option key={role} value={role} disabled={Boolean(member?.clerkUserId)}>{t(`staffAccounts.role.${role}` as never)}</option>)}
             </select>
           </label>
+          <BranchSelect value={form.branchId} onChange={(branchId) => setForm({ ...form, branchId })} testId="select-staff-branch" required={!member} />
           <Field label={t('expanded.mobile')} required type="tel" value={form.phone} onChange={(value) => setForm({ ...form, phone: value })} />
           <Field label={t('expanded.email')} required type="email" value={form.email} onChange={(value) => setForm({ ...form, email: value })} />
           <Field label={t('expanded.jobTitle')} value={form.jobTitle} onChange={(value) => setForm({ ...form, jobTitle: value })} />

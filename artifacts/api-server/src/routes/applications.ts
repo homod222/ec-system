@@ -39,6 +39,7 @@ import {
   ObjectStorageService,
 } from "../lib/objectStorage";
 import { checkClassroomCapacity } from "../lib/classroomCapacity";
+import { defaultBranchId } from "../lib/branchScope";
 import {
   auditNurseryOperation,
   nurseryContext,
@@ -132,12 +133,14 @@ router.post("/applications", requireNurseryPermission("write:application"), asyn
 
   const ownerId = nurseryContext(req).ownerId;
   const result = await db.transaction(async (tx) => {
+    const branchId = await defaultBranchId(tx, ownerId);
     if (parsed.data.classroomId != null) {
       const capacity = await checkClassroomCapacity(tx, ownerId, parsed.data.classroomId);
       if (capacity.kind !== "available") return capacity;
     }
     const [application] = await tx.insert(applicationsTable).values({
       ownerId,
+      branchId,
       type: "new",
       status: "new",
       ...parsed.data,
@@ -474,6 +477,7 @@ router.post("/applications/:id/accept", requireNurseryPermission("accept:applica
       return { kind: "accepted" as const, application, before: null };
     }
     if (application.status !== "reviewing") return { kind: "illegal" as const };
+    const applicationBranchId = application.branchId ?? await defaultBranchId(tx, application.ownerId);
     let childId: number;
     if (application.type === "renewal") {
       if (!application.sourceChildId) return { kind: "childMissing" as const };
@@ -511,6 +515,7 @@ router.post("/applications/:id/accept", requireNurseryPermission("accept:applica
         birthDate: application.birthDate,
         level: application.level,
         classroomId: application.classroomId,
+        branchId: applicationBranchId,
         notes: application.notes,
         status: "active",
       }).where(and(
@@ -533,8 +538,8 @@ router.post("/applications/:id/accept", requireNurseryPermission("accept:applica
       const identityKey = email ? `email:${email}` : normalizedPhone ? `phone:${normalizedPhone}` : null;
       if (!identityKey) return { kind: "guardianIdentityMissing" as const };
       const guardianResult = await tx.execute(sql`
-        INSERT INTO guardians (owner_id, name, phone, email, balance, identity_key)
-        VALUES (${application.ownerId}, ${application.guardianName}, ${application.guardianPhone},
+        INSERT INTO guardians (owner_id, branch_id, name, phone, email, balance, identity_key)
+        VALUES (${application.ownerId}, ${applicationBranchId}, ${application.guardianName}, ${application.guardianPhone},
           ${email ?? null}, 0, ${identityKey})
         ON CONFLICT (owner_id, identity_key) WHERE identity_key IS NOT NULL
         DO UPDATE SET name = EXCLUDED.name, phone = EXCLUDED.phone,
@@ -551,6 +556,7 @@ router.post("/applications/:id/accept", requireNurseryPermission("accept:applica
         birthDate: application.birthDate,
         level: application.level,
         classroomId: application.classroomId,
+        branchId: applicationBranchId,
         notes: application.notes,
         guardianId: guardian.id,
         status: "active",
@@ -678,6 +684,7 @@ router.post(
       guardianName: guardian.name,
       guardianPhone: guardian.phone,
       guardianEmail: guardian.email,
+      branchId: child.branchId ?? await defaultBranchId(tx, ownerId),
     }).returning();
     await tx.insert(activitiesTable).values({
       ownerId,

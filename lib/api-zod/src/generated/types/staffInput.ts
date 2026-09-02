@@ -21,4 +21,6 @@ export interface StaffInput {
   jobTitle?: string | null;
   /** @nullable */
   hireDate?: string | null;
+  /** @nullable */
+  branchId?: number | null;
 }

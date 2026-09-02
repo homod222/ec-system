@@ -721,6 +721,97 @@ export async function runApplicationMigrations(): Promise<void> {
       ON site_gallery_items (owner_id, sort_order, created_at);
     CREATE INDEX IF NOT EXISTS site_gallery_items_public_idx
       ON site_gallery_items (owner_id, status, sort_order) WHERE status = 'published';
+    ALTER TABLE children
+      ADD COLUMN IF NOT EXISTS branch_id integer;
+    ALTER TABLE guardians
+      ADD COLUMN IF NOT EXISTS branch_id integer;
+    ALTER TABLE applications
+      ADD COLUMN IF NOT EXISTS branch_id integer;
+    ALTER TABLE invoices
+      ADD COLUMN IF NOT EXISTS branch_id integer;
+    CREATE INDEX IF NOT EXISTS children_owner_branch_idx
+      ON children (owner_id, branch_id);
+    CREATE INDEX IF NOT EXISTS guardians_owner_branch_idx
+      ON guardians (owner_id, branch_id);
+    CREATE INDEX IF NOT EXISTS applications_owner_branch_idx
+      ON applications (owner_id, branch_id);
+    CREATE INDEX IF NOT EXISTS invoices_owner_branch_idx
+      ON invoices (owner_id, branch_id);
+    INSERT INTO nursery_branches (owner_id, organization_id, name, code, active)
+      SELECT organization.owner_id, organization.id, organization.name,
+        split_part(organization.code, '.', 1) || '.001', true
+      FROM organizations AS organization
+      WHERE organization.id = (
+          SELECT min(id) FROM organizations AS candidate
+          WHERE candidate.owner_id = organization.owner_id
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM nursery_branches AS branch
+          WHERE branch.owner_id = organization.owner_id
+        );
+    UPDATE children AS target
+      SET branch_id = defaults.branch_id
+      FROM (
+        SELECT owner_id, min(id) AS branch_id
+        FROM nursery_branches
+        GROUP BY owner_id
+      ) AS defaults
+      WHERE target.owner_id = defaults.owner_id
+        AND target.branch_id IS NULL;
+    UPDATE guardians AS target
+      SET branch_id = defaults.branch_id
+      FROM (
+        SELECT owner_id, min(id) AS branch_id
+        FROM nursery_branches
+        GROUP BY owner_id
+      ) AS defaults
+      WHERE target.owner_id = defaults.owner_id
+        AND target.branch_id IS NULL;
+    UPDATE applications AS target
+      SET branch_id = defaults.branch_id
+      FROM (
+        SELECT owner_id, min(id) AS branch_id
+        FROM nursery_branches
+        GROUP BY owner_id
+      ) AS defaults
+      WHERE target.owner_id = defaults.owner_id
+        AND target.branch_id IS NULL;
+    UPDATE invoices AS target
+      SET branch_id = defaults.branch_id
+      FROM (
+        SELECT owner_id, min(id) AS branch_id
+        FROM nursery_branches
+        GROUP BY owner_id
+      ) AS defaults
+      WHERE target.owner_id = defaults.owner_id
+        AND target.branch_id IS NULL;
+    UPDATE classrooms AS target
+      SET branch_id = defaults.branch_id
+      FROM (
+        SELECT owner_id, min(id) AS branch_id
+        FROM nursery_branches
+        GROUP BY owner_id
+      ) AS defaults
+      WHERE target.owner_id = defaults.owner_id
+        AND target.branch_id IS NULL;
+    UPDATE staff AS target
+      SET branch_id = defaults.branch_id
+      FROM (
+        SELECT owner_id, min(id) AS branch_id
+        FROM nursery_branches
+        GROUP BY owner_id
+      ) AS defaults
+      WHERE target.owner_id = defaults.owner_id
+        AND target.branch_id IS NULL;
+    UPDATE nursery_stages AS target
+      SET branch_id = defaults.branch_id
+      FROM (
+        SELECT owner_id, min(id) AS branch_id
+        FROM nursery_branches
+        GROUP BY owner_id
+      ) AS defaults
+      WHERE target.owner_id = defaults.owner_id
+        AND target.branch_id IS NULL;
 
     COMMIT;
   `);

@@ -30,6 +30,7 @@ import {
   auditNurseryOperation, nurseryContext, requireNurseryPermission, resolveNurseryContext,
 } from "./nurseryOperations";
 import { ObjectNotFoundError, ObjectStorageService } from "../lib/objectStorage";
+import { resolveBranchId } from "../lib/branchScope";
 import {
   billingPlanDetails,
   computeBillingSchedule,
@@ -276,8 +277,11 @@ const staffResponse = (row: typeof staffTable.$inferSelect) => ({
 router.post("/staff", requireNurseryPermission("write:staff-profile"), async (req, res) => {
   const body = CreateStaffBody.safeParse(req.body);
   if (!body.success) return void res.status(400).json({ error: body.error.message });
+  const ownerId = nurseryContext(req).ownerId;
+  const branch = await resolveBranchId(db, ownerId, body.data.branchId);
+  if (branch.kind === "missing") return void res.status(400).json({ error: "Branch not found" });
   const [row] = await db.insert(staffTable).values({
-    ownerId: nurseryContext(req).ownerId, ...body.data,
+    ownerId, ...body.data, branchId: branch.branchId,
     email: body.data.email ?? null, jobTitle: body.data.jobTitle ?? null, hireDate: body.data.hireDate ?? null,
   }).returning();
   await auditNurseryOperation(req, "create", "staff", String(row.id), null, row as unknown as Record<string, unknown>);
@@ -290,7 +294,12 @@ router.patch("/staff/:id", requireNurseryPermission("write:staff-profile"), asyn
   if (!params.success || !body.success) return void res.status(400).json({ error: params.success ? body.error?.message : params.error.message });
   const [before] = await db.select().from(staffTable).where(and(eq(staffTable.id, params.data.id), eq(staffTable.ownerId, nurseryContext(req).ownerId)));
   if (!before) return void res.status(404).json({ error: "Staff member not found" });
-  const [row] = await db.update(staffTable).set(body.data).where(eq(staffTable.id, before.id)).returning();
+  const branch = await resolveBranchId(db, before.ownerId, body.data.branchId ?? before.branchId);
+  if (branch.kind === "missing") return void res.status(400).json({ error: "Branch not found" });
+  const [row] = await db.update(staffTable).set({
+    ...body.data,
+    branchId: branch.branchId,
+  }).where(eq(staffTable.id, before.id)).returning();
   await auditNurseryOperation(req, "update", "staff", String(row.id), before as unknown as Record<string, unknown>, row as unknown as Record<string, unknown>);
   res.json(UpdateStaffResponse.parse(staffResponse(row)));
 });
@@ -348,7 +357,8 @@ router.post("/invoices", requireNurseryPermission("write:invoice"), async (req, 
   const row = await db.transaction(async (tx) => {
     const now = new Date();
     const [invoice] = await tx.insert(invoicesTable).values({
-      ownerId, invoiceNumber: `INV-${now.toISOString().slice(0, 10).replaceAll("-", "")}-${randomUUID().slice(0, 8).toUpperCase()}`,
+      ownerId, branchId: child.branchId,
+      invoiceNumber: `INV-${now.toISOString().slice(0, 10).replaceAll("-", "")}-${randomUUID().slice(0, 8).toUpperCase()}`,
       guardianId: child.guardianId, childId: child.id, amount: total, dueDate: body.data.dueDate,
       status: body.data.status === "issued" ? "issued" : "draft",
       issuedAt: body.data.status === "issued" ? now : null,
