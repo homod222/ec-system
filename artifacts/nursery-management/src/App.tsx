@@ -61,23 +61,45 @@ const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
 // Wire up the generated API client to include the JWT on every request
 setAuthTokenGetter(() => getStoredToken());
 
+// Read permissions required to see each admin page (any one of them grants access).
+const pagePermissions = {
+  applications: ['read:application'],
+  children: ['read:children'],
+  attendance: ['read:attendance'],
+  classrooms: ['read:classroom-schedule'],
+  guardians: ['read:children'],
+  staff: ['read:staff-profile'],
+  education: ['read:curriculum', 'read:lesson-plan', 'read:skill', 'read:assessment', 'read:progress-report'],
+  activities: ['read:event', 'read:media', 'read:notification'],
+  finance: ['read:fee-plan', 'read:discount', 'read:invoice', 'read:refund', 'read:expense', 'read:revenue', 'read:payroll'],
+  reports: ['read:report-operational', 'read:report-academic', 'read:report-financial'],
+  audit: ['read:audit'],
+  permissions: ['read:permissions'],
+  users: ['read:users'],
+  gallery: ['read:site-gallery'],
+  settings: ['read:setting', 'read:holiday', 'read:integration'],
+} satisfies Record<string, readonly string[]>;
+
+const hasAnyPermission = (effective: readonly string[] | undefined, required?: readonly string[]) =>
+  !required || required.some((p) => effective?.includes(p));
+
 const navItems = [
   { href: '/dashboard', label: 'nav.dashboard', icon: LayoutDashboard },
-  { href: '/applications', label: 'nav.applications', icon: FileText },
-  { href: '/children', label: 'nav.children', icon: Baby },
-  { href: '/attendance', label: 'nav.attendance', icon: CalendarCheck },
-  { href: '/classrooms', label: 'nav.classrooms', icon: BookOpen },
-  { href: '/guardians', label: 'nav.guardians', icon: Users },
-  { href: '/staff', label: 'nav.staff', icon: GraduationCap },
-  { href: '/education', label: 'nav.education', icon: Sparkles },
-  { href: '/activities', label: 'nav.activities', icon: ActivityIcon },
-  { href: '/finance', label: 'nav.finance', icon: Wallet },
-  { href: '/reports', label: 'nav.reports', icon: BarChart3 },
-  { href: '/audit', label: 'nav.audit', icon: ShieldCheck },
-  { href: '/permissions', label: 'nav.permissions', icon: Users },
-  { href: '/users', label: 'nav.users', icon: Users, permission: 'read:users' },
-  { href: '/site-gallery', label: 'nav.gallery', icon: Images, permission: 'read:site-gallery' },
-] as Array<{ href: string; label: TranslationKey; icon: typeof LayoutDashboard; permission?: string }>;
+  { href: '/applications', label: 'nav.applications', icon: FileText, permission: pagePermissions.applications },
+  { href: '/children', label: 'nav.children', icon: Baby, permission: pagePermissions.children },
+  { href: '/attendance', label: 'nav.attendance', icon: CalendarCheck, permission: pagePermissions.attendance },
+  { href: '/classrooms', label: 'nav.classrooms', icon: BookOpen, permission: pagePermissions.classrooms },
+  { href: '/guardians', label: 'nav.guardians', icon: Users, permission: pagePermissions.guardians },
+  { href: '/staff', label: 'nav.staff', icon: GraduationCap, permission: pagePermissions.staff },
+  { href: '/education', label: 'nav.education', icon: Sparkles, permission: pagePermissions.education },
+  { href: '/activities', label: 'nav.activities', icon: ActivityIcon, permission: pagePermissions.activities },
+  { href: '/finance', label: 'nav.finance', icon: Wallet, permission: pagePermissions.finance },
+  { href: '/reports', label: 'nav.reports', icon: BarChart3, permission: pagePermissions.reports },
+  { href: '/audit', label: 'nav.audit', icon: ShieldCheck, permission: pagePermissions.audit },
+  { href: '/permissions', label: 'nav.permissions', icon: Users, permission: pagePermissions.permissions },
+  { href: '/users', label: 'nav.users', icon: Users, permission: pagePermissions.users },
+  { href: '/site-gallery', label: 'nav.gallery', icon: Images, permission: pagePermissions.gallery },
+] as Array<{ href: string; label: TranslationKey; icon: typeof LayoutDashboard; permission?: readonly string[] }>;
 const activeLocale = (locale?: Locale) => locale ?? (document.documentElement.lang === 'en' ? 'en' : 'ar');
 export const formatAppDate = (value: Date | string | number, locale?: Locale, options: Intl.DateTimeFormatOptions = {}) =>
   new Intl.DateTimeFormat(activeLocale(locale) === 'ar' ? 'ar-KW' : 'en-KW', { timeZone: 'Asia/Kuwait', weekday: 'long', day: 'numeric', month: 'long', ...options }).format(value instanceof Date ? value : new Date(value));
@@ -141,7 +163,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const { user, isSignedIn, signOut } = useAuth();
   const { dir, t } = useI18n();
   const session = useGetSessionContext({ query: { enabled: Boolean(isSignedIn), queryKey: getGetSessionContextQueryKey(), retry: false } });
-  const visibleNavItems = navItems.filter((item) => !item.permission || session.data?.effectivePermissions?.includes(item.permission));
+  const visibleNavItems = navItems.filter((item) => hasAnyPermission(session.data?.effectivePermissions, item.permission));
   
   return (
     <div className="app-noise min-h-[100dvh] bg-background selection:bg-primary/20" dir={dir}>
@@ -560,7 +582,7 @@ function Guardians() {
   );
 }
 
-function Protected({ children, allowedRole, permission }: { children: React.ReactNode, allowedRole?: 'parent' | 'admin', permission?: string }) {
+function Protected({ children, allowedRole, permission }: { children: React.ReactNode, allowedRole?: 'parent' | 'admin', permission?: readonly string[] }) {
   const { isLoaded, isSignedIn } = useAuth(); 
   const [location] = useLocation();
   const session = useGetSessionContext({
@@ -591,7 +613,7 @@ function Protected({ children, allowedRole, permission }: { children: React.Reac
     if (allowedRole === 'parent' && !isParentRole) {
       return <Redirect to="/dashboard" />;
     }
-    if (permission && !session.data.effectivePermissions?.includes(permission)) {
+    if (!hasAnyPermission(session.data.effectivePermissions, permission)) {
       return <Redirect to="/dashboard" />;
     }
 
@@ -920,24 +942,24 @@ function Router() {
 
         {/* Admin Routes */}
         <Route path="/dashboard"><Protected allowedRole="admin"><Dashboard /></Protected></Route>
-        <Route path="/applications"><Protected allowedRole="admin"><Applications /></Protected></Route>
-        <Route path="/applications/new"><Protected allowedRole="admin"><NewApplication /></Protected></Route>
-        <Route path="/applications/:id"><Protected allowedRole="admin"><ApplicationDetail /></Protected></Route>
-        <Route path="/children"><Protected allowedRole="admin"><Children /></Protected></Route>
-        <Route path="/children/:id"><Protected allowedRole="admin"><ChildProfileExpanded /></Protected></Route>
-        <Route path="/guardians"><Protected allowedRole="admin"><Guardians /></Protected></Route>
-        <Route path="/classrooms"><Protected allowedRole="admin"><ClassroomsExpanded /></Protected></Route>
-        <Route path="/staff"><Protected allowedRole="admin"><StaffExpanded /></Protected></Route>
-        <Route path="/attendance"><Protected allowedRole="admin"><AttendanceExpanded /></Protected></Route>
-        <Route path="/finance"><Protected allowedRole="admin"><FinanceExpanded /></Protected></Route>
-        <Route path="/education"><Protected allowedRole="admin"><Education /></Protected></Route>
-        <Route path="/activities"><Protected allowedRole="admin"><Activities /></Protected></Route>
-        <Route path="/reports"><Protected allowedRole="admin"><Reports /></Protected></Route>
-        <Route path="/permissions"><Protected allowedRole="admin"><Permissions /></Protected></Route>
-        <Route path="/users"><Protected allowedRole="admin" permission="read:users"><UsersPage /></Protected></Route>
-        <Route path="/site-gallery"><Protected allowedRole="admin"><SiteGallery /></Protected></Route>
-        <Route path="/settings"><Protected allowedRole="admin"><Settings /></Protected></Route>
-        <Route path="/audit"><Protected allowedRole="admin"><Audit /></Protected></Route>
+        <Route path="/applications"><Protected allowedRole="admin" permission={pagePermissions.applications}><Applications /></Protected></Route>
+        <Route path="/applications/new"><Protected allowedRole="admin" permission={pagePermissions.applications}><NewApplication /></Protected></Route>
+        <Route path="/applications/:id"><Protected allowedRole="admin" permission={pagePermissions.applications}><ApplicationDetail /></Protected></Route>
+        <Route path="/children"><Protected allowedRole="admin" permission={pagePermissions.children}><Children /></Protected></Route>
+        <Route path="/children/:id"><Protected allowedRole="admin" permission={pagePermissions.children}><ChildProfileExpanded /></Protected></Route>
+        <Route path="/guardians"><Protected allowedRole="admin" permission={pagePermissions.guardians}><Guardians /></Protected></Route>
+        <Route path="/classrooms"><Protected allowedRole="admin" permission={pagePermissions.classrooms}><ClassroomsExpanded /></Protected></Route>
+        <Route path="/staff"><Protected allowedRole="admin" permission={pagePermissions.staff}><StaffExpanded /></Protected></Route>
+        <Route path="/attendance"><Protected allowedRole="admin" permission={pagePermissions.attendance}><AttendanceExpanded /></Protected></Route>
+        <Route path="/finance"><Protected allowedRole="admin" permission={pagePermissions.finance}><FinanceExpanded /></Protected></Route>
+        <Route path="/education"><Protected allowedRole="admin" permission={pagePermissions.education}><Education /></Protected></Route>
+        <Route path="/activities"><Protected allowedRole="admin" permission={pagePermissions.activities}><Activities /></Protected></Route>
+        <Route path="/reports"><Protected allowedRole="admin" permission={pagePermissions.reports}><Reports /></Protected></Route>
+        <Route path="/permissions"><Protected allowedRole="admin" permission={pagePermissions.permissions}><Permissions /></Protected></Route>
+        <Route path="/users"><Protected allowedRole="admin" permission={pagePermissions.users}><UsersPage /></Protected></Route>
+        <Route path="/site-gallery"><Protected allowedRole="admin" permission={pagePermissions.gallery}><SiteGallery /></Protected></Route>
+        <Route path="/settings"><Protected allowedRole="admin" permission={pagePermissions.settings}><Settings /></Protected></Route>
+        <Route path="/audit"><Protected allowedRole="admin" permission={pagePermissions.audit}><Audit /></Protected></Route>
         <Route><Redirect to="/" /></Route>
       </Switch>
     </RoutedErrorBoundary>
