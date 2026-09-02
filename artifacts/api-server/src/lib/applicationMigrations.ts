@@ -1,6 +1,81 @@
-import { pool } from "@workspace/db";
+import { asc, and, eq } from "drizzle-orm";
+import {
+  branchesTable,
+  db,
+  organizationsTable,
+  pool,
+} from "@workspace/db";
 import { logger } from "./logger";
 import { hashPassword } from "./localAuth";
+import {
+  branchCode,
+  CODE_PATTERN,
+  derivePrefix,
+  organizationCode,
+  prefixOf,
+  uniquePrefix,
+} from "./organizationCodes";
+
+async function backfillHierarchicalCodes(): Promise<void> {
+  const owners = await db.selectDistinct({ ownerId: organizationsTable.ownerId })
+    .from(organizationsTable);
+
+  for (const { ownerId } of owners) {
+    const organizations = await db.select().from(organizationsTable)
+      .where(eq(organizationsTable.ownerId, ownerId))
+      .orderBy(asc(organizationsTable.id));
+    const takenPrefixes = new Set(
+      organizations
+        .filter((organization) => CODE_PATTERN.test(organization.code))
+        .map((organization) => prefixOf(organization.code)),
+    );
+
+    for (const organization of organizations) {
+      let organizationCodeValue = organization.code;
+      if (!CODE_PATTERN.test(organization.code)) {
+        const prefix = uniquePrefix(derivePrefix(organization.name), takenPrefixes);
+        takenPrefixes.add(prefix);
+        organizationCodeValue = organizationCode(prefix);
+        await db.update(organizationsTable)
+          .set({ code: organizationCodeValue })
+          .where(and(
+            eq(organizationsTable.id, organization.id),
+            eq(organizationsTable.ownerId, ownerId),
+          ));
+      }
+
+      const prefix = prefixOf(organizationCodeValue);
+      const branches = await db.select().from(branchesTable)
+        .where(and(
+          eq(branchesTable.ownerId, ownerId),
+          eq(branchesTable.organizationId, organization.id),
+        ))
+        .orderBy(asc(branchesTable.id));
+      const takenSuffixes = new Set<number>();
+      for (const branch of branches) {
+        const normalizedCode = branch.code.toUpperCase();
+        if (!normalizedCode.startsWith(`${prefix}.`)) continue;
+        const suffix = Number(normalizedCode.slice(prefix.length + 1));
+        if (!Number.isNaN(suffix)) takenSuffixes.add(suffix);
+      }
+      for (const branch of branches) {
+        const normalizedCode = branch.code.toUpperCase();
+        if (normalizedCode.startsWith(`${prefix}.`) && !Number.isNaN(Number(normalizedCode.slice(prefix.length + 1)))) {
+          continue;
+        }
+        const code = branchCode(prefix, takenSuffixes);
+        const suffix = Number(code.slice(prefix.length + 1));
+        takenSuffixes.add(suffix);
+        await db.update(branchesTable)
+          .set({ code })
+          .where(and(
+            eq(branchesTable.id, branch.id),
+            eq(branchesTable.ownerId, ownerId),
+          ));
+      }
+    }
+  }
+}
 
 export async function runApplicationMigrations(): Promise<void> {
   await pool.query(`
@@ -649,6 +724,7 @@ export async function runApplicationMigrations(): Promise<void> {
 
     COMMIT;
   `);
+  await backfillHierarchicalCodes();
   const legacyStaff = await pool.query<{ count: string }>(`
     SELECT count(*)::text AS count FROM staff WHERE owner_id = '__legacy__'
   `);

@@ -30,14 +30,15 @@ import {
   nurseryContext,
   permitted,
 } from "./nurseryOperations";
+import {
+  branchCode,
+  derivePrefix,
+  organizationCode,
+  prefixOf,
+  uniquePrefix,
+} from "../lib/organizationCodes";
 
 const router: IRouter = Router();
-
-function generateCode(prefix: string, taken: Set<string>): string {
-  let n = 1;
-  while (taken.has(`${prefix}-${String(n).padStart(3, "0")}`.toLowerCase())) n += 1;
-  return `${prefix}-${String(n).padStart(3, "0")}`;
-}
 
 function isUniqueViolation(error: unknown): boolean {
   return typeof error === "object" && error !== null && (error as { code?: string }).code === "23505";
@@ -90,8 +91,8 @@ router.post("/organizations", async (req, res): Promise<void> => {
       const rows = await db.select({ code: organizationsTable.code })
         .from(organizationsTable)
         .where(eq(organizationsTable.ownerId, ownerId));
-      const taken = new Set(rows.map((row) => row.code.toLowerCase()));
-      const code = generateCode("ORG", taken);
+      const taken = new Set(rows.map((row) => prefixOf(row.code)));
+      const code = organizationCode(uniquePrefix(derivePrefix(body.data.name), taken));
       [created] = await db.insert(organizationsTable).values({
         ownerId,
         ...body.data,
@@ -224,7 +225,10 @@ router.post("/branches", async (req, res): Promise<void> => {
     return;
   }
   const { ownerId } = nurseryContext(req);
-  const [organization] = await db.select({ id: organizationsTable.id })
+  const [organization] = await db.select({
+    id: organizationsTable.id,
+    code: organizationsTable.code,
+  })
     .from(organizationsTable).where(and(
       eq(organizationsTable.id, body.data.organizationId),
       eq(organizationsTable.ownerId, ownerId),
@@ -238,10 +242,19 @@ router.post("/branches", async (req, res): Promise<void> => {
   for (let attempt = 0; attempt < 5; attempt += 1) {
     try {
       const rows = await db.select({ code: branchesTable.code })
-        .from(branchesTable)
-        .where(eq(branchesTable.ownerId, ownerId));
-      const taken = new Set(rows.map((row) => row.code.toLowerCase()));
-      const code = generateCode("BR", taken);
+        .from(branchesTable).where(and(
+          eq(branchesTable.ownerId, ownerId),
+          eq(branchesTable.organizationId, organization.id),
+        ));
+      const prefix = prefixOf(organization.code);
+      const taken = new Set<number>();
+      for (const row of rows) {
+        const normalizedCode = row.code.toUpperCase();
+        if (!normalizedCode.startsWith(`${prefix}.`)) continue;
+        const suffix = Number(normalizedCode.slice(prefix.length + 1));
+        if (!Number.isNaN(suffix)) taken.add(suffix);
+      }
+      const code = branchCode(prefix, taken);
       [created] = await db.insert(branchesTable).values({
         ownerId,
         ...body.data,
