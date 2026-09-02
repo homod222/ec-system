@@ -1,5 +1,6 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type RequestHandler } from "express";
 import { and, eq } from "drizzle-orm";
+import { getLocalAuth } from "../lib/localAuth";
 import {
   CreateBranchBody,
   CreateBranchResponse,
@@ -29,6 +30,7 @@ import {
   auditNurseryOperation,
   nurseryContext,
   permitted,
+  resolveNurseryContext,
 } from "./nurseryOperations";
 import {
   branchCode,
@@ -39,6 +41,16 @@ import {
 } from "../lib/organizationCodes";
 
 const router: IRouter = Router();
+
+const requireAuth: RequestHandler = (req, res, next) => {
+  if (!getLocalAuth(req)) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  next();
+};
+
+router.use(requireAuth, resolveNurseryContext);
 
 function isUniqueViolation(error: unknown): boolean {
   return typeof error === "object" && error !== null && (error as { code?: string }).code === "23505";
