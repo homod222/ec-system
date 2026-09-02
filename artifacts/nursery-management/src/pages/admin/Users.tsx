@@ -8,6 +8,7 @@ import {
   useUpdateGuardianAccount,
   useUpdateStaff,
   useDeleteStaff,
+  useGetSessionContext,
 } from '@workspace/api-client-react';
 import type { GuardianAccountResult, StaffMember } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -18,11 +19,18 @@ import { useI18n } from '../../i18n';
 
 type Tab = 'guardians' | 'staff';
 
+function useUsersPermissions() {
+  const session = useGetSessionContext();
+  const effective = session.data?.effectivePermissions || [];
+  return { canWrite: effective.includes('write:users'), canDelete: effective.includes('delete:users') };
+}
+
 export function Users() {
   const { t, dir } = useI18n();
   const [tab, setTab] = useState<Tab>('guardians');
   const [search, setSearch] = useState('');
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const { canWrite } = useUsersPermissions();
 
   return (
     <Shell>
@@ -46,13 +54,15 @@ export function Users() {
             {t('usersPage.tabStaff')}
           </button>
         </div>
-        <Button
-          data-testid="button-add-account"
-          onClick={() => setShowCreateDialog(true)}
-          className="!px-4 !py-2.5"
-        >
-          <Plus size={18} />{t('usersPage.addAccount')}
-        </Button>
+        {canWrite && (
+          <Button
+            data-testid="button-add-account"
+            onClick={() => setShowCreateDialog(true)}
+            className="!px-4 !py-2.5"
+          >
+            <Plus size={18} />{t('usersPage.addAccount')}
+          </Button>
+        )}
         </div>
         <div className="relative w-full max-w-md">
           <Search size={18} className={`absolute top-3.5 text-muted-foreground ${dir === 'rtl' ? 'right-4' : 'left-4'}`} />
@@ -89,6 +99,7 @@ function GuardiansTab({ search }: { search: string }) {
   const [error, setError] = useState<number | null>(null);
   const [editAccount, setEditAccount] = useState<GuardianAccountResult | null>(null);
   const [deleteAccount, setDeleteAccount] = useState<GuardianAccountResult | null>(null);
+  const { canWrite, canDelete } = useUsersPermissions();
   const accounts = (query.data || []).filter((account) => account.name.includes(search) || account.phone.includes(search));
 
   const mutate = (guardianId: number, status: 'active' | 'disabled') => {
@@ -129,21 +140,25 @@ function GuardiansTab({ search }: { search: string }) {
               )}
             </div>
             <div className="flex gap-2">
-              <Button
-                variant="ghost"
-                className="!px-2 !py-2"
-                onClick={() => setEditAccount(account)}
-              >
-                <Pencil size={16} />
-              </Button>
-              <Button
-                variant="ghost"
-                className="!px-2 !py-2 text-destructive hover:text-destructive"
-                onClick={() => setDeleteAccount(account)}
-              >
-                <Trash2 size={16} />
-              </Button>
-              {account.accountStatus === 'unlinked' ? (
+              {canWrite && (
+                <Button
+                  variant="ghost"
+                  className="!px-2 !py-2"
+                  onClick={() => setEditAccount(account)}
+                >
+                  <Pencil size={16} />
+                </Button>
+              )}
+              {canDelete && (
+                <Button
+                  variant="ghost"
+                  className="!px-2 !py-2 text-destructive hover:text-destructive"
+                  onClick={() => setDeleteAccount(account)}
+                >
+                  <Trash2 size={16} />
+                </Button>
+              )}
+              {account.accountStatus === 'unlinked' || !canWrite ? (
                 <span className="text-muted-foreground">—</span>
               ) : account.accountStatus === 'disabled' || account.accountStatus === 'pending' ? (
                 <Button
@@ -312,6 +327,7 @@ function StaffTab({ search }: { search: string }) {
   const [accountMember, setAccountMember] = useState<StaffMember | null>(null);
   const [editMember, setEditMember] = useState<StaffMember | null>(null);
   const [deleteMember, setDeleteMember] = useState<StaffMember | null>(null);
+  const { canWrite, canDelete } = useUsersPermissions();
   const staff = (query.data || []).filter((member) => member.name.includes(search));
 
   return (
@@ -350,28 +366,34 @@ function StaffTab({ search }: { search: string }) {
                 {formatNumber(member.attendanceRate / 100, { style: 'percent', maximumFractionDigits: 0 })}
               </div>
               <div className="flex gap-2">
-                <Button
-                  variant="ghost"
-                  className="!px-2 !py-2"
-                  onClick={() => setEditMember(member)}
-                >
-                  <Pencil size={16} />
-                </Button>
-                <Button
-                  variant="ghost"
-                  className="!px-2 !py-2 text-destructive hover:text-destructive"
-                  onClick={() => setDeleteMember(member)}
-                >
-                  <Trash2 size={16} />
-                </Button>
-                <Button
-                  data-testid={`button-user-account-staff-${member.id}`}
-                  variant={member.accountStatus === 'pending_verification' ? 'soft' : 'ghost'}
-                  className="!p-2"
-                  onClick={() => setAccountMember(member)}
-                >
-                  <KeyRound size={16} />
-                </Button>
+                {canWrite && (
+                  <Button
+                    variant="ghost"
+                    className="!px-2 !py-2"
+                    onClick={() => setEditMember(member)}
+                  >
+                    <Pencil size={16} />
+                  </Button>
+                )}
+                {canDelete && (
+                  <Button
+                    variant="ghost"
+                    className="!px-2 !py-2 text-destructive hover:text-destructive"
+                    onClick={() => setDeleteMember(member)}
+                  >
+                    <Trash2 size={16} />
+                  </Button>
+                )}
+                {canWrite && (
+                  <Button
+                    data-testid={`button-user-account-staff-${member.id}`}
+                    variant={member.accountStatus === 'pending_verification' ? 'soft' : 'ghost'}
+                    className="!p-2"
+                    onClick={() => setAccountMember(member)}
+                  >
+                    <KeyRound size={16} />
+                  </Button>
+                )}
               </div>
             </div>
           ))}
