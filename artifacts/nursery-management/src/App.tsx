@@ -2,9 +2,9 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import {
   Activity as ActivityIcon, ArrowUpRight, Baby, BarChart3, Bell, BookOpen,
-  CalendarCheck, Check, ChevronLeft, ChevronRight, CircleAlert, CircleDollarSign, Clock3,
-  FileText, GraduationCap, LayoutDashboard, LogOut, Menu, MoreHorizontal,
-  Phone, Plus, Search, Settings as SettingsIcon, ShieldCheck, Sparkles, TrendingUp, Users, Wallet, X, Images,
+  CalendarCheck, Check, ChevronLeft, ChevronRight, CircleAlert, CircleDollarSign, Clock3, Contact,
+  FileText, GraduationCap, KeyRound, LayoutDashboard, LogOut, Menu, MoreHorizontal,
+  Phone, Plus, ScrollText, Search, Settings as SettingsIcon, ShieldCheck, Sparkles, TrendingUp, UserCog, Users, Wallet, X, Images,
 } from 'lucide-react';
 import {
   getGetChildQueryKey, getListChildrenQueryKey,
@@ -84,23 +84,50 @@ const pagePermissions = {
 const hasAnyPermission = (effective: readonly string[] | undefined, required?: readonly string[]) =>
   !required || required.some((p) => effective?.includes(p));
 
-const navItems = [
-  { href: '/dashboard', label: 'nav.dashboard', icon: LayoutDashboard, permission: pagePermissions.dashboard },
-  { href: '/applications', label: 'nav.applications', icon: FileText, permission: pagePermissions.applications },
-  { href: '/children', label: 'nav.children', icon: Baby, permission: pagePermissions.children },
-  { href: '/attendance', label: 'nav.attendance', icon: CalendarCheck, permission: pagePermissions.attendance },
-  { href: '/classrooms', label: 'nav.classrooms', icon: BookOpen, permission: pagePermissions.classrooms },
-  { href: '/guardians', label: 'nav.guardians', icon: Users, permission: pagePermissions.guardians },
-  { href: '/staff', label: 'nav.staff', icon: GraduationCap, permission: pagePermissions.staff },
-  { href: '/education', label: 'nav.education', icon: Sparkles, permission: pagePermissions.education },
-  { href: '/activities', label: 'nav.activities', icon: ActivityIcon, permission: pagePermissions.activities },
-  { href: '/finance', label: 'nav.finance', icon: Wallet, permission: pagePermissions.finance },
-  { href: '/reports', label: 'nav.reports', icon: BarChart3, permission: pagePermissions.reports },
-  { href: '/audit', label: 'nav.audit', icon: ShieldCheck, permission: pagePermissions.audit },
-  { href: '/permissions', label: 'nav.permissions', icon: Users, permission: pagePermissions.permissions },
-  { href: '/users', label: 'nav.users', icon: Users, permission: pagePermissions.users },
-  { href: '/site-gallery', label: 'nav.gallery', icon: Images, permission: pagePermissions.gallery },
-] as Array<{ href: string; label: TranslationKey; icon: typeof LayoutDashboard; permission?: readonly string[] }>;
+const navGroups = [
+  {
+    label: 'nav.group.daily',
+    items: [
+      { href: '/dashboard', label: 'nav.dashboard', icon: LayoutDashboard, permission: pagePermissions.dashboard },
+      { href: '/applications', label: 'nav.applications', icon: FileText, permission: pagePermissions.applications },
+      { href: '/attendance', label: 'nav.attendance', icon: CalendarCheck, permission: pagePermissions.attendance },
+    ],
+  },
+  {
+    label: 'nav.group.people',
+    items: [
+      { href: '/children', label: 'nav.children', icon: Baby, permission: pagePermissions.children },
+      { href: '/guardians', label: 'nav.guardians', icon: Contact, permission: pagePermissions.guardians },
+      { href: '/staff', label: 'nav.staff', icon: GraduationCap, permission: pagePermissions.staff },
+    ],
+  },
+  {
+    label: 'nav.group.learning',
+    items: [
+      { href: '/classrooms', label: 'nav.classrooms', icon: BookOpen, permission: pagePermissions.classrooms },
+      { href: '/education', label: 'nav.education', icon: Sparkles, permission: pagePermissions.education },
+      { href: '/activities', label: 'nav.activities', icon: ActivityIcon, permission: pagePermissions.activities },
+      { href: '/site-gallery', label: 'nav.gallery', icon: Images, permission: pagePermissions.gallery },
+    ],
+  },
+  {
+    label: 'nav.group.finance',
+    items: [
+      { href: '/finance', label: 'nav.finance', icon: Wallet, permission: pagePermissions.finance },
+      { href: '/reports', label: 'nav.reports', icon: BarChart3, permission: pagePermissions.reports },
+    ],
+  },
+  {
+    label: 'nav.group.system',
+    items: [
+      { href: '/users', label: 'nav.users', icon: UserCog, permission: pagePermissions.users },
+      { href: '/permissions', label: 'nav.permissions', icon: KeyRound, permission: pagePermissions.permissions },
+      { href: '/audit', label: 'nav.audit', icon: ScrollText, permission: pagePermissions.audit },
+    ],
+  },
+] as Array<{ label: TranslationKey; items: Array<{ href: string; label: TranslationKey; icon: typeof LayoutDashboard; permission?: readonly string[] }> }>;
+
+const navItems = navGroups.flatMap((group) => group.items);
 
 const fallbackPath = (effective?: readonly string[]) =>
   navItems.find((item) => hasAnyPermission(effective, item.permission))?.href ?? '/access-pending';
@@ -168,44 +195,48 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const { user, isSignedIn, signOut } = useAuth();
   const { dir, t } = useI18n();
   const session = useGetSessionContext({ query: { enabled: Boolean(isSignedIn), queryKey: getGetSessionContextQueryKey(), retry: false } });
-  const visibleNavItems = navItems.filter((item) => hasAnyPermission(session.data?.effectivePermissions, item.permission));
+  const effectivePermissions = session.data?.effectivePermissions;
+  const visibleNavGroups = navGroups
+    .map((group) => ({ ...group, items: group.items.filter((item) => hasAnyPermission(effectivePermissions, item.permission)) }))
+    .filter((group) => group.items.length > 0);
+  const canSeeSettings = hasAnyPermission(effectivePermissions, pagePermissions.settings);
   
   return (
     <div className="app-noise min-h-[100dvh] bg-background selection:bg-primary/20" dir={dir}>
       <aside className={`fixed inset-y-0 z-40 flex w-[280px] flex-col bg-sidebar px-5 py-6 text-sidebar-foreground shadow-2xl transition-transform duration-300 lg:translate-x-0 ${dir === 'rtl' ? `right-0 ${open ? 'translate-x-0' : 'translate-x-full'}` : `left-0 ${open ? 'translate-x-0' : '-translate-x-full'}`}`}>
-        <div className="mb-10 flex items-center justify-between px-2">
-          <img src={`${basePath}/ec-official-logo-v2.png`} alt={t('admin.brand')} className="h-28 w-36 rounded-xl bg-white/95 p-1 object-contain shadow-sm" />
-          <button data-testid="button-close-menu" className="rounded-xl p-2 text-sidebar-foreground/60 hover:bg-sidebar-accent lg:hidden" onClick={() => setOpen(false)}><X size={20} /></button>
-        </div>
-        
-        <div className="mb-8 rounded-2xl bg-sidebar-accent/50 p-4 border border-sidebar-border">
-          <div className="flex items-center gap-3">
-            <span className="grid h-11 w-11 place-items-center rounded-xl bg-sidebar-primary text-sidebar-primary-foreground shadow-sm">
-              <ShieldCheck size={20} />
-            </span>
-            <div>
-              <p className="text-sm font-bold text-sidebar-foreground">{t('admin.brand')}</p>
-              <p className="mt-0.5 text-xs font-medium text-sidebar-primary">{t('admin.bilingual')}</p>
-            </div>
+        <div className="mb-4 flex items-center gap-3 px-1">
+          <img src={`${basePath}/ec-official-logo-v2.png`} alt={t('admin.brand')} className="h-12 w-12 shrink-0 rounded-xl bg-white/95 p-1 object-contain shadow-sm" />
+          <div className="min-w-0">
+            <p className="truncate text-sm font-bold text-sidebar-foreground">{t('admin.brand')}</p>
+            <p className="mt-0.5 truncate text-xs font-medium text-sidebar-primary">{t('admin.bilingual')}</p>
           </div>
+          <button data-testid="button-close-menu" className="ms-auto rounded-xl p-2 text-sidebar-foreground/60 hover:bg-sidebar-accent lg:hidden" onClick={() => setOpen(false)}><X size={20} /></button>
         </div>
-        
-        <p className="mb-3 px-3 text-[11px] font-bold tracking-[.18em] text-sidebar-foreground/40 uppercase">{t('admin.management')}</p>
-        <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto sidebar-scroll">
-          {visibleNavItems.map(({ href, label, icon: Icon }) => (
-            <Link key={href} href={href} data-testid={`link-nav-${href.slice(1)}`} onClick={() => setOpen(false)} 
-              className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-bold transition-colors ${location === href || location.startsWith(`${href}/`) ? 'bg-sidebar-primary text-sidebar-primary-foreground shadow-sm' : 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground'}`}>
-              <Icon size={18} />
-              <span>{t(label)}</span>
-              {href === '/attendance' && <span className="ms-auto rounded-full bg-destructive px-2 py-0.5 text-[10px] font-bold text-white">{t('admin.today')}</span>}
-            </Link>
+
+        <nav aria-label={t('admin.management')} className="min-h-0 flex-1 space-y-4 overflow-y-auto sidebar-scroll sidebar-fade pt-1 pb-1">
+          {visibleNavGroups.map((group) => (
+            <div key={group.label} className="space-y-1">
+              <p className="mb-1.5 px-3 text-[10px] font-bold uppercase tracking-[.14em] text-sidebar-foreground/40">{t(group.label)}</p>
+              {group.items.map(({ href, label, icon: Icon }) => {
+                const active = location === href || location.startsWith(`${href}/`);
+                return (
+                  <Link key={href} href={href} data-testid={`link-nav-${href.slice(1)}`} onClick={() => setOpen(false)}
+                    aria-current={active ? 'page' : undefined}
+                    className={`flex items-center gap-3 rounded-xl px-3 py-2 text-[13px] font-bold transition-colors ${active ? 'bg-sidebar-primary text-sidebar-primary-foreground shadow-sm' : 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground'}`}>
+                    <Icon size={18} className="shrink-0" />
+                    <span className="truncate">{t(label)}</span>
+                    {href === '/attendance' && <span className="ms-auto shrink-0 rounded-full bg-destructive px-2 py-0.5 text-[10px] font-bold text-white">{t('admin.today')}</span>}
+                  </Link>
+                );
+              })}
+            </div>
           ))}
         </nav>
         
-        <div className="mt-auto space-y-1 pt-6 border-t border-sidebar-border">
-          <LanguageSwitcher inverted className="mb-3 w-full justify-center" />
-          <Link href="/settings" data-testid="link-nav-settings" className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-bold text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"><SettingsIcon size={18} />{t('admin.settings')}</Link>
-          <button data-testid="button-sign-out" onClick={() => { signOut(); window.location.assign(basePath || '/'); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-bold text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"><LogOut size={18} />{t('admin.signOut')}</button>
+        <div className="mt-auto space-y-1 pt-3 border-t border-sidebar-border">
+          <LanguageSwitcher inverted className="mb-2 w-full justify-center py-1.5" />
+          {canSeeSettings && <Link href="/settings" data-testid="link-nav-settings" className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold transition-colors ${location.startsWith('/settings') ? 'bg-sidebar-accent text-sidebar-foreground' : 'text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground'}`}><SettingsIcon size={18} />{t('admin.settings')}</Link>}
+          <button data-testid="button-sign-out" onClick={() => { signOut(); window.location.assign(basePath || '/'); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"><LogOut size={18} />{t('admin.signOut')}</button>
         </div>
       </aside>
       
