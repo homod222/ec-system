@@ -46,11 +46,7 @@ function branchResponse(row: typeof branchesTable.$inferSelect) {
     legacyRecordId: _legacyRecordId,
     ...response
   } = row;
-  return {
-    ...response,
-    organizationId: row.organizationId,
-    managerName: row.managerName,
-  };
+  return response;
 }
 
 router.get("/organizations", async (req, res): Promise<void> => {

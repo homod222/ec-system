@@ -16,7 +16,21 @@ import {
 import type { Branch, Organization } from '@workspace/api-client-react';
 import { Building2, Edit3, Plus, Trash2, X } from 'lucide-react';
 import { Button, PageHeader, Pill, QueryState, Shell } from '../../App';
-import { useI18n } from '../../i18n';
+import { useI18n, type TranslationKey } from '../../i18n';
+
+const ORGANIZATION_TYPES = ['nursery', 'school', 'institute', 'other'] as const;
+type OrganizationType = typeof ORGANIZATION_TYPES[number];
+const ORGANIZATION_TYPE_KEYS: Record<OrganizationType, TranslationKey> = {
+  nursery: 'organizations.organizationTypeNursery',
+  school: 'organizations.organizationTypeSchool',
+  institute: 'organizations.organizationTypeInstitute',
+  other: 'organizations.organizationTypeOther',
+};
+
+function organizationTypeLabel(type: string, t: (key: TranslationKey) => string) {
+  const key = ORGANIZATION_TYPE_KEYS[type as OrganizationType];
+  return key ? t(key) : type;
+}
 
 type OrganizationFormValue = {
   name: string;
@@ -58,6 +72,8 @@ export function Organizations() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [organizationDialog, setOrganizationDialog] = useState<Organization | 'new' | null>(null);
   const [branchDialog, setBranchDialog] = useState<Branch | 'new' | null>(null);
+  const [organizationDeleteError, setOrganizationDeleteError] = useState(false);
+  const [branchDeleteErrorId, setBranchDeleteErrorId] = useState<number | null>(null);
   const permissions = useOrganizationPermissions();
   const selected = organizations.find((organization) => organization.id === selectedId) || organizations[0];
   const branchesQuery = useListBranches(selected ? { organizationId: selected.id } : undefined);
@@ -74,17 +90,24 @@ export function Organizations() {
   const deleteBranch = useDeleteBranch();
   const removeOrganization = (organization: Organization) => {
     if (!window.confirm(t('organizations.deleteConfirm'))) return;
+    setOrganizationDeleteError(false);
     deleteOrganization.mutate({ id: organization.id }, {
       onSuccess: () => {
+        setOrganizationDeleteError(false);
         if (selectedId === organization.id) setSelectedId(null);
         refreshOrganizations();
         refreshBranches();
       },
+      onError: () => setOrganizationDeleteError(true),
     });
   };
   const removeBranch = (branch: Branch) => {
     if (!window.confirm(t('organizations.deleteConfirm'))) return;
-    deleteBranch.mutate({ id: branch.id }, { onSuccess: refreshBranches });
+    setBranchDeleteErrorId(null);
+    deleteBranch.mutate({ id: branch.id }, {
+      onSuccess: refreshBranches,
+      onError: () => setBranchDeleteErrorId(branch.id),
+    });
   };
 
   return (
@@ -106,6 +129,11 @@ export function Organizations() {
               </Button>
             )}
           </div>
+          {organizationDeleteError && (
+            <p data-testid="alert-delete-organization" role="alert" className="mb-4 text-sm font-bold text-destructive">
+              {t('organizations.deleteError')}
+            </p>
+          )}
           <QueryState loading={organizationsQuery.isLoading} error={organizationsQuery.isError} empty={!organizations.length} onRetry={() => organizationsQuery.refetch()}>
             <div className="space-y-3">
               {organizations.map((organization) => (
@@ -119,7 +147,7 @@ export function Organizations() {
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="font-bold">{organization.name}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">{organization.code} · {organization.type}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{organization.code} · {organizationTypeLabel(organization.type, t)}</p>
                     </div>
                     <Pill tone={organization.active ? 'green' : 'neutral'}>{organization.active ? t('organizations.active') : t('organizations.inactive')}</Pill>
                   </div>
@@ -191,6 +219,11 @@ export function Organizations() {
                           </Button>
                         )}
                       </div>
+                      {branchDeleteErrorId === branch.id && (
+                        <p data-testid={`alert-delete-branch-${branch.id}`} role="alert" className="mt-3 text-sm font-bold text-destructive">
+                          {t('organizations.deleteError')}
+                        </p>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -234,26 +267,47 @@ function OrganizationDialog({ value, onClose, onSaved }: { value: Organization |
   });
   const mutation = value === 'new' ? create : update;
   const busy = mutation.isPending;
+  const [validationError, setValidationError] = useState(false);
   const set = (key: keyof OrganizationFormValue, next: string | boolean) => setForm((current) => ({ ...current, [key]: next }));
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
-    if (!form.name.trim() || !form.code.trim()) return;
+    if (!form.name.trim() || !form.code.trim()) {
+      setValidationError(true);
+      return;
+    }
+    setValidationError(false);
     const data = { ...form, name: form.name.trim(), code: form.code.trim(), address: form.address.trim() || null, phone: form.phone.trim() || null, email: form.email.trim() || null };
     if (value === 'new') create.mutate({ data }, { onSuccess: onSaved });
     else update.mutate({ id: value.id, data }, { onSuccess: onSaved });
   };
   return (
-    <Modal title={value === 'new' ? t('organizations.addOrganization') : t('organizations.editOrganization')} onClose={onClose}>
+    <Modal kind="organization" title={value === 'new' ? t('organizations.addOrganization') : t('organizations.editOrganization')} onClose={onClose}>
       <form onSubmit={submit} className="space-y-4">
         <Field label={t('organizations.name')} testId="input-organization-name" value={form.name} onChange={(v) => set('name', v)} required />
         <Field label={t('organizations.code')} testId="input-organization-code" value={form.code} onChange={(v) => set('code', v)} required />
-        <Field label={t('organizations.type')} testId="input-organization-type" value={form.type} onChange={(v) => set('type', v)} />
+        <label className="block text-sm font-bold">
+          <span className="mb-1.5 block">{t('organizations.type')}</span>
+          <select
+            data-testid="input-organization-type"
+            value={form.type}
+            onChange={(event) => set('type', event.target.value)}
+            className="min-h-11 w-full rounded-xl border border-input bg-background px-4 py-2 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+          >
+            {!ORGANIZATION_TYPES.includes(form.type as OrganizationType) && form.type && (
+              <option value={form.type}>{organizationTypeLabel(form.type, t)}</option>
+            )}
+            {ORGANIZATION_TYPES.map((type) => (
+              <option key={type} value={type}>{organizationTypeLabel(type, t)}</option>
+            ))}
+          </select>
+        </label>
         <Field label={t('organizations.phone')} testId="input-organization-phone" value={form.phone} onChange={(v) => set('phone', v)} />
         <Field label={t('organizations.address')} testId="input-organization-address" value={form.address} onChange={(v) => set('address', v)} />
         <Field label={t('organizations.email')} testId="input-organization-email" type="email" value={form.email} onChange={(v) => set('email', v)} />
         <Checkbox label={t('organizations.active')} testId="input-organization-active" checked={form.active} onChange={(v) => set('active', v)} />
+        {validationError && <p data-testid="alert-organization-required" role="alert" className="text-sm font-bold text-destructive">{t('organizations.required')}</p>}
         {mutation.isError && <p role="alert" className="text-sm font-bold text-destructive">{t('organizations.saveError')}</p>}
-        <DialogActions busy={busy} onClose={onClose} saveLabel={t('organizations.save')} />
+        <DialogActions kind="organization" busy={busy} onClose={onClose} saveLabel={t('organizations.save')} />
       </form>
     </Modal>
   );
@@ -269,10 +323,15 @@ function BranchDialog({ value, organizationId, onClose, onSaved }: { value: Bran
     phone: initial?.phone || '', capacity: String(initial?.capacity ?? 0), managerName: initial?.managerName || '', active: initial?.active ?? true,
   });
   const mutation = value === 'new' ? create : update;
+  const [validationError, setValidationError] = useState(false);
   const set = (key: keyof BranchFormValue, next: string | boolean | number) => setForm((current) => ({ ...current, [key]: next }));
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
-    if (!form.name.trim() || !form.code.trim()) return;
+    if (!form.name.trim() || !form.code.trim()) {
+      setValidationError(true);
+      return;
+    }
+    setValidationError(false);
     const data = {
       organizationId: form.organizationId, name: form.name.trim(), code: form.code.trim(),
       address: form.address.trim() || null, phone: form.phone.trim() || null,
@@ -282,7 +341,7 @@ function BranchDialog({ value, organizationId, onClose, onSaved }: { value: Bran
     else update.mutate({ id: value.id, data }, { onSuccess: onSaved });
   };
   return (
-    <Modal title={value === 'new' ? t('organizations.addBranch') : t('organizations.editBranch')} onClose={onClose}>
+    <Modal kind="branch" title={value === 'new' ? t('organizations.addBranch') : t('organizations.editBranch')} onClose={onClose}>
       <form onSubmit={submit} className="space-y-4">
         <Field label={t('organizations.name')} testId="input-branch-name" value={form.name} onChange={(v) => set('name', v)} required />
         <Field label={t('organizations.code')} testId="input-branch-code" value={form.code} onChange={(v) => set('code', v)} required />
@@ -291,8 +350,9 @@ function BranchDialog({ value, organizationId, onClose, onSaved }: { value: Bran
         <Field label={t('organizations.address')} testId="input-branch-address" value={form.address} onChange={(v) => set('address', v)} />
         <Field label={t('organizations.capacity')} testId="input-branch-capacity" type="number" value={form.capacity} onChange={(v) => set('capacity', v)} />
         <Checkbox label={t('organizations.active')} testId="input-branch-active" checked={form.active} onChange={(v) => set('active', v)} />
+        {validationError && <p data-testid="alert-branch-required" role="alert" className="text-sm font-bold text-destructive">{t('organizations.required')}</p>}
         {mutation.isError && <p role="alert" className="text-sm font-bold text-destructive">{t('organizations.saveError')}</p>}
-        <DialogActions busy={mutation.isPending} onClose={onClose} saveLabel={t('organizations.save')} />
+        <DialogActions kind="branch" busy={mutation.isPending} onClose={onClose} saveLabel={t('organizations.save')} />
       </form>
     </Modal>
   );
@@ -306,11 +366,11 @@ function Checkbox({ label, testId, checked, onChange }: { label: string; testId:
   return <label className="flex items-center gap-2 text-sm font-bold"><input data-testid={testId} type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} className="h-4 w-4 accent-primary" />{label}</label>;
 }
 
-function DialogActions({ busy, onClose, saveLabel }: { busy: boolean; onClose: () => void; saveLabel: string }) {
+function DialogActions({ kind, busy, onClose, saveLabel }: { kind: 'organization' | 'branch'; busy: boolean; onClose: () => void; saveLabel: string }) {
   const { t } = useI18n();
-  return <div className="flex justify-end gap-2 pt-2"><Button data-testid="button-cancel-organization-dialog" type="button" variant="ghost" onClick={onClose}>{t('organizations.cancel')}</Button><Button data-testid="button-save-organization-dialog" type="submit" disabled={busy}>{saveLabel}</Button></div>;
+  return <div className="flex justify-end gap-2 pt-2"><Button data-testid={`button-cancel-${kind}-dialog`} type="button" variant="ghost" onClick={onClose}>{t('organizations.cancel')}</Button><Button data-testid={`button-save-${kind}-dialog`} type="submit" disabled={busy}>{saveLabel}</Button></div>;
 }
 
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
-  return <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4"><div role="dialog" aria-modal="true" className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-[1.5rem] border border-border bg-card p-6 shadow-2xl"><div className="mb-5 flex items-center justify-between gap-3"><h2 className="text-xl font-bold">{title}</h2><Button data-testid="button-close-organization-dialog" type="button" variant="ghost" className="!px-2" onClick={onClose}><X size={18} /></Button></div>{children}</div></div>;
+function Modal({ kind, title, onClose, children }: { kind: 'organization' | 'branch'; title: string; onClose: () => void; children: React.ReactNode }) {
+  return <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4"><div role="dialog" aria-modal="true" className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-[1.5rem] border border-border bg-card p-6 shadow-2xl"><div className="mb-5 flex items-center justify-between gap-3"><h2 className="text-xl font-bold">{title}</h2><Button data-testid={`button-close-${kind}-dialog`} type="button" variant="ghost" className="!px-2" onClick={onClose}><X size={18} /></Button></div>{children}</div></div>;
 }
