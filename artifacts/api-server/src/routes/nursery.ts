@@ -1,5 +1,5 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { Router, type IRouter, type RequestHandler } from "express";
+import { Router, type IRouter, type Request, type RequestHandler } from "express";
 import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { getLocalAuth, hashPassword } from "../lib/localAuth";
 import {
@@ -178,8 +178,8 @@ function accountResult(member: typeof staffTable.$inferSelect) {
   };
 }
 
-function ownerAccountManager(req: Parameters<typeof nurseryContext>[0]) {
-  return ["owner", "superadmin"].includes(nurseryContext(req).role);
+function accountManager(req: Request, operation: "write:users" | "delete:users" = "write:users") {
+  return permitted(req, operation);
 }
 
 router.post("/admin/create-account", async (req, res): Promise<void> => {
@@ -188,8 +188,8 @@ router.post("/admin/create-account", async (req, res): Promise<void> => {
     res.status(400).json({ error: body.error.message });
     return;
   }
-  if (!ownerAccountManager(req)) {
-    res.status(403).json({ error: "Owner access required" });
+  if (!await accountManager(req)) {
+    res.status(403).json({ error: "Operation not permitted" });
     return;
   }
   const { ownerId } = nurseryContext(req);
@@ -598,6 +598,10 @@ router.use(async (req, res, next) => {
   try {
     const routePermission = (() => {
       if (req.path.startsWith("/dashboard/")) return "read:dashboard";
+      if (req.path === "/guardians/accounts") return "read:users";
+      if (/^\/guardians\/\d+\/(account|details)$/.test(req.path)) return "write:users";
+      if (/^\/guardians\/\d+$/.test(req.path) && req.method === "DELETE") return "delete:users";
+      if (/^\/staff\/\d+\/account$/.test(req.path)) return "write:users";
       if (req.path === "/guardians" || req.path.startsWith("/guardians/")) {
         return req.method === "GET" ? "read:children" : "write:children";
       }
@@ -957,8 +961,8 @@ router.patch("/guardians/:id/account", async (req, res): Promise<void> => {
     res.status(400).json({ error: params.success ? body.error?.message : params.error.message });
     return;
   }
-  if (!ownerAccountManager(req)) {
-    res.status(403).json({ error: "Owner access required" });
+  if (!await accountManager(req)) {
+    res.status(403).json({ error: "Operation not permitted" });
     return;
   }
   const { ownerId } = nurseryContext(req);
@@ -990,7 +994,7 @@ router.patch("/guardians/:id/details", async (req, res): Promise<void> => {
   if (!id || isNaN(id)) { res.status(400).json({ error: "Invalid guardian ID" }); return; }
   const { name, phone, email } = req.body as { name?: string; phone?: string; email?: string };
   if (!name && !phone && !email) { res.status(400).json({ error: "Provide at least one field to update" }); return; }
-  if (!ownerAccountManager(req)) { res.status(403).json({ error: "Owner access required" }); return; }
+  if (!await accountManager(req)) { res.status(403).json({ error: "Operation not permitted" }); return; }
   const { ownerId } = nurseryContext(req);
   const [guardian] = await db.select().from(guardiansTable).where(and(
     eq(guardiansTable.id, id), eq(guardiansTable.ownerId, ownerId),
@@ -1023,7 +1027,7 @@ router.patch("/guardians/:id/details", async (req, res): Promise<void> => {
 router.delete("/guardians/:id", async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (!id || isNaN(id)) { res.status(400).json({ error: "Invalid guardian ID" }); return; }
-  if (!ownerAccountManager(req)) { res.status(403).json({ error: "Owner access required" }); return; }
+  if (!await accountManager(req, "delete:users")) { res.status(403).json({ error: "Operation not permitted" }); return; }
   const { ownerId } = nurseryContext(req);
   const [guardian] = await db.select().from(guardiansTable).where(and(
     eq(guardiansTable.id, id), eq(guardiansTable.ownerId, ownerId),
@@ -1132,8 +1136,8 @@ router.post("/staff/:id/account", async (req, res): Promise<void> => {
     res.status(400).json({ error: params.success ? body.error?.message : params.error.message });
     return;
   }
-  if (!ownerAccountManager(req)) {
-    res.status(403).json({ error: "Owner access required" });
+  if (!await accountManager(req)) {
+    res.status(403).json({ error: "Operation not permitted" });
     return;
   }
   const { ownerId } = nurseryContext(req);
@@ -1203,8 +1207,8 @@ router.patch("/staff/:id/account", async (req, res): Promise<void> => {
     res.status(400).json({ error: params.success ? body.error?.message : params.error.message });
     return;
   }
-  if (!ownerAccountManager(req)) {
-    res.status(403).json({ error: "Owner access required" });
+  if (!await accountManager(req)) {
+    res.status(403).json({ error: "Operation not permitted" });
     return;
   }
   const { ownerId } = nurseryContext(req);

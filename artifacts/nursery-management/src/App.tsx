@@ -75,9 +75,9 @@ const navItems = [
   { href: '/reports', label: 'nav.reports', icon: BarChart3 },
   { href: '/audit', label: 'nav.audit', icon: ShieldCheck },
   { href: '/permissions', label: 'nav.permissions', icon: Users },
-  { href: '/users', label: 'nav.users', icon: Users },
-  { href: '/site-gallery', label: 'nav.gallery', icon: Images },
-] satisfies Array<{ href: string; label: TranslationKey; icon: typeof LayoutDashboard }>;
+  { href: '/users', label: 'nav.users', icon: Users, permission: 'read:users' },
+  { href: '/site-gallery', label: 'nav.gallery', icon: Images, permission: 'read:site-gallery' },
+] as Array<{ href: string; label: TranslationKey; icon: typeof LayoutDashboard; permission?: string }>;
 const activeLocale = (locale?: Locale) => locale ?? (document.documentElement.lang === 'en' ? 'en' : 'ar');
 export const formatAppDate = (value: Date | string | number, locale?: Locale, options: Intl.DateTimeFormatOptions = {}) =>
   new Intl.DateTimeFormat(activeLocale(locale) === 'ar' ? 'ar-KW' : 'en-KW', { timeZone: 'Asia/Kuwait', weekday: 'long', day: 'numeric', month: 'long', ...options }).format(value instanceof Date ? value : new Date(value));
@@ -141,7 +141,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const { user, isSignedIn, signOut } = useAuth();
   const { dir, t } = useI18n();
   const session = useGetSessionContext({ query: { enabled: Boolean(isSignedIn), queryKey: getGetSessionContextQueryKey(), retry: false } });
-  const visibleNavItems = navItems.filter((item) => item.href !== '/site-gallery' || session.data?.effectivePermissions?.includes('read:site-gallery'));
+  const visibleNavItems = navItems.filter((item) => !item.permission || session.data?.effectivePermissions?.includes(item.permission));
   
   return (
     <div className="app-noise min-h-[100dvh] bg-background selection:bg-primary/20" dir={dir}>
@@ -560,7 +560,7 @@ function Guardians() {
   );
 }
 
-function Protected({ children, allowedRole }: { children: React.ReactNode, allowedRole?: 'parent' | 'admin' }) {
+function Protected({ children, allowedRole, permission }: { children: React.ReactNode, allowedRole?: 'parent' | 'admin', permission?: string }) {
   const { isLoaded, isSignedIn } = useAuth(); 
   const [location] = useLocation();
   const session = useGetSessionContext({
@@ -589,6 +589,9 @@ function Protected({ children, allowedRole }: { children: React.ReactNode, allow
       return <Redirect to="/parent" />;
     }
     if (allowedRole === 'parent' && !isParentRole) {
+      return <Redirect to="/dashboard" />;
+    }
+    if (permission && !session.data.effectivePermissions?.includes(permission)) {
       return <Redirect to="/dashboard" />;
     }
 
@@ -931,7 +934,7 @@ function Router() {
         <Route path="/activities"><Protected allowedRole="admin"><Activities /></Protected></Route>
         <Route path="/reports"><Protected allowedRole="admin"><Reports /></Protected></Route>
         <Route path="/permissions"><Protected allowedRole="admin"><Permissions /></Protected></Route>
-        <Route path="/users"><Protected allowedRole="admin"><UsersPage /></Protected></Route>
+        <Route path="/users"><Protected allowedRole="admin" permission="read:users"><UsersPage /></Protected></Route>
         <Route path="/site-gallery"><Protected allowedRole="admin"><SiteGallery /></Protected></Route>
         <Route path="/settings"><Protected allowedRole="admin"><Settings /></Protected></Route>
         <Route path="/audit"><Protected allowedRole="admin"><Audit /></Protected></Route>
