@@ -1505,8 +1505,6 @@ export interface Organization {
 export interface OrganizationInput {
   /** @minLength 1 */
   name: string;
-  /** @minLength 1 */
-  code: string;
   type?: string;
   /** @nullable */
   address?: string | null;
@@ -1520,8 +1518,6 @@ export interface OrganizationInput {
 export interface OrganizationUpdate {
   /** @minLength 1 */
   name?: string;
-  /** @minLength 1 */
-  code?: string;
   type?: string;
   /** @nullable */
   address?: string | null;
@@ -1541,9 +1537,6 @@ export interface Branch {
   address?: string | null;
   /** @nullable */
   phone?: string | null;
-  capacity: number;
-  /** @nullable */
-  managerName?: string | null;
   active: boolean;
 }
 
@@ -1551,15 +1544,10 @@ export interface BranchInput {
   organizationId: number;
   /** @minLength 1 */
   name: string;
-  /** @minLength 1 */
-  code: string;
   /** @nullable */
   address?: string | null;
   /** @nullable */
   phone?: string | null;
-  capacity?: number;
-  /** @nullable */
-  managerName?: string | null;
   active?: boolean;
 }
 
@@ -1567,15 +1555,10 @@ export interface BranchUpdate {
   organizationId?: number;
   /** @minLength 1 */
   name?: string;
-  /** @minLength 1 */
-  code?: string;
   /** @nullable */
   address?: string | null;
   /** @nullable */
   phone?: string | null;
-  capacity?: number;
-  /** @nullable */
-  managerName?: string | null;
   active?: boolean;
 }
 

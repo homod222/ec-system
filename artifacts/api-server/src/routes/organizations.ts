@@ -33,6 +33,16 @@ import {
 
 const router: IRouter = Router();
 
+function generateCode(prefix: string, taken: Set<string>): string {
+  let n = 1;
+  while (taken.has(`${prefix}-${String(n).padStart(3, "0")}`.toLowerCase())) n += 1;
+  return `${prefix}-${String(n).padStart(3, "0")}`;
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  return typeof error === "object" && error !== null && (error as { code?: string }).code === "23505";
+}
+
 function organizationResponse(row: typeof organizationsTable.$inferSelect) {
   const { ownerId: _ownerId, settings: _settings, createdAt: _createdAt, ...response } = row;
   return response;
@@ -44,6 +54,7 @@ function branchResponse(row: typeof branchesTable.$inferSelect) {
     settings: _settings,
     createdAt: _createdAt,
     legacyRecordId: _legacyRecordId,
+    capacity: _capacity,
     ...response
   } = row;
   return response;
@@ -72,10 +83,27 @@ router.post("/organizations", async (req, res): Promise<void> => {
     return;
   }
   const { ownerId } = nurseryContext(req);
-  const [created] = await db.insert(organizationsTable).values({
-    ownerId,
-    ...body.data,
-  }).returning();
+  let created: typeof organizationsTable.$inferSelect | undefined;
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      const rows = await db.select({ code: organizationsTable.code })
+        .from(organizationsTable)
+        .where(eq(organizationsTable.ownerId, ownerId));
+      const taken = new Set(rows.map((row) => row.code.toLowerCase()));
+      const code = generateCode("ORG", taken);
+      [created] = await db.insert(organizationsTable).values({
+        ownerId,
+        ...body.data,
+        code,
+      }).returning();
+      break;
+    } catch (error) {
+      lastError = error;
+      if (!isUniqueViolation(error) || attempt === 4) throw error;
+    }
+  }
+  if (!created) throw lastError ?? new Error("Organization creation failed");
   await auditNurseryOperation(
     req,
     "create",
@@ -205,10 +233,27 @@ router.post("/branches", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Organization not found" });
     return;
   }
-  const [created] = await db.insert(branchesTable).values({
-    ownerId,
-    ...body.data,
-  }).returning();
+  let created: typeof branchesTable.$inferSelect | undefined;
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      const rows = await db.select({ code: branchesTable.code })
+        .from(branchesTable)
+        .where(eq(branchesTable.ownerId, ownerId));
+      const taken = new Set(rows.map((row) => row.code.toLowerCase()));
+      const code = generateCode("BR", taken);
+      [created] = await db.insert(branchesTable).values({
+        ownerId,
+        ...body.data,
+        code,
+      }).returning();
+      break;
+    } catch (error) {
+      lastError = error;
+      if (!isUniqueViolation(error) || attempt === 4) throw error;
+    }
+  }
+  if (!created) throw lastError ?? new Error("Branch creation failed");
   await auditNurseryOperation(
     req,
     "create",

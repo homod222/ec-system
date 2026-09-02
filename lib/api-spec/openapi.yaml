@@ -2738,10 +2738,9 @@ components:
     OrganizationInput:
       type: object
       additionalProperties: false
-      required: [name, code]
+      required: [name]
       properties:
         name: { type: string, minLength: 1 }
-        code: { type: string, minLength: 1 }
         type: { type: string, default: nursery }
         address: { type: ["string", "null"] }
         phone: { type: ["string", "null"] }
@@ -2752,7 +2751,6 @@ components:
       additionalProperties: false
       properties:
         name: { type: string, minLength: 1 }
-        code: { type: string, minLength: 1 }
         type: { type: string }
         address: { type: ["string", "null"] }
         phone: { type: ["string", "null"] }
@@ -2760,7 +2758,7 @@ components:
         active: { type: boolean }
     Branch:
       type: object
-      required: [id, organizationId, name, code, capacity, active]
+      required: [id, organizationId, name, code, active]
       properties:
         id: { type: number }
         organizationId: { type: number }
@@ -2768,21 +2766,16 @@ components:
         code: { type: string }
         address: { type: ["string", "null"] }
         phone: { type: ["string", "null"] }
-        capacity: { type: number }
-        managerName: { type: ["string", "null"] }
         active: { type: boolean }
     BranchInput:
       type: object
       additionalProperties: false
-      required: [organizationId, name, code]
+      required: [organizationId, name]
       properties:
         organizationId: { type: number }
         name: { type: string, minLength: 1 }
-        code: { type: string, minLength: 1 }
         address: { type: ["string", "null"] }
         phone: { type: ["string", "null"] }
-        capacity: { type: number, default: 0 }
-        managerName: { type: ["string", "null"] }
         active: { type: boolean, default: true }
     BranchUpdate:
       type: object
@@ -2790,11 +2783,8 @@ components:
       properties:
         organizationId: { type: number }
         name: { type: string, minLength: 1 }
-        code: { type: string, minLength: 1 }
         address: { type: ["string", "null"] }
         phone: { type: ["string", "null"] }
-        capacity: { type: number }
-        managerName: { type: ["string", "null"] }
         active: { type: boolean }
     PublicSiteSettings:
       type: object

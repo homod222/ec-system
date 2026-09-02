@@ -34,7 +34,6 @@ function organizationTypeLabel(type: string, t: (key: TranslationKey) => string)
 
 type OrganizationFormValue = {
   name: string;
-  code: string;
   type: string;
   address: string;
   phone: string;
@@ -45,11 +44,8 @@ type OrganizationFormValue = {
 type BranchFormValue = {
   organizationId: number;
   name: string;
-  code: string;
   address: string;
   phone: string;
-  capacity: string;
-  managerName: string;
   active: boolean;
 };
 
@@ -202,10 +198,8 @@ export function Organizations() {
                         <Pill tone={branch.active ? 'green' : 'neutral'}>{branch.active ? t('organizations.active') : t('organizations.inactive')}</Pill>
                       </div>
                       <dl className="mt-4 grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
-                        <Detail label={t('organizations.manager')} value={branch.managerName} />
                         <Detail label={t('organizations.phone')} value={branch.phone} />
                         <Detail label={t('organizations.address')} value={branch.address} />
-                        <Detail label={t('organizations.capacity')} value={String(branch.capacity)} />
                       </dl>
                       <div className="mt-4 flex gap-2">
                         {permissions.canWriteBranch && (
@@ -262,7 +256,7 @@ function OrganizationDialog({ value, onClose, onSaved }: { value: Organization |
   const update = useUpdateOrganization();
   const initial = value === 'new' ? null : value;
   const [form, setForm] = useState<OrganizationFormValue>({
-    name: initial?.name || '', code: initial?.code || '', type: initial?.type || 'nursery',
+    name: initial?.name || '', type: initial?.type || 'nursery',
     address: initial?.address || '', phone: initial?.phone || '', email: initial?.email || '', active: initial?.active ?? true,
   });
   const mutation = value === 'new' ? create : update;
@@ -271,12 +265,12 @@ function OrganizationDialog({ value, onClose, onSaved }: { value: Organization |
   const set = (key: keyof OrganizationFormValue, next: string | boolean) => setForm((current) => ({ ...current, [key]: next }));
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
-    if (!form.name.trim() || !form.code.trim()) {
+    if (!form.name.trim()) {
       setValidationError(true);
       return;
     }
     setValidationError(false);
-    const data = { ...form, name: form.name.trim(), code: form.code.trim(), address: form.address.trim() || null, phone: form.phone.trim() || null, email: form.email.trim() || null };
+    const data = { ...form, name: form.name.trim(), address: form.address.trim() || null, phone: form.phone.trim() || null, email: form.email.trim() || null };
     if (value === 'new') create.mutate({ data }, { onSuccess: onSaved });
     else update.mutate({ id: value.id, data }, { onSuccess: onSaved });
   };
@@ -284,7 +278,6 @@ function OrganizationDialog({ value, onClose, onSaved }: { value: Organization |
     <Modal kind="organization" title={value === 'new' ? t('organizations.addOrganization') : t('organizations.editOrganization')} onClose={onClose}>
       <form onSubmit={submit} className="space-y-4">
         <Field label={t('organizations.name')} testId="input-organization-name" value={form.name} onChange={(v) => set('name', v)} required />
-        <Field label={t('organizations.code')} testId="input-organization-code" value={form.code} onChange={(v) => set('code', v)} required />
         <label className="block text-sm font-bold">
           <span className="mb-1.5 block">{t('organizations.type')}</span>
           <select
@@ -319,23 +312,22 @@ function BranchDialog({ value, organizationId, onClose, onSaved }: { value: Bran
   const update = useUpdateBranch();
   const initial = value === 'new' ? null : value;
   const [form, setForm] = useState<BranchFormValue>({
-    organizationId, name: initial?.name || '', code: initial?.code || '', address: initial?.address || '',
-    phone: initial?.phone || '', capacity: String(initial?.capacity ?? 0), managerName: initial?.managerName || '', active: initial?.active ?? true,
+    organizationId, name: initial?.name || '', address: initial?.address || '',
+    phone: initial?.phone || '', active: initial?.active ?? true,
   });
   const mutation = value === 'new' ? create : update;
   const [validationError, setValidationError] = useState(false);
   const set = (key: keyof BranchFormValue, next: string | boolean | number) => setForm((current) => ({ ...current, [key]: next }));
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
-    if (!form.name.trim() || !form.code.trim()) {
+    if (!form.name.trim()) {
       setValidationError(true);
       return;
     }
     setValidationError(false);
     const data = {
-      organizationId: form.organizationId, name: form.name.trim(), code: form.code.trim(),
-      address: form.address.trim() || null, phone: form.phone.trim() || null,
-      capacity: Number(form.capacity) || 0, managerName: form.managerName.trim() || null, active: form.active,
+      organizationId: form.organizationId, name: form.name.trim(),
+      address: form.address.trim() || null, phone: form.phone.trim() || null, active: form.active,
     };
     if (value === 'new') create.mutate({ data }, { onSuccess: onSaved });
     else update.mutate({ id: value.id, data }, { onSuccess: onSaved });
@@ -344,11 +336,8 @@ function BranchDialog({ value, organizationId, onClose, onSaved }: { value: Bran
     <Modal kind="branch" title={value === 'new' ? t('organizations.addBranch') : t('organizations.editBranch')} onClose={onClose}>
       <form onSubmit={submit} className="space-y-4">
         <Field label={t('organizations.name')} testId="input-branch-name" value={form.name} onChange={(v) => set('name', v)} required />
-        <Field label={t('organizations.code')} testId="input-branch-code" value={form.code} onChange={(v) => set('code', v)} required />
-        <Field label={t('organizations.manager')} testId="input-branch-manager" value={form.managerName} onChange={(v) => set('managerName', v)} />
         <Field label={t('organizations.phone')} testId="input-branch-phone" value={form.phone} onChange={(v) => set('phone', v)} />
         <Field label={t('organizations.address')} testId="input-branch-address" value={form.address} onChange={(v) => set('address', v)} />
-        <Field label={t('organizations.capacity')} testId="input-branch-capacity" type="number" value={form.capacity} onChange={(v) => set('capacity', v)} />
         <Checkbox label={t('organizations.active')} testId="input-branch-active" checked={form.active} onChange={(v) => set('active', v)} />
         {validationError && <p data-testid="alert-branch-required" role="alert" className="text-sm font-bold text-destructive">{t('organizations.required')}</p>}
         {mutation.isError && <p role="alert" className="text-sm font-bold text-destructive">{t('organizations.saveError')}</p>}

@@ -2520,7 +2520,6 @@ export const createOrganizationBodyTypeDefault = `nursery`;
 export const createOrganizationBodyActiveDefault = true;
 export const CreateOrganizationBody = zod.object({
   name: zod.string().min(1),
-  code: zod.string().min(1),
   type: zod.string().default(createOrganizationBodyTypeDefault),
   address: zod.string().nullish(),
   phone: zod.string().nullish(),
@@ -2542,7 +2541,6 @@ export const UpdateOrganizationParams = zod.object({
 });
 export const UpdateOrganizationBody = zod.object({
   name: zod.string().min(1).optional(),
-  code: zod.string().min(1).optional(),
   type: zod.string().optional(),
   address: zod.string().nullish(),
   phone: zod.string().nullish(),
@@ -2576,24 +2574,18 @@ export const ListBranchesResponseItem = zod.object({
   code: zod.string(),
   address: zod.string().nullish(),
   phone: zod.string().nullish(),
-  capacity: zod.number(),
-  managerName: zod.string().nullish(),
   active: zod.boolean(),
 });
 export const ListBranchesResponse = zod.array(ListBranchesResponseItem);
 /**
  * @summary Create a branch in an organization
  */
-export const createBranchBodyCapacityDefault = 0;
 export const createBranchBodyActiveDefault = true;
 export const CreateBranchBody = zod.object({
   organizationId: zod.number(),
   name: zod.string().min(1),
-  code: zod.string().min(1),
   address: zod.string().nullish(),
   phone: zod.string().nullish(),
-  capacity: zod.number().default(createBranchBodyCapacityDefault),
-  managerName: zod.string().nullish(),
   active: zod.boolean().default(createBranchBodyActiveDefault),
 });
 export const CreateBranchResponse = zod.object({
@@ -2603,8 +2595,6 @@ export const CreateBranchResponse = zod.object({
   code: zod.string(),
   address: zod.string().nullish(),
   phone: zod.string().nullish(),
-  capacity: zod.number(),
-  managerName: zod.string().nullish(),
   active: zod.boolean(),
 });
 export const UpdateBranchParams = zod.object({
@@ -2613,11 +2603,8 @@ export const UpdateBranchParams = zod.object({
 export const UpdateBranchBody = zod.object({
   organizationId: zod.number().optional(),
   name: zod.string().min(1).optional(),
-  code: zod.string().min(1).optional(),
   address: zod.string().nullish(),
   phone: zod.string().nullish(),
-  capacity: zod.number().optional(),
-  managerName: zod.string().nullish(),
   active: zod.boolean().optional(),
 });
 export const UpdateBranchResponse = zod.object({
@@ -2627,8 +2614,6 @@ export const UpdateBranchResponse = zod.object({
   code: zod.string(),
   address: zod.string().nullish(),
   phone: zod.string().nullish(),
-  capacity: zod.number(),
-  managerName: zod.string().nullish(),
   active: zod.boolean(),
 });
 export const DeleteBranchParams = zod.object({

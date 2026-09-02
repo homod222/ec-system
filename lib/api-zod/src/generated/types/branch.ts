@@ -15,8 +15,5 @@ export interface Branch {
   address?: string | null;
   /** @nullable */
   phone?: string | null;
-  capacity: number;
-  /** @nullable */
-  managerName?: string | null;
   active: boolean;
 }
