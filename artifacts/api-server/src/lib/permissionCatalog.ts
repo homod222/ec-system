@@ -1,6 +1,11 @@
 export const permissionCatalog = [
   {
     module: "organization",
+    page: "organizations",
+    operations: ["read:organization", "write:organization", "delete:organization"],
+  },
+  {
+    module: "organization",
     page: "branches",
     operations: ["read:branch", "write:branch", "delete:branch"],
   },

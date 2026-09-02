@@ -4,6 +4,7 @@ import nurseryRouter from "./nursery";
 import applicationsRouter from "./applications";
 import storageRouter from "./storage";
 import nurseryOperationsRouter from "./nurseryOperations";
+import organizationsRouter from "./organizations";
 import task16OperationsRouter from "./task16Operations";
 import siteGalleryRouter from "./siteGallery";
 import phoneAuthRouter from "./phoneAuth";
@@ -26,6 +27,7 @@ router.use((req, res, next) => {
   }
   next();
 });
+router.use(organizationsRouter);
 router.use(nurseryOperationsRouter);
 router.use(task16OperationsRouter);
 router.use(nurseryRouter);

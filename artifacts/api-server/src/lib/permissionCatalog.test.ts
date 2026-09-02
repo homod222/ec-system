@@ -21,6 +21,8 @@ const expectedOperations = [
   "write:child-health", "write:child-emergency", "write:child-allergy", "write:child-medication",
   "write:child-document", "write:child-photo", "write:child-note", "write:child-history",
   "read:report-operational", "read:report-academic", "read:report-financial",
+  "read:organization", "write:organization", "delete:organization",
+  "read:users", "write:users", "delete:users",
   "read:permissions", "write:permissions", "read:audit",
   "read:dashboard", "read:children", "write:children", "delete:children",
   "read:invoice", "write:invoice", "write:payment",

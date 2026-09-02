@@ -418,18 +418,42 @@ export type ParentMessage = typeof parentMessagesTable.$inferSelect;
 export const insertParentMessageSchema = createInsertSchema(parentMessagesTable).omit({ id: true, createdAt: true });
 export const insertAnnouncementSchema = createInsertSchema(announcementsTable).omit({ id: true, ownerId: true, publishedAt: true });
 
+export const organizationsTable = pgTable("organizations", {
+  id: serial("id").primaryKey(),
+  ownerId: text("owner_id").notNull(),
+  name: text("name").notNull(),
+  code: text("code").notNull(),
+  type: text("type").notNull().default("nursery"),
+  address: text("address"),
+  phone: text("phone"),
+  email: text("email"),
+  active: boolean("active").notNull().default(true),
+  settings: jsonb("settings").$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("organizations_owner_lower_code_unique").on(table.ownerId, sql`lower(${table.code})`),
+]);
+
 export const branchesTable = pgTable("nursery_branches", {
   id: serial("id").primaryKey(),
   ownerId: text("owner_id").notNull(),
+  organizationId: integer("organization_id"),
   name: text("name").notNull(),
   code: text("code").notNull(),
   address: text("address"),
   phone: text("phone"),
   capacity: integer("capacity").notNull().default(0),
+  managerName: text("manager_name"),
   active: boolean("active").notNull().default(true),
   settings: jsonb("settings").$type<Record<string, unknown>>().notNull().default({}),
+  legacyRecordId: integer("legacy_record_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => [
+  uniqueIndex("nursery_branches_owner_lower_code_unique").on(table.ownerId, sql`lower(${table.code})`),
+  uniqueIndex("nursery_branches_legacy_record_unique")
+    .on(table.legacyRecordId)
+    .where(sql`${table.legacyRecordId} is not null`),
+]);
 
 export const stagesTable = pgTable("nursery_stages", {
   id: serial("id").primaryKey(),
@@ -488,6 +512,7 @@ export const childRecordsTable = pgTable("child_records", {
 });
 
 export type Branch = typeof branchesTable.$inferSelect;
+export type Organization = typeof organizationsTable.$inferSelect;
 
 export type ChildRecord = typeof childRecordsTable.$inferSelect;
 

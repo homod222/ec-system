@@ -12,7 +12,7 @@ import { Plus, Edit3, Trash2, X } from 'lucide-react';
 import type { OperationalRecord } from '@workspace/api-client-react';
 import { useI18n } from '../i18n';
 
-type ResourceType = 'branch' | 'stage' | 'teacher-assignment' | 'classroom-schedule' | 'staff-profile' | 'staff-job' | 'staff-leave' | 'payroll' | 'evaluation' | 'curriculum' | 'lesson-plan' | 'skill' | 'assessment' | 'progress-report' | 'event' | 'media' | 'fee-plan' | 'discount' | 'refund' | 'expense' | 'revenue' | 'setting' | 'holiday' | 'notification' | 'integration';
+type ResourceType = 'stage' | 'teacher-assignment' | 'classroom-schedule' | 'staff-profile' | 'staff-job' | 'staff-leave' | 'payroll' | 'evaluation' | 'curriculum' | 'lesson-plan' | 'skill' | 'assessment' | 'progress-report' | 'event' | 'media' | 'fee-plan' | 'discount' | 'refund' | 'expense' | 'revenue' | 'setting' | 'holiday' | 'notification' | 'integration';
 
 export function OperationalManager({ resource, title, description, icon: Icon, extraFields = [] }: { 
   resource: ResourceType; 

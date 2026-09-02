@@ -10,7 +10,6 @@ export type OperationalResource = typeof OperationalResource[keyof typeof Operat
 
 
 export const OperationalResource = {
-  branch: 'branch',
   stage: 'stage',
   'teacher-assignment': 'teacher-assignment',
   'classroom-schedule': 'classroom-schedule',

@@ -1572,55 +1572,78 @@ describe.sequential("application registration regression flow", () => {
       { role: "receptionist", resource: "branch", allowed: { read: true, create: false, update: false, delete: false } },
       { role: "parent", resource: "expense", allowed: { read: false, create: false, update: false, delete: false } },
     ] as const;
+    const branchOrganization = await request(app)
+      .post("/api/organizations")
+      .set(auth(ownerA))
+      .send({ name: `Branch matrix ${randomUUID()}`, code: `BM-${randomUUID().slice(0, 8)}` })
+      .expect(201);
+    const branchOrganizationId = branchOrganization.body.id as number;
 
     for (const { role, resource, allowed } of matrix) {
       const token = `${role}-${randomUUID()}`;
-      const seeded = await request(app)
-        .post(`/api/operations/${resource}`)
-        .set(auth(ownerA))
-        .send({ title: `seed-${token}`, status: "active", data: { token } })
-        .expect(201);
+      const isBranch = resource === "branch";
+      const seeded = isBranch
+        ? await request(app)
+          .post("/api/branches")
+          .set(auth(ownerA))
+          .send({ organizationId: branchOrganizationId, name: `seed-${token}`, code: `SEED-${token}` })
+          .expect(201)
+        : await request(app)
+          .post(`/api/operations/${resource}`)
+          .set(auth(ownerA))
+          .send({ title: `seed-${token}`, status: "active", data: { token } })
+          .expect(201);
       const seededId = seeded.body.id as number;
 
       await request(app)
-        .get(`/api/operations/${resource}`)
+        .get(isBranch ? `/api/branches?organizationId=${branchOrganizationId}` : `/api/operations/${resource}`)
         .set(auth(ownerA, role))
         .expect(allowed.read ? 200 : 403);
 
       const beforeCreate = await pool.query<{ count: string }>(
-        "select count(*) from operational_records where owner_id = $1 and resource = $2",
-        [ownerA, resource],
+        isBranch
+          ? "select count(*) from nursery_branches where owner_id = $1 and organization_id = $2"
+          : "select count(*) from operational_records where owner_id = $1 and resource = $2",
+        isBranch ? [ownerA, branchOrganizationId] : [ownerA, resource],
       );
       const createResponse = await request(app)
-        .post(`/api/operations/${resource}`)
+        .post(isBranch ? "/api/branches" : `/api/operations/${resource}`)
         .set(auth(ownerA, role))
-        .send({ title: `created-${token}`, status: "active", data: { token } })
+        .send(isBranch
+          ? { organizationId: branchOrganizationId, name: `created-${token}`, code: `CREATED-${token}` }
+          : { title: `created-${token}`, status: "active", data: { token } })
         .expect(allowed.create ? 201 : 403);
       const afterCreate = await pool.query<{ count: string }>(
-        "select count(*) from operational_records where owner_id = $1 and resource = $2",
-        [ownerA, resource],
+        isBranch
+          ? "select count(*) from nursery_branches where owner_id = $1 and organization_id = $2"
+          : "select count(*) from operational_records where owner_id = $1 and resource = $2",
+        isBranch ? [ownerA, branchOrganizationId] : [ownerA, resource],
       );
       expect(Number(afterCreate.rows[0].count) - Number(beforeCreate.rows[0].count))
         .toBe(allowed.create ? 1 : 0);
 
       const updateTitle = `updated-${token}`;
       await request(app)
-        .patch(`/api/operations/${resource}/${seededId}`)
+        .patch(isBranch ? `/api/branches/${seededId}` : `/api/operations/${resource}/${seededId}`)
         .set(auth(ownerA, role))
-        .send({ title: updateTitle })
+        .send(isBranch ? { name: updateTitle } : { title: updateTitle })
         .expect(allowed.update ? 200 : 403);
-      const afterUpdate = await pool.query<{ title: string }>(
-        "select title from operational_records where id = $1 and owner_id = $2",
+      const afterUpdate = await pool.query<{ title?: string; name?: string }>(
+        isBranch
+          ? "select name from nursery_branches where id = $1 and owner_id = $2"
+          : "select title from operational_records where id = $1 and owner_id = $2",
         [seededId, ownerA],
       );
-      expect(afterUpdate.rows[0].title).toBe(allowed.update ? updateTitle : `seed-${token}`);
+      expect(afterUpdate.rows[0][isBranch ? "name" : "title"]).toBe(allowed.update ? updateTitle : `seed-${token}`);
 
       await request(app)
-        .delete(`/api/operations/${resource}/${seededId}`)
+        .delete(isBranch ? `/api/branches/${seededId}` : `/api/operations/${resource}/${seededId}`)
         .set(auth(ownerA, role))
         .expect(allowed.delete ? 204 : 403);
       const afterDelete = await pool.query<{ count: string }>(
-        "select count(*) from operational_records where id = $1 and owner_id = $2",
+        isBranch
+          ? "select count(*) from nursery_branches where id = $1 and owner_id = $2"
+          : "select count(*) from operational_records where id = $1 and owner_id = $2",
         [seededId, ownerA],
       );
       expect(Number(afterDelete.rows[0].count)).toBe(allowed.delete ? 0 : 1);
