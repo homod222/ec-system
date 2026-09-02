@@ -63,6 +63,7 @@ setAuthTokenGetter(() => getStoredToken());
 
 // Read permissions required to see each admin page (any one of them grants access).
 const pagePermissions = {
+  dashboard: ['read:dashboard'],
   applications: ['read:application'],
   children: ['read:children'],
   attendance: ['read:attendance'],
@@ -84,7 +85,7 @@ const hasAnyPermission = (effective: readonly string[] | undefined, required?: r
   !required || required.some((p) => effective?.includes(p));
 
 const navItems = [
-  { href: '/dashboard', label: 'nav.dashboard', icon: LayoutDashboard },
+  { href: '/dashboard', label: 'nav.dashboard', icon: LayoutDashboard, permission: pagePermissions.dashboard },
   { href: '/applications', label: 'nav.applications', icon: FileText, permission: pagePermissions.applications },
   { href: '/children', label: 'nav.children', icon: Baby, permission: pagePermissions.children },
   { href: '/attendance', label: 'nav.attendance', icon: CalendarCheck, permission: pagePermissions.attendance },
@@ -100,6 +101,10 @@ const navItems = [
   { href: '/users', label: 'nav.users', icon: Users, permission: pagePermissions.users },
   { href: '/site-gallery', label: 'nav.gallery', icon: Images, permission: pagePermissions.gallery },
 ] as Array<{ href: string; label: TranslationKey; icon: typeof LayoutDashboard; permission?: readonly string[] }>;
+
+const fallbackPath = (effective?: readonly string[]) =>
+  navItems.find((item) => hasAnyPermission(effective, item.permission))?.href ?? '/access-pending';
+
 const activeLocale = (locale?: Locale) => locale ?? (document.documentElement.lang === 'en' ? 'en' : 'ar');
 export const formatAppDate = (value: Date | string | number, locale?: Locale, options: Intl.DateTimeFormatOptions = {}) =>
   new Intl.DateTimeFormat(activeLocale(locale) === 'ar' ? 'ar-KW' : 'en-KW', { timeZone: 'Asia/Kuwait', weekday: 'long', day: 'numeric', month: 'long', ...options }).format(value instanceof Date ? value : new Date(value));
@@ -611,10 +616,10 @@ function Protected({ children, allowedRole, permission }: { children: React.Reac
       return <Redirect to="/parent" />;
     }
     if (allowedRole === 'parent' && !isParentRole) {
-      return <Redirect to="/dashboard" />;
+      return <Redirect to={fallbackPath(session.data.effectivePermissions)} />;
     }
     if (!hasAnyPermission(session.data.effectivePermissions, permission)) {
-      return <Redirect to="/dashboard" />;
+      return <Redirect to={fallbackPath(session.data.effectivePermissions)} />;
     }
 
     // Fallback protection if no allowedRole is specified but we are inside one of the main route branches
@@ -941,7 +946,7 @@ function Router() {
         <Route path="/parent/messages"><Protected allowedRole="parent"><ParentMessages /></Protected></Route>
 
         {/* Admin Routes */}
-        <Route path="/dashboard"><Protected allowedRole="admin"><Dashboard /></Protected></Route>
+        <Route path="/dashboard"><Protected allowedRole="admin" permission={pagePermissions.dashboard}><Dashboard /></Protected></Route>
         <Route path="/applications"><Protected allowedRole="admin" permission={pagePermissions.applications}><Applications /></Protected></Route>
         <Route path="/applications/new"><Protected allowedRole="admin" permission={pagePermissions.applications}><NewApplication /></Protected></Route>
         <Route path="/applications/:id"><Protected allowedRole="admin" permission={pagePermissions.applications}><ApplicationDetail /></Protected></Route>

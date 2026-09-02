@@ -6,6 +6,8 @@ import {
   useListPermissionPrincipals,
   useListUserPermissions,
   useGetPermissionCatalog,
+  getGetSessionContextQueryKey,
+  useGetSessionContext,
   useBulkSetRolePermissions,
   useBulkSetUserPermissions
 } from '@workspace/api-client-react';
@@ -65,7 +67,8 @@ function ActionChip({
   subjectType,
   onChange,
   onReset,
-  resetTitle
+  resetTitle,
+  disabled = false
 }: {
   label: string;
   value: boolean;
@@ -74,13 +77,14 @@ function ActionChip({
   onChange: (v: boolean) => void;
   onReset?: () => void;
   resetTitle?: string;
+  disabled?: boolean;
 }) {
   return (
     <div className={`flex items-stretch rounded-lg border text-[11px] font-bold transition-all select-none
       ${subjectType === 'user' && isOverride ? (value ? 'border-[#735010]/30 bg-[#fdf0d5] text-[#735010]' : 'border-[#735010]/30 bg-muted/80 text-[#735010]/60') : (value ? 'bg-primary/10 border-primary/30 text-primary shadow-sm' : 'bg-background border-border/60 text-muted-foreground hover:bg-muted/60')}
     `}>
-      <label className="flex items-center gap-1.5 px-2.5 py-1.5 cursor-pointer flex-1">
-        <input type="checkbox" className="hidden" checked={value} onChange={(e) => onChange(e.target.checked)} />
+      <label className={`flex items-center gap-1.5 px-2.5 py-1.5 flex-1 ${disabled ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}>
+        <input type="checkbox" className="hidden" checked={value} onChange={(e) => onChange(e.target.checked)} disabled={disabled} />
         <div className={`flex items-center justify-center w-3.5 h-3.5 rounded-[4px] border transition-colors
           ${subjectType === 'user' && isOverride ? (value ? 'bg-[#735010] border-[#735010] text-[#fdf0d5]' : 'bg-muted border-input') : (value ? 'bg-primary border-primary text-primary-foreground' : 'bg-muted border-input')}
         `}>
@@ -89,7 +93,7 @@ function ActionChip({
         <span className="truncate">{label}</span>
       </label>
 
-      {subjectType === 'user' && isOverride && onReset && (
+      {!disabled && subjectType === 'user' && isOverride && onReset && (
         <button
           onClick={onReset}
           className="flex items-center justify-center px-1.5 border-l border-[#735010]/20 hover:bg-[#735010]/10 transition-colors"
@@ -147,6 +151,13 @@ function HeaderCheckbox({
 
 export function Permissions() {
   const { t, dir } = useI18n();
+  const session = useGetSessionContext({
+    query: {
+      queryKey: getGetSessionContextQueryKey(),
+      retry: false,
+    },
+  });
+  const canWrite = session.data?.effectivePermissions.includes('write:permissions') ?? false;
   const catalogQuery = useGetPermissionCatalog();
   const roleQuery = useListRolePermissions();
 
@@ -512,19 +523,23 @@ export function Permissions() {
 
       <div className="mb-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 p-4 rounded-[1.5rem] bg-card border border-border/80 shadow-sm">
         <div className="flex items-center flex-wrap gap-3 w-full md:w-auto">
-          <HeaderCheckbox
-            label={t('permissions.selectAll')}
-            checked={isGlobalAllChecked}
-            indeterminate={false}
-            onChange={setGlobalAll}
-            subjectType="role"
-            className="px-1"
-          />
-          <button onClick={() => setGlobalAll(false)} className="text-xs font-bold bg-muted/50 border px-4 py-2 rounded-xl hover:bg-muted transition-colors">
-            {t('permissions.deselectAll')}
-          </button>
+          {canWrite && (
+            <>
+              <HeaderCheckbox
+                label={t('permissions.selectAll')}
+                checked={isGlobalAllChecked}
+                indeterminate={false}
+                onChange={setGlobalAll}
+                subjectType="role"
+                className="px-1"
+              />
+              <button onClick={() => setGlobalAll(false)} className="text-xs font-bold bg-muted/50 border px-4 py-2 rounded-xl hover:bg-muted transition-colors">
+                {t('permissions.deselectAll')}
+              </button>
+            </>
+          )}
 
-          {subjectType === 'user' && hasAnyOverrides && (
+          {canWrite && subjectType === 'user' && hasAnyOverrides && (
             <button onClick={resetGlobal} className="text-xs font-bold bg-[#fdf0d5] text-[#735010] border border-[#735010]/20 px-4 py-2 rounded-xl hover:bg-[#fdf0d5]/80 transition-colors flex items-center gap-2">
               <RotateCcw size={14} />
               {t('permissions.resetAll' as TranslationKey)}
@@ -536,7 +551,7 @@ export function Permissions() {
           <span className="rounded-xl border border-border bg-background px-3 py-2 text-xs font-bold text-muted-foreground">
             {t('permissions.actionsCount', { count: totalAllowed })} / {allOperations.length}
           </span>
-          {dirtyCount > 0 && (
+          {canWrite && dirtyCount > 0 && (
             <span className="flex items-center gap-2 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs font-bold text-amber-700">
               <AlertCircle size={14} />
               {t('permissions.dirtySummary', { count: dirtyCount })}
@@ -545,20 +560,22 @@ export function Permissions() {
         </div>
 
         <div className="flex items-center gap-3 w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
-          {dirtyCount > 0 && (
+          {canWrite && dirtyCount > 0 && (
             <Button variant="soft" onClick={discardDraft} disabled={bulkSetRole.isPending || bulkSetUser.isPending} className="rounded-xl px-5">
               {t('common.cancel')}
             </Button>
           )}
-          <Button
-            onClick={handleSaveBulk}
-            disabled={dirtyCount === 0 || bulkSetRole.isPending || bulkSetUser.isPending}
-            className="ml-auto rtl:ml-0 rtl:mr-auto rounded-xl shadow-sm px-6"
-          >
-            {bulkSetRole.isPending || bulkSetUser.isPending ? <span className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin mr-2 rtl:ml-2 rtl:mr-0" /> : <Save className="w-4 h-4 mr-2 rtl:ml-2 rtl:mr-0" />}
-            {t('permissions.saveBulk')}
-            {dirtyCount > 0 && <span className="ml-2 rtl:mr-2 rtl:ml-0 bg-background/20 px-1.5 py-0.5 rounded text-[10px]">{dirtyCount}</span>}
-          </Button>
+          {canWrite && (
+            <Button
+              onClick={handleSaveBulk}
+              disabled={dirtyCount === 0 || bulkSetRole.isPending || bulkSetUser.isPending}
+              className="ml-auto rtl:ml-0 rtl:mr-auto rounded-xl shadow-sm px-6"
+            >
+              {bulkSetRole.isPending || bulkSetUser.isPending ? <span className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin mr-2 rtl:ml-2 rtl:mr-0" /> : <Save className="w-4 h-4 mr-2 rtl:ml-2 rtl:mr-0" />}
+              {t('permissions.saveBulk')}
+              {dirtyCount > 0 && <span className="ml-2 rtl:mr-2 rtl:ml-0 bg-background/20 px-1.5 py-0.5 rounded text-[10px]">{dirtyCount}</span>}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -616,17 +633,19 @@ export function Permissions() {
                       </p>
                     </div>
                   </div>
-                  <HeaderCheckbox
-                    label={t('permissions.selectAllSection')}
-                    checked={getModuleState(activeModule).checked}
-                    indeterminate={getModuleState(activeModule).indeterminate}
-                    onChange={(c) => setModuleAll(activeModule, c)}
-                    subjectType={subjectType}
-                    isOverride={getModuleState(activeModule).hasOverrides}
-                    onReset={() => resetModule(activeModule)}
-                    resetTitle={t('permissions.resetSection' as TranslationKey)}
-                    className="shadow-sm"
-                  />
+                  {canWrite && (
+                    <HeaderCheckbox
+                      label={t('permissions.selectAllSection')}
+                      checked={getModuleState(activeModule).checked}
+                      indeterminate={getModuleState(activeModule).indeterminate}
+                      onChange={(c) => setModuleAll(activeModule, c)}
+                      subjectType={subjectType}
+                      isOverride={getModuleState(activeModule).hasOverrides}
+                      onReset={() => resetModule(activeModule)}
+                      resetTitle={t('permissions.resetSection' as TranslationKey)}
+                      className="shadow-sm"
+                    />
+                  )}
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-4 sm:p-5 grid grid-cols-1 xl:grid-cols-2 gap-4 lg:gap-5 content-start bg-secondary/20">
@@ -642,17 +661,19 @@ export function Permissions() {
                              <h4 className={`font-bold text-sm truncate ${subjectType === 'user' && pageState.hasOverrides ? 'text-[#735010]' : 'text-foreground'}`}>{pName}</h4>
                               {subjectType === 'user' && pageState.hasOverrides && <span className="bg-[#fdf0d5] text-[#735010] text-[9px] px-1.5 py-0.5 rounded uppercase tracking-wider font-bold border border-[#735010]/20 shrink-0">{t('permissions.userOverride')}</span>}
                            </div>
-                           <HeaderCheckbox
-                             label={t('permissions.viewPage')}
-                             checked={pageState.checked}
-                             indeterminate={pageState.indeterminate}
-                             onChange={(c) => setPageAll(group, c)}
-                             subjectType={subjectType}
-                             isOverride={pageState.hasOverrides}
-                             onReset={() => resetPage(group)}
-                             resetTitle={t('permissions.reset' as TranslationKey)}
-                             className="bg-background shrink-0"
-                           />
+                           {canWrite && (
+                             <HeaderCheckbox
+                               label={t('permissions.viewPage')}
+                               checked={pageState.checked}
+                               indeterminate={pageState.indeterminate}
+                               onChange={(c) => setPageAll(group, c)}
+                               subjectType={subjectType}
+                               isOverride={pageState.hasOverrides}
+                               onReset={() => resetPage(group)}
+                               resetTitle={t('permissions.reset' as TranslationKey)}
+                               className="bg-background shrink-0"
+                             />
+                           )}
                          </div>
 
                          {group.operations.length > 0 && (
@@ -669,8 +690,9 @@ export function Permissions() {
                                      isOverride={state.isOverride}
                                      subjectType={subjectType}
                                      onChange={(c) => toggleOp(op, c)}
-                                     onReset={() => resetOp(op)}
+                                     onReset={canWrite ? () => resetOp(op) : undefined}
                                      resetTitle={t('permissions.reset' as TranslationKey)}
+                                     disabled={!canWrite}
                                    />
                                  );
                                })}

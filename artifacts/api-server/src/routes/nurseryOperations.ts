@@ -104,7 +104,7 @@ export { configurableOperations };
 export function defaultAllowed(role: string, operation: string) {
   if (["owner", "superadmin", "admin", "nursery_admin"].includes(role)) return true;
   if (operation === "read:child-confidential") return ["manager", "supervisor"].includes(role);
-  if (["manager", "supervisor"].includes(role)) return !operation.includes(":permissions") && !operation.endsWith(":users");
+  if (["manager", "supervisor"].includes(role)) return !operation.includes(":permissions") && !operation.endsWith(":users") && operation !== "read:audit";
   if (role === "teacher") {
     return operation === "read:attendance"
       || operation === "read:child-record"
@@ -182,10 +182,6 @@ export async function auditNurseryOperation(
   await db.insert(auditLogsTable).values({
     ownerId, actorId, actorRole: role, operation, entityType, entityId, before, after,
   });
-}
-
-function ownerOnly(req: Request) {
-  return ["owner", "superadmin"].includes(nurseryContext(req).role);
 }
 
 export function validRolePermission(role: string, operation: string) {
@@ -794,10 +790,9 @@ router.get("/reports/export", async (req, res): Promise<void> => {
 });
 
 router.get("/permissions", async (req, res): Promise<void> => {
-  const { ownerId, role } = nurseryContext(req);
-  if (!["owner", "superadmin", "admin", "nursery_admin"].includes(role)
-      || !await permitted(req, "read:permissions")) {
-    res.status(403).json({ error: "Administrative access required" });
+  const { ownerId } = nurseryContext(req);
+  if (!await permitted(req, "read:permissions")) {
+    res.status(403).json({ error: "Operation not permitted" });
     return;
   }
   const rows = await db.select().from(rolePermissionsTable)
@@ -824,8 +819,8 @@ router.get("/permissions", async (req, res): Promise<void> => {
 });
 
 router.get("/permission-catalog", async (req, res): Promise<void> => {
-  if (!ownerOnly(req)) {
-    res.status(403).json({ error: "Owner access required" });
+  if (!await permitted(req, "read:permissions")) {
+    res.status(403).json({ error: "Operation not permitted" });
     return;
   }
   res.json(GetPermissionCatalogResponse.parse(permissionCatalog));
@@ -834,7 +829,7 @@ router.get("/permission-catalog", async (req, res): Promise<void> => {
 router.put("/permissions/bulk", async (req, res): Promise<void> => {
   const body = BulkSetRolePermissionsBody.safeParse(req.body);
   if (!body.success) return void res.status(400).json({ error: body.error.message });
-  if (!ownerOnly(req)) return void res.status(403).json({ error: "Owner access required" });
+  if (!await permitted(req, "write:permissions")) return void res.status(403).json({ error: "Operation not permitted" });
   const keys = body.data.changes.map(({ role, operation }) => `${role}:${operation}`);
   if (keys.some((key, index) => keys.indexOf(key) !== index)) {
     return void res.status(400).json({ error: "Duplicate role and operation change" });
@@ -883,9 +878,9 @@ router.put("/permissions", async (req, res): Promise<void> => {
     res.status(400).json({ error: body.error.message });
     return;
   }
-  const { ownerId, role } = nurseryContext(req);
-  if (!["owner", "superadmin"].includes(role)) {
-    res.status(403).json({ error: "Owner access required" });
+  const { ownerId } = nurseryContext(req);
+  if (!await permitted(req, "write:permissions")) {
+    res.status(403).json({ error: "Operation not permitted" });
     return;
   }
   if (!validRolePermission(body.data.role, body.data.operation)) {
@@ -908,9 +903,9 @@ router.put("/permissions", async (req, res): Promise<void> => {
 });
 
 router.get("/permission-principals", async (req, res): Promise<void> => {
-  const { ownerId, role } = nurseryContext(req);
-  if (!["owner", "superadmin", "admin", "nursery_admin"].includes(role) || !await permitted(req, "read:permissions")) {
-    res.status(403).json({ error: "Administrative access required" });
+  const { ownerId } = nurseryContext(req);
+  if (!await permitted(req, "read:permissions")) {
+    res.status(403).json({ error: "Operation not permitted" });
     return;
   }
   const localPrincipals = await tenantLocalPrincipals(ownerId);
@@ -921,8 +916,8 @@ router.get("/permission-principals", async (req, res): Promise<void> => {
 router.get("/user-permissions", async (req, res): Promise<void> => {
   const query = ListUserPermissionsQueryParams.safeParse(req.query);
   if (!query.success) return void res.status(400).json({ error: query.error.message });
-  const { ownerId, role } = nurseryContext(req);
-  if (!["owner", "superadmin"].includes(role)) return void res.status(403).json({ error: "Owner access required" });
+  const { ownerId } = nurseryContext(req);
+  if (!await permitted(req, "read:permissions")) return void res.status(403).json({ error: "Operation not permitted" });
   const rows = await db.select().from(userPermissionsTable).where(and(
     eq(userPermissionsTable.ownerId, ownerId), eq(userPermissionsTable.userId, query.data.userId),
   )).orderBy(userPermissionsTable.operation);
@@ -932,8 +927,8 @@ router.get("/user-permissions", async (req, res): Promise<void> => {
 router.put("/user-permissions", async (req, res): Promise<void> => {
   const body = SetUserPermissionBody.safeParse(req.body);
   if (!body.success) return void res.status(400).json({ error: body.error.message });
-  const { ownerId, role } = nurseryContext(req);
-  if (!["owner", "superadmin"].includes(role)) return void res.status(403).json({ error: "Owner access required" });
+  const { ownerId } = nurseryContext(req);
+  if (!await permitted(req, "write:permissions")) return void res.status(403).json({ error: "Operation not permitted" });
   if (!configurableOperationSet.has(body.data.operation)) {
     return void res.status(400).json({ error: "Unknown configurable operation" });
   }
@@ -956,7 +951,7 @@ router.put("/user-permissions", async (req, res): Promise<void> => {
 router.put("/user-permissions/bulk", async (req, res): Promise<void> => {
   const body = BulkSetUserPermissionsBody.safeParse(req.body);
   if (!body.success) return void res.status(400).json({ error: body.error.message });
-  if (!ownerOnly(req)) return void res.status(403).json({ error: "Owner access required" });
+  if (!await permitted(req, "write:permissions")) return void res.status(403).json({ error: "Operation not permitted" });
   if (body.data.changes.some(({ operation }) => !configurableOperationSet.has(operation))) {
     return void res.status(400).json({ error: "Unknown configurable operation" });
   }
@@ -1035,11 +1030,7 @@ router.get("/audit-logs", async (req, res): Promise<void> => {
     res.status(400).json({ error: query.error.message });
     return;
   }
-  const { ownerId, role } = nurseryContext(req);
-  if (!["owner", "superadmin", "admin", "nursery_admin"].includes(role)) {
-    res.status(403).json({ error: "Administrative access required" });
-    return;
-  }
+  const { ownerId } = nurseryContext(req);
   if (!await permitted(req, "read:audit")) {
     res.status(403).json({ error: "Operation not permitted" });
     return;
