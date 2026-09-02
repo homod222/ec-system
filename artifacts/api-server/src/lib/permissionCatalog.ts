@@ -126,7 +126,7 @@ export const permissionCatalog = [
   {
     module: "security",
     page: "permissions",
-    operations: ["read:permissions", "read:audit"],
+    operations: ["read:permissions", "write:permissions", "read:audit"],
   },
   {
     module: "dashboard",

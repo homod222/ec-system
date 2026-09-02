@@ -21,7 +21,7 @@ const expectedOperations = [
   "write:child-health", "write:child-emergency", "write:child-allergy", "write:child-medication",
   "write:child-document", "write:child-photo", "write:child-note", "write:child-history",
   "read:report-operational", "read:report-academic", "read:report-financial",
-  "read:permissions", "read:audit",
+  "read:permissions", "write:permissions", "read:audit",
   "read:dashboard", "read:children", "write:children", "delete:children",
   "read:invoice", "write:invoice", "write:payment",
   "read:application", "write:application", "accept:application", "write:application-document",
@@ -40,6 +40,6 @@ describe("permission catalog", () => {
   it("keeps unknown operation strings outside the mutation whitelist", () => {
     expect(configurableOperationSet.has("read:branch")).toBe(true);
     expect(configurableOperationSet.has("read:unknown")).toBe(false);
-    expect(configurableOperationSet.has("write:permissions")).toBe(false);
+    expect(configurableOperationSet.has("write:permissions")).toBe(true);
   });
 });

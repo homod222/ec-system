@@ -609,7 +609,7 @@ router.use(async (req, res, next) => {
         return req.method === "GET" ? "read:children"
           : req.method === "DELETE" ? "delete:children" : "write:children";
       }
-      if (req.path === "/classrooms") return req.method === "GET" ? "read:classroom" : "write:classroom";
+      if (req.path === "/classrooms") return req.method === "GET" ? "read:classroom-schedule" : "write:classroom-schedule";
       if (req.path.startsWith("/staff")) {
         return req.method === "GET" ? "read:staff-profile"
           : req.method === "DELETE" ? "delete:staff-profile" : "write:staff-profile";
