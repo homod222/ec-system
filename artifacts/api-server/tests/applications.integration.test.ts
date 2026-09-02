@@ -519,6 +519,89 @@ describe.sequential("application registration regression flow", () => {
     }
   });
 
+  it("uses the resolved owner context for organization reads and writes", async () => {
+    const previousOwnerId = process.env.PUBLIC_SITE_OWNER_ID;
+    const previousOwnerEmail = process.env.PUBLIC_SITE_OWNER_EMAIL;
+    const computedOwnerId = `integration-context-owner-${randomUUID()}`;
+    const jwtOwnerId = `integration-context-jwt-${randomUUID()}`;
+    const ownerEmail = `organization-context-${randomUUID()}@example.test`;
+    const localOrganizationName = `Context local ${randomUUID()}`;
+    const legacyOrganizationName = `Context legacy ${randomUUID()}`;
+    const createdOrganizationName = `Context created ${randomUUID()}`;
+    let accountId: number | undefined;
+    const organizationIds: number[] = [];
+
+    process.env.PUBLIC_SITE_OWNER_ID = computedOwnerId;
+    process.env.PUBLIC_SITE_OWNER_EMAIL = ownerEmail;
+    try {
+      const account = await pool.query<{ id: number }>(
+        `insert into public_auth_accounts (
+           normalized_phone, full_name, email, account_type, account_status, role, owner_id
+         ) values ($1, 'Organization context test', $2, 'staff', 'active', 'admin', $3)
+         returning id`,
+        [`965${Math.floor(1_000_000 + Math.random() * 9_000_000)}`, ownerEmail, jwtOwnerId],
+      );
+      accountId = account.rows[0].id;
+
+      const localOrganization = await pool.query<{ id: number }>(
+        `insert into organizations (owner_id, name, code)
+         values ($1, $2, $3) returning id`,
+        [computedOwnerId, localOrganizationName, `CTXLOCAL-${randomUUID()}`],
+      );
+      organizationIds.push(localOrganization.rows[0].id);
+      const legacyOrganization = await pool.query<{ id: number }>(
+        `insert into organizations (owner_id, name, code)
+         values ($1, $2, $3) returning id`,
+        [jwtOwnerId, legacyOrganizationName, `CTXLEGACY-${randomUUID()}`],
+      );
+      organizationIds.push(legacyOrganization.rows[0].id);
+
+      const headers = {
+        ...auth(String(accountId), "pending"),
+        "x-test-owner": jwtOwnerId,
+      };
+      await request(app)
+        .get("/api/organizations")
+        .set(headers)
+        .expect(200)
+        .expect(({ body }) => {
+          expect(body).toEqual(expect.arrayContaining([
+            expect.objectContaining({ id: localOrganization.rows[0].id, name: localOrganizationName }),
+          ]));
+          expect(body).not.toEqual(expect.arrayContaining([
+            expect.objectContaining({ id: legacyOrganization.rows[0].id }),
+          ]));
+        });
+
+      const created = await request(app)
+        .post("/api/organizations")
+        .set(headers)
+        .send({ name: createdOrganizationName })
+        .expect(201);
+      organizationIds.push(created.body.id);
+      const createdOwner = await pool.query<{ owner_id: string }>(
+        "select owner_id from organizations where id = $1",
+        [created.body.id],
+      );
+      expect(createdOwner.rows).toEqual([{ owner_id: computedOwnerId }]);
+    } finally {
+      if (accountId !== undefined) {
+        await pool.query("delete from public_auth_accounts where id = $1", [accountId]);
+      }
+      if (organizationIds.length > 0) {
+        await pool.query(
+          "delete from audit_logs where entity_type = 'organization' and entity_id = any($1::text[])",
+          [organizationIds.map(String)],
+        );
+        await pool.query("delete from organizations where id = any($1::int[])", [organizationIds]);
+      }
+      if (previousOwnerId === undefined) delete process.env.PUBLIC_SITE_OWNER_ID;
+      else process.env.PUBLIC_SITE_OWNER_ID = previousOwnerId;
+      if (previousOwnerEmail === undefined) delete process.env.PUBLIC_SITE_OWNER_EMAIL;
+      else process.env.PUBLIC_SITE_OWNER_EMAIL = previousOwnerEmail;
+    }
+  });
+
   it("lets one active legacy account in the public nursery use phone and Clerk password", async () => {
     const clerkUserId = `legacy-password-user-${randomUUID()}`;
     const phone = `6${Math.floor(1_000_000 + Math.random() * 9_000_000)}`;
