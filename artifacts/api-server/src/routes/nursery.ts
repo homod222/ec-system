@@ -1143,7 +1143,7 @@ router.patch("/staff/:id", async (req, res): Promise<void> => {
     res.status(409).json({ error: "Use staff account management to change a linked account role" });
     return;
   }
-  const branch = await resolveBranchId(db, ownerId, body.data.branchId);
+  const branch = await resolveBranchId(db, ownerId, body.data.branchId ?? existing.branchId);
   if (branch.kind === "missing") {
     res.status(400).json({ error: "Branch not found" });
     return;

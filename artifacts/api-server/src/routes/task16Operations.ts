@@ -294,7 +294,7 @@ router.patch("/staff/:id", requireNurseryPermission("write:staff-profile"), asyn
   if (!params.success || !body.success) return void res.status(400).json({ error: params.success ? body.error?.message : params.error.message });
   const [before] = await db.select().from(staffTable).where(and(eq(staffTable.id, params.data.id), eq(staffTable.ownerId, nurseryContext(req).ownerId)));
   if (!before) return void res.status(404).json({ error: "Staff member not found" });
-  const branch = await resolveBranchId(db, before.ownerId, body.data.branchId);
+  const branch = await resolveBranchId(db, before.ownerId, body.data.branchId ?? before.branchId);
   if (branch.kind === "missing") return void res.status(400).json({ error: "Branch not found" });
   const [row] = await db.update(staffTable).set({
     ...body.data,
