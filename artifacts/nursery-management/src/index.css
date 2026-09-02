@@ -146,6 +146,10 @@ html[data-lang='en'] { --app-font-sans: 'DM Sans', sans-serif; }
   .sidebar-scroll::-webkit-scrollbar-track { background: transparent; }
   .sidebar-scroll::-webkit-scrollbar-thumb { background: hsl(var(--sidebar-accent)); border-radius: 9999px; }
   .sidebar-scroll::-webkit-scrollbar-thumb:hover { background: hsl(var(--sidebar-primary)); }
+  .sidebar-fade {
+    mask-image: linear-gradient(to bottom, transparent, black 14px, black calc(100% - 14px), transparent);
+    -webkit-mask-image: linear-gradient(to bottom, transparent, black 14px, black calc(100% - 14px), transparent);
+  }
   .bg-ec-pattern {
     background-color: hsl(var(--primary));
     background-image: radial-gradient(hsl(var(--primary-foreground) / .08) 2px, transparent 2px);
