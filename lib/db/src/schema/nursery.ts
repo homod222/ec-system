@@ -17,6 +17,7 @@ import { z } from "zod/v4";
 export const guardiansTable = pgTable("guardians", {
   id: serial("id").primaryKey(),
   ownerId: text("owner_id").notNull().default("__legacy__"),
+  branchId: integer("branch_id"),
   name: text("name").notNull(),
   phone: text("phone").notNull(),
   email: text("email"),
@@ -101,6 +102,7 @@ export const classroomsTable = pgTable("classrooms", {
 export const childrenTable = pgTable("children", {
   id: serial("id").primaryKey(),
   ownerId: text("owner_id").notNull().default("__legacy__"),
+  branchId: integer("branch_id"),
   firstName: text("first_name").notNull(),
   lastName: text("last_name").notNull(),
   gender: text("gender").notNull(),
@@ -160,6 +162,7 @@ export const attendanceTable = pgTable("attendance", {
 export const invoicesTable = pgTable("invoices", {
   id: serial("id").primaryKey(),
   ownerId: text("owner_id").notNull().default("__legacy__"),
+  branchId: integer("branch_id"),
   invoiceNumber: text("invoice_number").notNull(),
   guardianId: integer("guardian_id").notNull(),
   childId: integer("child_id").notNull(),
@@ -276,6 +279,7 @@ export const progressReportsTable = pgTable("progress_reports", {
 export const applicationsTable = pgTable("applications", {
   id: serial("id").primaryKey(),
   ownerId: text("owner_id").notNull().default("__legacy__"),
+  branchId: integer("branch_id"),
   type: text("type").notNull().default("new"),
   status: text("status").notNull().default("new"),
   childId: integer("child_id"),

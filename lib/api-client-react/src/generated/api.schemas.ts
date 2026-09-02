@@ -196,6 +196,8 @@ export interface Child {
   /** @nullable */
   classroomId: number | null;
   /** @nullable */
+  branchId?: number | null;
+  /** @nullable */
   classroomName: string | null;
   guardianName: string;
   guardianPhone: string;
@@ -224,6 +226,8 @@ export interface ChildInput {
   birthDate: string;
   /** @nullable */
   classroomId?: number | null;
+  /** @nullable */
+  branchId?: number | null;
   /** @minLength 1 */
   guardianName: string;
   /** @minLength 5 */
@@ -260,6 +264,8 @@ export interface ChildUpdate {
   birthDate?: string;
   /** @nullable */
   classroomId?: number | null;
+  /** @nullable */
+  branchId?: number | null;
   /** @minLength 1 */
   guardianName?: string;
   /** @minLength 5 */
@@ -316,6 +322,8 @@ export interface Application {
   childId: number | null;
   /** @nullable */
   sourceChildId: number | null;
+  /** @nullable */
+  branchId?: number | null;
   firstName: string;
   lastName: string;
   gender: ApplicationGender;
@@ -457,6 +465,8 @@ export interface Guardian {
   email: string | null;
   childrenCount: number;
   balance: number;
+  /** @nullable */
+  branchId?: number | null;
 }
 
 export type GuardianAccountResultAccountStatus =
@@ -566,6 +576,8 @@ export interface StaffMember {
   /** @nullable */
   clerkUserId?: string | null;
   accountStatus: StaffMemberAccountStatus;
+  /** @nullable */
+  branchId?: number | null;
 }
 
 export type StaffInputStatus =
@@ -591,6 +603,8 @@ export interface StaffInput {
   jobTitle?: string | null;
   /** @nullable */
   hireDate?: string | null;
+  /** @nullable */
+  branchId?: number | null;
 }
 
 export type StaffAccountLinkInputRole =

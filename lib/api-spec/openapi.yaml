@@ -1960,6 +1960,7 @@ components:
           type: string
           enum: [active, pending, inactive]
         classroomId: { type: ["number", "null"] }
+        branchId: { type: ["number", "null"] }
         classroomName: { type: ["string", "null"] }
         guardianName: { type: string }
         guardianPhone: { type: string }
@@ -1978,6 +1979,7 @@ components:
           enum: [male, female]
         birthDate: { type: string }
         classroomId: { type: ["number", "null"] }
+        branchId: { type: ["number", "null"] }
         guardianName: { type: string, minLength: 1 }
         guardianPhone: { type: string, minLength: 5 }
         level: { type: string, minLength: 1 }
@@ -1992,6 +1994,7 @@ components:
           enum: [male, female]
         birthDate: { type: string }
         classroomId: { type: ["number", "null"] }
+        branchId: { type: ["number", "null"] }
         guardianName: { type: string, minLength: 1 }
         guardianPhone: { type: string, minLength: 5 }
         level: { type: string, minLength: 1 }
@@ -2012,6 +2015,7 @@ components:
           enum: [new, reviewing, accepted, rejected]
         childId: { type: ["number", "null"] }
         sourceChildId: { type: ["number", "null"] }
+        branchId: { type: ["number", "null"] }
         firstName: { type: string }
         lastName: { type: string }
         gender:
@@ -2128,6 +2132,7 @@ components:
         email: { type: ["string", "null"] }
         childrenCount: { type: number }
         balance: { type: number }
+        branchId: { type: ["number", "null"] }
     GuardianAccountResult:
       type: object
       required: [guardianId, name, phone, clerkUserId, accountStatus]
@@ -2191,6 +2196,7 @@ components:
         accountStatus:
           type: string
           enum: [unlinked, pending_verification, active, disabled]
+        branchId: { type: ["number", "null"] }
     StaffInput:
       type: object
       required: [name, role, phone, status]
@@ -2202,6 +2208,7 @@ components:
         email: { type: ["string", "null"] }
         jobTitle: { type: ["string", "null"] }
         hireDate: { type: ["string", "null"] }
+        branchId: { type: ["number", "null"] }
     StaffAccountLinkInput:
       type: object
       required: [clerkUserId, role]

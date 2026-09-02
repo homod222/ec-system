@@ -233,6 +233,7 @@ export const ListChildrenResponseItem = zod.object({
   birthDate: zod.string(),
   status: zod.enum(["active", "pending", "inactive"]),
   classroomId: zod.number().nullable(),
+  branchId: zod.number().nullish(),
   classroomName: zod.string().nullable(),
   guardianName: zod.string(),
   guardianPhone: zod.string(),
@@ -252,6 +253,7 @@ export const CreateChildBody = zod.object({
   gender: zod.enum(["male", "female"]),
   birthDate: zod.string(),
   classroomId: zod.number().nullish(),
+  branchId: zod.number().nullish(),
   guardianName: zod.string().min(1),
   guardianPhone: zod.string().min(createChildBodyGuardianPhoneMin),
   level: zod.string().min(1),
@@ -266,6 +268,7 @@ export const CreateChildResponse = zod.object({
   birthDate: zod.string(),
   status: zod.enum(["active", "pending", "inactive"]),
   classroomId: zod.number().nullable(),
+  branchId: zod.number().nullish(),
   classroomName: zod.string().nullable(),
   guardianName: zod.string(),
   guardianPhone: zod.string(),
@@ -289,6 +292,7 @@ export const GetChildResponse = zod.object({
   birthDate: zod.string(),
   status: zod.enum(["active", "pending", "inactive"]),
   classroomId: zod.number().nullable(),
+  branchId: zod.number().nullish(),
   classroomName: zod.string().nullable(),
   guardianName: zod.string(),
   guardianPhone: zod.string(),
@@ -310,6 +314,7 @@ export const UpdateChildBody = zod.object({
   gender: zod.enum(["male", "female"]).optional(),
   birthDate: zod.string().optional(),
   classroomId: zod.number().nullish(),
+  branchId: zod.number().nullish(),
   guardianName: zod.string().min(1).optional(),
   guardianPhone: zod.string().min(updateChildBodyGuardianPhoneMin).optional(),
   level: zod.string().min(1).optional(),
@@ -325,6 +330,7 @@ export const UpdateChildResponse = zod.object({
   birthDate: zod.string(),
   status: zod.enum(["active", "pending", "inactive"]),
   classroomId: zod.number().nullable(),
+  branchId: zod.number().nullish(),
   classroomName: zod.string().nullable(),
   guardianName: zod.string(),
   guardianPhone: zod.string(),
@@ -356,6 +362,7 @@ export const StartChildRenewalResponse = zod.object({
   status: zod.enum(["new", "reviewing", "accepted", "rejected"]),
   childId: zod.number().nullable(),
   sourceChildId: zod.number().nullable(),
+  branchId: zod.number().nullish(),
   firstName: zod.string(),
   lastName: zod.string(),
   gender: zod.enum(["male", "female"]),
@@ -398,6 +405,7 @@ export const ListApplicationsResponseItem = zod.object({
   status: zod.enum(["new", "reviewing", "accepted", "rejected"]),
   childId: zod.number().nullable(),
   sourceChildId: zod.number().nullable(),
+  branchId: zod.number().nullish(),
   firstName: zod.string(),
   lastName: zod.string(),
   gender: zod.enum(["male", "female"]),
@@ -451,6 +459,7 @@ export const CreateApplicationResponse = zod.object({
   status: zod.enum(["new", "reviewing", "accepted", "rejected"]),
   childId: zod.number().nullable(),
   sourceChildId: zod.number().nullable(),
+  branchId: zod.number().nullish(),
   firstName: zod.string(),
   lastName: zod.string(),
   gender: zod.enum(["male", "female"]),
@@ -492,6 +501,7 @@ export const GetApplicationResponse = zod.object({
   status: zod.enum(["new", "reviewing", "accepted", "rejected"]),
   childId: zod.number().nullable(),
   sourceChildId: zod.number().nullable(),
+  branchId: zod.number().nullish(),
   firstName: zod.string(),
   lastName: zod.string(),
   gender: zod.enum(["male", "female"]),
@@ -550,6 +560,7 @@ export const UpdateApplicationResponse = zod.object({
   status: zod.enum(["new", "reviewing", "accepted", "rejected"]),
   childId: zod.number().nullable(),
   sourceChildId: zod.number().nullable(),
+  branchId: zod.number().nullish(),
   firstName: zod.string(),
   lastName: zod.string(),
   gender: zod.enum(["male", "female"]),
@@ -664,6 +675,7 @@ export const UpdateApplicationStatusResponse = zod.object({
   status: zod.enum(["new", "reviewing", "accepted", "rejected"]),
   childId: zod.number().nullable(),
   sourceChildId: zod.number().nullable(),
+  branchId: zod.number().nullish(),
   firstName: zod.string(),
   lastName: zod.string(),
   gender: zod.enum(["male", "female"]),
@@ -706,6 +718,7 @@ export const AcceptApplicationResponse = zod.object({
   status: zod.enum(["new", "reviewing", "accepted", "rejected"]),
   childId: zod.number().nullable(),
   sourceChildId: zod.number().nullable(),
+  branchId: zod.number().nullish(),
   firstName: zod.string(),
   lastName: zod.string(),
   gender: zod.enum(["male", "female"]),
@@ -742,6 +755,7 @@ export const ListGuardiansResponseItem = zod.object({
   email: zod.string().nullable(),
   childrenCount: zod.number(),
   balance: zod.number(),
+  branchId: zod.number().nullish(),
 });
 export const ListGuardiansResponse = zod.array(ListGuardiansResponseItem);
 /**
@@ -841,6 +855,7 @@ export const ListStaffResponseItem = zod.object({
     "active",
     "disabled",
   ]),
+  branchId: zod.number().nullish(),
 });
 export const ListStaffResponse = zod.array(ListStaffResponseItem);
 export const createStaffBodyPhoneMin = 5;
@@ -852,6 +867,7 @@ export const CreateStaffBody = zod.object({
   email: zod.string().nullish(),
   jobTitle: zod.string().nullish(),
   hireDate: zod.string().nullish(),
+  branchId: zod.number().nullish(),
 });
 export const CreateStaffResponse = zod.object({
   id: zod.number(),
@@ -871,6 +887,7 @@ export const CreateStaffResponse = zod.object({
     "active",
     "disabled",
   ]),
+  branchId: zod.number().nullish(),
 });
 export const LinkStaffAccountParams = zod.object({
   id: zod.coerce.number(),
@@ -2098,6 +2115,7 @@ export const UpdateStaffBody = zod.object({
   email: zod.string().nullish(),
   jobTitle: zod.string().nullish(),
   hireDate: zod.string().nullish(),
+  branchId: zod.number().nullish(),
 });
 export const UpdateStaffResponse = zod.object({
   id: zod.number(),
@@ -2117,6 +2135,7 @@ export const UpdateStaffResponse = zod.object({
     "active",
     "disabled",
   ]),
+  branchId: zod.number().nullish(),
 });
 export const DeleteStaffParams = zod.object({
   id: zod.coerce.number(),

@@ -14,4 +14,6 @@ export interface Guardian {
   email: string | null;
   childrenCount: number;
   balance: number;
+  /** @nullable */
+  branchId?: number | null;
 }

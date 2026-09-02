@@ -17,6 +17,8 @@ export interface ChildUpdate {
   birthDate?: string;
   /** @nullable */
   classroomId?: number | null;
+  /** @nullable */
+  branchId?: number | null;
   /** @minLength 1 */
   guardianName?: string;
   /** @minLength 5 */

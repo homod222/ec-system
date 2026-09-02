@@ -18,6 +18,8 @@ export interface Application {
   childId: number | null;
   /** @nullable */
   sourceChildId: number | null;
+  /** @nullable */
+  branchId?: number | null;
   firstName: string;
   lastName: string;
   gender: ApplicationGender;
