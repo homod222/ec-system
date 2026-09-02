@@ -34,6 +34,8 @@ tags:
     description: Guardian-scoped parent portal
   - name: operations
     description: Owner-scoped nursery operational records
+  - name: organizations
+    description: Organizations and nursery branches
   - name: reports
     description: Operational, academic, and financial reporting
   - name: permissions
@@ -1404,6 +1406,126 @@ paths:
       responses:
         "204": { description: Deleted }
         "404": { description: Record not found }
+  /organizations:
+    get:
+      operationId: listOrganizations
+      tags: [organizations]
+      summary: List organizations for the authenticated owner
+      responses:
+        "200":
+          description: Organizations
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Organization" } }
+        "403": { description: Operation not permitted }
+    post:
+      operationId: createOrganization
+      tags: [organizations]
+      summary: Create an organization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OrganizationInput" }
+      responses:
+        "201":
+          description: Created organization
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Organization" }
+        "403": { description: Operation not permitted }
+  /organizations/{id}:
+    patch:
+      operationId: updateOrganization
+      tags: [organizations]
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OrganizationUpdate" }
+      responses:
+        "200":
+          description: Updated organization
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Organization" }
+        "403": { description: Operation not permitted }
+        "404": { description: Organization not found }
+    delete:
+      operationId: deleteOrganization
+      tags: [organizations]
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "204": { description: Deleted }
+        "403": { description: Operation not permitted }
+        "404": { description: Organization not found }
+        "409": { description: Organization still has branches }
+  /branches:
+    get:
+      operationId: listBranches
+      tags: [organizations]
+      summary: List branches for the authenticated owner
+      parameters:
+        - name: organizationId
+          in: query
+          required: false
+          schema: { type: number }
+      responses:
+        "200":
+          description: Branches
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Branch" } }
+        "403": { description: Operation not permitted }
+    post:
+      operationId: createBranch
+      tags: [organizations]
+      summary: Create a branch in an organization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BranchInput" }
+      responses:
+        "201":
+          description: Created branch
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Branch" }
+        "403": { description: Operation not permitted }
+        "404": { description: Organization not found }
+  /branches/{id}:
+    patch:
+      operationId: updateBranch
+      tags: [organizations]
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BranchUpdate" }
+      responses:
+        "200":
+          description: Updated branch
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Branch" }
+        "403": { description: Operation not permitted }
+        "404": { description: Branch not found }
+    delete:
+      operationId: deleteBranch
+      tags: [organizations]
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "204": { description: Deleted }
+        "403": { description: Operation not permitted }
+        "404": { description: Branch not found }
+        "409": { description: Branch is referenced by nursery data }
   /reports:
     get:
       operationId: getNurseryReport
@@ -2601,6 +2723,79 @@ components:
         currency: { type: string, enum: [KWD] }
         workingHours: { type: object, additionalProperties: true }
         calendar: { type: object, additionalProperties: true }
+    Organization:
+      type: object
+      required: [id, name, code, type, active]
+      properties:
+        id: { type: number }
+        name: { type: string }
+        code: { type: string }
+        type: { type: string }
+        address: { type: ["string", "null"] }
+        phone: { type: ["string", "null"] }
+        email: { type: ["string", "null"] }
+        active: { type: boolean }
+    OrganizationInput:
+      type: object
+      additionalProperties: false
+      required: [name, code]
+      properties:
+        name: { type: string, minLength: 1 }
+        code: { type: string, minLength: 1 }
+        type: { type: string, default: nursery }
+        address: { type: ["string", "null"] }
+        phone: { type: ["string", "null"] }
+        email: { type: ["string", "null"], format: email }
+        active: { type: boolean, default: true }
+    OrganizationUpdate:
+      type: object
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1 }
+        code: { type: string, minLength: 1 }
+        type: { type: string }
+        address: { type: ["string", "null"] }
+        phone: { type: ["string", "null"] }
+        email: { type: ["string", "null"], format: email }
+        active: { type: boolean }
+    Branch:
+      type: object
+      required: [id, organizationId, name, code, capacity, active]
+      properties:
+        id: { type: number }
+        organizationId: { type: number }
+        name: { type: string }
+        code: { type: string }
+        address: { type: ["string", "null"] }
+        phone: { type: ["string", "null"] }
+        capacity: { type: number }
+        managerName: { type: ["string", "null"] }
+        active: { type: boolean }
+    BranchInput:
+      type: object
+      additionalProperties: false
+      required: [organizationId, name, code]
+      properties:
+        organizationId: { type: number }
+        name: { type: string, minLength: 1 }
+        code: { type: string, minLength: 1 }
+        address: { type: ["string", "null"] }
+        phone: { type: ["string", "null"] }
+        capacity: { type: number, default: 0 }
+        managerName: { type: ["string", "null"] }
+        active: { type: boolean, default: true }
+    BranchUpdate:
+      type: object
+      additionalProperties: false
+      properties:
+        organizationId: { type: number }
+        name: { type: string, minLength: 1 }
+        code: { type: string, minLength: 1 }
+        address: { type: ["string", "null"] }
+        phone: { type: ["string", "null"] }
+        capacity: { type: number }
+        managerName: { type: ["string", "null"] }
+        active: { type: boolean }
     PublicSiteSettings:
       type: object
       required: [registrationWhatsApp]
@@ -2634,7 +2829,7 @@ components:
         note: { type: ["string", "null"] }
     OperationalResource:
       type: string
-      enum: [branch, stage, teacher-assignment, classroom-schedule, staff-profile, staff-job, staff-leave, payroll, evaluation, curriculum, lesson-plan, skill, assessment, progress-report, event, media, fee-plan, discount, refund, expense, revenue, setting, holiday, notification, integration]
+      enum: [stage, teacher-assignment, classroom-schedule, staff-profile, staff-job, staff-leave, payroll, evaluation, curriculum, lesson-plan, skill, assessment, progress-report, event, media, fee-plan, discount, refund, expense, revenue, setting, holiday, notification, integration]
     OperationalRecord:
       type: object
       required: [id, resource, title, status, data, createdBy, createdAt, updatedAt]

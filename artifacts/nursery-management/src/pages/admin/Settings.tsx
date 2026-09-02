@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { getGetNurserySettingsQueryKey, useGetNurserySettings, useSetNurserySettings } from '@workspace/api-client-react';
 import { Shell, PageHeader, Button, QueryState } from '../../App';
-import { Settings as SettingsIcon, Bell, Calendar, Store, CreditCard, Plus, Trash2 } from 'lucide-react';
+import { Settings as SettingsIcon, Bell, Calendar, CreditCard, Plus, Trash2 } from 'lucide-react';
 import { OperationalManager } from '../../components/OperationalManager';
 import { useI18n } from '../../i18n';
 
@@ -286,7 +286,6 @@ export function Settings({ withShell = true }: { withShell?: boolean } = {}) {
       </QueryState>
       {withShell && (
         <>
-          <OperationalManager resource="branch" title={t('settings.branches')} icon={Store} extraFields={[{name: 'address', label: t('settings.address'), type: 'text'}, {name: 'phone', label: t('settings.contactPhone'), type: 'tel'}]} />
           <OperationalManager resource="stage" title={t('settings.stages')} icon={SettingsIcon} />
           <OperationalManager resource="holiday" title={t('settings.officialHolidays')} icon={Calendar} />
           <OperationalManager resource="notification" title={t('settings.notificationTemplates')} icon={Bell} extraFields={[{name: 'template', label: t('settings.templateText'), type: 'text'}]} />

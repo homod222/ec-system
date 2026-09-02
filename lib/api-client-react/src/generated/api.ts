@@ -18,6 +18,8 @@ import type {
 
 import type {
   Activity,
+  AdminCreateAccountInput,
+  AdminCreateAccountResult,
   Application,
   ApplicationDocument,
   ApplicationDocumentInput,
@@ -31,6 +33,9 @@ import type {
   BillingPlanGenerationResult,
   BillingPlanInput,
   BillingPlanStatusInput,
+  Branch,
+  BranchInput,
+  BranchUpdate,
   CancelInvoiceInput,
   CashPaymentInput,
   Child,
@@ -62,6 +67,7 @@ import type {
   ListApplicationsParams,
   ListAttendanceHistoryParams,
   ListAuditLogsParams,
+  ListBranchesParams,
   ListChildrenParams,
   ListInvoicesParams,
   ListParentActivitiesParams,
@@ -75,6 +81,9 @@ import type {
   OperationalRecord,
   OperationalRecordInput,
   OperationalRecordUpdate,
+  Organization,
+  OrganizationInput,
+  OrganizationUpdate,
   ParentAnnouncement,
   ParentChild,
   ParentChildActivity,
@@ -124,8 +133,6 @@ import type {
   UserPermissionBulkInput,
   UserPermissionBulkResult,
   UserPermissionInput,
-  AdminCreateAccountInput,
-  AdminCreateAccountResult,
 } from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
@@ -3110,6 +3117,92 @@ export const useUpdateStaffAccount = <
   TContext
 > => {
   return useMutation(getUpdateStaffAccountMutationOptions(options));
+};
+
+export const getAdminCreateAccountUrl = () => {
+  return `/api/admin/create-account`;
+};
+
+/**
+ * @summary Manually create a Clerk account for a staff member or guardian without phone verification
+ */
+export const adminCreateAccount = async (
+  adminCreateAccountInput: AdminCreateAccountInput,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<AdminCreateAccountResult> => {
+  return customFetch<AdminCreateAccountResult>(getAdminCreateAccountUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(adminCreateAccountInput),
+  });
+};
+
+export const getAdminCreateAccountMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof adminCreateAccount>>,
+    TError,
+    { data: BodyType<AdminCreateAccountInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof adminCreateAccount>>,
+  TError,
+  { data: BodyType<AdminCreateAccountInput> },
+  TContext
+> => {
+  const mutationKey = ["adminCreateAccount"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof adminCreateAccount>>,
+    { data: BodyType<AdminCreateAccountInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return adminCreateAccount(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type AdminCreateAccountMutationResult = NonNullable<
+  Awaited<ReturnType<typeof adminCreateAccount>>
+>;
+export type AdminCreateAccountMutationBody = BodyType<AdminCreateAccountInput>;
+export type AdminCreateAccountMutationError = ErrorType<void>;
+
+/**
+ * @summary Manually create a Clerk account for a staff member or guardian without phone verification
+ */
+export const useAdminCreateAccount = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof adminCreateAccount>>,
+    TError,
+    { data: BodyType<AdminCreateAccountInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof adminCreateAccount>>,
+  TError,
+  { data: BodyType<AdminCreateAccountInput> },
+  TContext
+> => {
+  return useMutation(getAdminCreateAccountMutationOptions(options));
 };
 
 export const getRequestStaffPasswordResetUrl = () => {
@@ -6849,7 +6942,6 @@ export const useRecordStaffAttendance = <
 
 export const getListOperationalRecordsUrl = (
   resource:
-    | "branch"
     | "stage"
     | "teacher-assignment"
     | "classroom-schedule"
@@ -6883,7 +6975,6 @@ export const getListOperationalRecordsUrl = (
  */
 export const listOperationalRecords = async (
   resource:
-    | "branch"
     | "stage"
     | "teacher-assignment"
     | "classroom-schedule"
@@ -6921,7 +7012,6 @@ export const listOperationalRecords = async (
 
 export const getListOperationalRecordsQueryKey = (
   resource:
-    | "branch"
     | "stage"
     | "teacher-assignment"
     | "classroom-schedule"
@@ -6955,7 +7045,6 @@ export const getListOperationalRecordsQueryOptions = <
   TError = ErrorType<unknown>,
 >(
   resource:
-    | "branch"
     | "stage"
     | "teacher-assignment"
     | "classroom-schedule"
@@ -7025,7 +7114,6 @@ export function useListOperationalRecords<
   TError = ErrorType<unknown>,
 >(
   resource:
-    | "branch"
     | "stage"
     | "teacher-assignment"
     | "classroom-schedule"
@@ -7070,7 +7158,6 @@ export function useListOperationalRecords<
 
 export const getCreateOperationalRecordUrl = (
   resource:
-    | "branch"
     | "stage"
     | "teacher-assignment"
     | "classroom-schedule"
@@ -7104,7 +7191,6 @@ export const getCreateOperationalRecordUrl = (
  */
 export const createOperationalRecord = async (
   resource:
-    | "branch"
     | "stage"
     | "teacher-assignment"
     | "classroom-schedule"
@@ -7152,7 +7238,6 @@ export const getCreateOperationalRecordMutationOptions = <
     TError,
     {
       resource:
-        | "branch"
         | "stage"
         | "teacher-assignment"
         | "classroom-schedule"
@@ -7187,7 +7272,6 @@ export const getCreateOperationalRecordMutationOptions = <
   TError,
   {
     resource:
-      | "branch"
       | "stage"
       | "teacher-assignment"
       | "classroom-schedule"
@@ -7229,7 +7313,6 @@ export const getCreateOperationalRecordMutationOptions = <
     Awaited<ReturnType<typeof createOperationalRecord>>,
     {
       resource:
-        | "branch"
         | "stage"
         | "teacher-assignment"
         | "classroom-schedule"
@@ -7284,7 +7367,6 @@ export const useCreateOperationalRecord = <
     TError,
     {
       resource:
-        | "branch"
         | "stage"
         | "teacher-assignment"
         | "classroom-schedule"
@@ -7319,7 +7401,6 @@ export const useCreateOperationalRecord = <
   TError,
   {
     resource:
-      | "branch"
       | "stage"
       | "teacher-assignment"
       | "classroom-schedule"
@@ -7353,7 +7434,6 @@ export const useCreateOperationalRecord = <
 
 export const getUpdateOperationalRecordUrl = (
   resource:
-    | "branch"
     | "stage"
     | "teacher-assignment"
     | "classroom-schedule"
@@ -7388,7 +7468,6 @@ export const getUpdateOperationalRecordUrl = (
  */
 export const updateOperationalRecord = async (
   resource:
-    | "branch"
     | "stage"
     | "teacher-assignment"
     | "classroom-schedule"
@@ -7437,7 +7516,6 @@ export const getUpdateOperationalRecordMutationOptions = <
     TError,
     {
       resource:
-        | "branch"
         | "stage"
         | "teacher-assignment"
         | "classroom-schedule"
@@ -7473,7 +7551,6 @@ export const getUpdateOperationalRecordMutationOptions = <
   TError,
   {
     resource:
-      | "branch"
       | "stage"
       | "teacher-assignment"
       | "classroom-schedule"
@@ -7516,7 +7593,6 @@ export const getUpdateOperationalRecordMutationOptions = <
     Awaited<ReturnType<typeof updateOperationalRecord>>,
     {
       resource:
-        | "branch"
         | "stage"
         | "teacher-assignment"
         | "classroom-schedule"
@@ -7572,7 +7648,6 @@ export const useUpdateOperationalRecord = <
     TError,
     {
       resource:
-        | "branch"
         | "stage"
         | "teacher-assignment"
         | "classroom-schedule"
@@ -7608,7 +7683,6 @@ export const useUpdateOperationalRecord = <
   TError,
   {
     resource:
-      | "branch"
       | "stage"
       | "teacher-assignment"
       | "classroom-schedule"
@@ -7643,7 +7717,6 @@ export const useUpdateOperationalRecord = <
 
 export const getDeleteOperationalRecordUrl = (
   resource:
-    | "branch"
     | "stage"
     | "teacher-assignment"
     | "classroom-schedule"
@@ -7678,7 +7751,6 @@ export const getDeleteOperationalRecordUrl = (
  */
 export const deleteOperationalRecord = async (
   resource:
-    | "branch"
     | "stage"
     | "teacher-assignment"
     | "classroom-schedule"
@@ -7721,7 +7793,6 @@ export const getDeleteOperationalRecordMutationOptions = <
     TError,
     {
       resource:
-        | "branch"
         | "stage"
         | "teacher-assignment"
         | "classroom-schedule"
@@ -7756,7 +7827,6 @@ export const getDeleteOperationalRecordMutationOptions = <
   TError,
   {
     resource:
-      | "branch"
       | "stage"
       | "teacher-assignment"
       | "classroom-schedule"
@@ -7798,7 +7868,6 @@ export const getDeleteOperationalRecordMutationOptions = <
     Awaited<ReturnType<typeof deleteOperationalRecord>>,
     {
       resource:
-        | "branch"
         | "stage"
         | "teacher-assignment"
         | "classroom-schedule"
@@ -7852,7 +7921,6 @@ export const useDeleteOperationalRecord = <
     TError,
     {
       resource:
-        | "branch"
         | "stage"
         | "teacher-assignment"
         | "classroom-schedule"
@@ -7887,7 +7955,6 @@ export const useDeleteOperationalRecord = <
   TError,
   {
     resource:
-      | "branch"
       | "stage"
       | "teacher-assignment"
       | "classroom-schedule"
@@ -7917,6 +7984,665 @@ export const useDeleteOperationalRecord = <
   TContext
 > => {
   return useMutation(getDeleteOperationalRecordMutationOptions(options));
+};
+
+export const getListOrganizationsUrl = () => {
+  return `/api/organizations`;
+};
+
+/**
+ * @summary List organizations for the authenticated owner
+ */
+export const listOrganizations = async (
+  options?: Parameters<typeof customFetch>[1],
+): Promise<Organization[]> => {
+  return customFetch<Organization[]>(getListOrganizationsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListOrganizationsQueryKey = () => {
+  return [`/api/organizations`] as const;
+};
+
+export const getListOrganizationsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listOrganizations>>,
+  TError = ErrorType<void>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listOrganizations>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListOrganizationsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listOrganizations>>
+  > = ({ signal }) => listOrganizations({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listOrganizations>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListOrganizationsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listOrganizations>>
+>;
+export type ListOrganizationsQueryError = ErrorType<void>;
+
+/**
+ * @summary List organizations for the authenticated owner
+ */
+
+export function useListOrganizations<
+  TData = Awaited<ReturnType<typeof listOrganizations>>,
+  TError = ErrorType<void>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listOrganizations>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListOrganizationsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getCreateOrganizationUrl = () => {
+  return `/api/organizations`;
+};
+
+/**
+ * @summary Create an organization
+ */
+export const createOrganization = async (
+  organizationInput: OrganizationInput,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<Organization> => {
+  return customFetch<Organization>(getCreateOrganizationUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(organizationInput),
+  });
+};
+
+export const getCreateOrganizationMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createOrganization>>,
+    TError,
+    { data: BodyType<OrganizationInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createOrganization>>,
+  TError,
+  { data: BodyType<OrganizationInput> },
+  TContext
+> => {
+  const mutationKey = ["createOrganization"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createOrganization>>,
+    { data: BodyType<OrganizationInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createOrganization(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateOrganizationMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createOrganization>>
+>;
+export type CreateOrganizationMutationBody = BodyType<OrganizationInput>;
+export type CreateOrganizationMutationError = ErrorType<void>;
+
+/**
+ * @summary Create an organization
+ */
+export const useCreateOrganization = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createOrganization>>,
+    TError,
+    { data: BodyType<OrganizationInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createOrganization>>,
+  TError,
+  { data: BodyType<OrganizationInput> },
+  TContext
+> => {
+  return useMutation(getCreateOrganizationMutationOptions(options));
+};
+
+export const getUpdateOrganizationUrl = (id: number) => {
+  return `/api/organizations/${id}`;
+};
+
+export const updateOrganization = async (
+  id: number,
+  organizationUpdate: OrganizationUpdate,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<Organization> => {
+  return customFetch<Organization>(getUpdateOrganizationUrl(id), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(organizationUpdate),
+  });
+};
+
+export const getUpdateOrganizationMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateOrganization>>,
+    TError,
+    { id: number; data: BodyType<OrganizationUpdate> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateOrganization>>,
+  TError,
+  { id: number; data: BodyType<OrganizationUpdate> },
+  TContext
+> => {
+  const mutationKey = ["updateOrganization"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateOrganization>>,
+    { id: number; data: BodyType<OrganizationUpdate> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateOrganization(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateOrganizationMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateOrganization>>
+>;
+export type UpdateOrganizationMutationBody = BodyType<OrganizationUpdate>;
+export type UpdateOrganizationMutationError = ErrorType<void>;
+
+export const useUpdateOrganization = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateOrganization>>,
+    TError,
+    { id: number; data: BodyType<OrganizationUpdate> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateOrganization>>,
+  TError,
+  { id: number; data: BodyType<OrganizationUpdate> },
+  TContext
+> => {
+  return useMutation(getUpdateOrganizationMutationOptions(options));
+};
+
+export const getDeleteOrganizationUrl = (id: number) => {
+  return `/api/organizations/${id}`;
+};
+
+export const deleteOrganization = async (
+  id: number,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<void> => {
+  return customFetch<void>(getDeleteOrganizationUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteOrganizationMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteOrganization>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteOrganization>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["deleteOrganization"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteOrganization>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return deleteOrganization(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteOrganizationMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteOrganization>>
+>;
+
+export type DeleteOrganizationMutationError = ErrorType<void>;
+
+export const useDeleteOrganization = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteOrganization>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteOrganization>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getDeleteOrganizationMutationOptions(options));
+};
+
+export const getListBranchesUrl = (params?: ListBranchesParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : String(value));
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/branches?${stringifiedParams}`
+    : `/api/branches`;
+};
+
+/**
+ * @summary List branches for the authenticated owner
+ */
+export const listBranches = async (
+  params?: ListBranchesParams,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<Branch[]> => {
+  return customFetch<Branch[]>(getListBranchesUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListBranchesQueryKey = (params?: ListBranchesParams) => {
+  return [`/api/branches`, ...(params ? [params] : [])] as const;
+};
+
+export const getListBranchesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listBranches>>,
+  TError = ErrorType<void>,
+>(
+  params?: ListBranchesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listBranches>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListBranchesQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listBranches>>> = ({
+    signal,
+  }) => listBranches(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listBranches>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListBranchesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listBranches>>
+>;
+export type ListBranchesQueryError = ErrorType<void>;
+
+/**
+ * @summary List branches for the authenticated owner
+ */
+
+export function useListBranches<
+  TData = Awaited<ReturnType<typeof listBranches>>,
+  TError = ErrorType<void>,
+>(
+  params?: ListBranchesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listBranches>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListBranchesQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getCreateBranchUrl = () => {
+  return `/api/branches`;
+};
+
+/**
+ * @summary Create a branch in an organization
+ */
+export const createBranch = async (
+  branchInput: BranchInput,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<Branch> => {
+  return customFetch<Branch>(getCreateBranchUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(branchInput),
+  });
+};
+
+export const getCreateBranchMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createBranch>>,
+    TError,
+    { data: BodyType<BranchInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createBranch>>,
+  TError,
+  { data: BodyType<BranchInput> },
+  TContext
+> => {
+  const mutationKey = ["createBranch"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createBranch>>,
+    { data: BodyType<BranchInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createBranch(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateBranchMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createBranch>>
+>;
+export type CreateBranchMutationBody = BodyType<BranchInput>;
+export type CreateBranchMutationError = ErrorType<void>;
+
+/**
+ * @summary Create a branch in an organization
+ */
+export const useCreateBranch = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createBranch>>,
+    TError,
+    { data: BodyType<BranchInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createBranch>>,
+  TError,
+  { data: BodyType<BranchInput> },
+  TContext
+> => {
+  return useMutation(getCreateBranchMutationOptions(options));
+};
+
+export const getUpdateBranchUrl = (id: number) => {
+  return `/api/branches/${id}`;
+};
+
+export const updateBranch = async (
+  id: number,
+  branchUpdate: BranchUpdate,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<Branch> => {
+  return customFetch<Branch>(getUpdateBranchUrl(id), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(branchUpdate),
+  });
+};
+
+export const getUpdateBranchMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateBranch>>,
+    TError,
+    { id: number; data: BodyType<BranchUpdate> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateBranch>>,
+  TError,
+  { id: number; data: BodyType<BranchUpdate> },
+  TContext
+> => {
+  const mutationKey = ["updateBranch"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateBranch>>,
+    { id: number; data: BodyType<BranchUpdate> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateBranch(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateBranchMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateBranch>>
+>;
+export type UpdateBranchMutationBody = BodyType<BranchUpdate>;
+export type UpdateBranchMutationError = ErrorType<void>;
+
+export const useUpdateBranch = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateBranch>>,
+    TError,
+    { id: number; data: BodyType<BranchUpdate> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateBranch>>,
+  TError,
+  { id: number; data: BodyType<BranchUpdate> },
+  TContext
+> => {
+  return useMutation(getUpdateBranchMutationOptions(options));
+};
+
+export const getDeleteBranchUrl = (id: number) => {
+  return `/api/branches/${id}`;
+};
+
+export const deleteBranch = async (
+  id: number,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<void> => {
+  return customFetch<void>(getDeleteBranchUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteBranchMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteBranch>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteBranch>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["deleteBranch"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteBranch>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return deleteBranch(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteBranchMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteBranch>>
+>;
+
+export type DeleteBranchMutationError = ErrorType<void>;
+
+export const useDeleteBranch = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteBranch>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteBranch>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getDeleteBranchMutationOptions(options));
 };
 
 export const getGetNurseryReportUrl = (params: GetNurseryReportParams) => {
@@ -9542,83 +10268,3 @@ export function useGetPublicSiteGalleryImage<
 
   return withQueryKey(query, queryOptions.queryKey);
 }
-
-export const getAdminCreateAccountUrl = () => {
-  return `/api/admin/create-account`;
-};
-
-export const adminCreateAccount = async (
-  adminCreateAccountInput: AdminCreateAccountInput,
-  options?: Parameters<typeof customFetch>[1],
-): Promise<AdminCreateAccountResult> => {
-  return customFetch<AdminCreateAccountResult>(getAdminCreateAccountUrl(), {
-    ...options,
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...options?.headers },
-    body: JSON.stringify(adminCreateAccountInput),
-  });
-};
-
-export const getAdminCreateAccountMutationOptions = <
-  TError = ErrorType<unknown>,
-  TContext = unknown,
->(options?: {
-  mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof adminCreateAccount>>,
-    TError,
-    { data: BodyType<AdminCreateAccountInput> },
-    TContext
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}): UseMutationOptions<
-  Awaited<ReturnType<typeof adminCreateAccount>>,
-  TError,
-  { data: BodyType<AdminCreateAccountInput> },
-  TContext
-> => {
-  const mutationKey = ["adminCreateAccount"];
-  const { mutation: mutationOptions, request: requestOptions } = options
-    ? options.mutation &&
-      "mutationKey" in options.mutation &&
-      options.mutation.mutationKey
-      ? options
-      : { ...options, mutation: { ...options.mutation, mutationKey } }
-    : { mutation: { mutationKey }, request: undefined };
-
-  const mutationFn: MutationFunction<
-    Awaited<ReturnType<typeof adminCreateAccount>>,
-    { data: BodyType<AdminCreateAccountInput> }
-  > = (props) => {
-    const { data } = props ?? {};
-
-    return adminCreateAccount(data, requestOptions);
-  };
-
-  return { mutationFn, ...mutationOptions };
-};
-
-export type AdminCreateAccountMutationResult = NonNullable<
-  Awaited<ReturnType<typeof adminCreateAccount>>
->;
-export type AdminCreateAccountMutationBody = BodyType<AdminCreateAccountInput>;
-export type AdminCreateAccountMutationError = ErrorType<unknown>;
-
-export const useAdminCreateAccount = <
-  TError = ErrorType<unknown>,
-  TContext = unknown,
->(options?: {
-  mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof adminCreateAccount>>,
-    TError,
-    { data: BodyType<AdminCreateAccountInput> },
-    TContext
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}): UseMutationResult<
-  Awaited<ReturnType<typeof adminCreateAccount>>,
-  TError,
-  { data: BodyType<AdminCreateAccountInput> },
-  TContext
-> => {
-  return useMutation(getAdminCreateAccountMutationOptions(options));
-};

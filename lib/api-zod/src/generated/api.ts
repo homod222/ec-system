@@ -926,6 +926,48 @@ export const UpdateStaffAccountResponse = zod.object({
   role: zod.string(),
   setupComplete: zod.boolean(),
 });
+/**
+ * @summary Manually create a Clerk account for a staff member or guardian without phone verification
+ */
+export const adminCreateAccountBodyPhoneMin = 8;
+export const adminCreateAccountBodyPhoneMax = 30;
+export const adminCreateAccountBodyPasswordMin = 4;
+export const adminCreateAccountBodyPasswordMax = 15;
+export const adminCreateAccountBodyFullNameMax = 200;
+export const AdminCreateAccountBody = zod.object({
+  phone: zod
+    .string()
+    .min(adminCreateAccountBodyPhoneMin)
+    .max(adminCreateAccountBodyPhoneMax),
+  password: zod
+    .string()
+    .min(adminCreateAccountBodyPasswordMin)
+    .max(adminCreateAccountBodyPasswordMax),
+  accountType: zod.enum(["guardian", "staff"]),
+  fullName: zod
+    .string()
+    .min(1)
+    .max(adminCreateAccountBodyFullNameMax)
+    .optional(),
+  role: zod
+    .enum([
+      "admin",
+      "manager",
+      "supervisor",
+      "teacher",
+      "accountant",
+      "receptionist",
+    ])
+    .optional(),
+});
+export const AdminCreateAccountResponse = zod.object({
+  id: zod.number().int(),
+  accountType: zod.enum(["guardian", "staff"]),
+  phone: zod.string(),
+  accountStatus: zod.string(),
+  role: zod.string().optional(),
+  name: zod.string().optional(),
+});
 export const RequestStaffPasswordResetBody = zod.object({
   email: zod.string().email(),
 });
@@ -949,37 +991,6 @@ export const CompleteStaffPasswordResetBody = zod.object({
 });
 export const CompleteStaffPasswordResetResponse = zod.object({
   updated: zod.boolean(),
-});
-/**
- * @summary Manually create a Clerk account for a staff member or guardian without phone verification
- */
-export const adminCreateAccountBodyPhoneMin = 8;
-export const adminCreateAccountBodyPhoneMax = 30;
-export const adminCreateAccountBodyPasswordMin = 4;
-export const adminCreateAccountBodyPasswordMax = 15;
-export const adminCreateAccountBodyFullNameMax = 200;
-export const AdminCreateAccountBody = zod.object({
-  phone: zod
-    .string()
-    .min(adminCreateAccountBodyPhoneMin)
-    .max(adminCreateAccountBodyPhoneMax),
-  password: zod
-    .string()
-    .min(adminCreateAccountBodyPasswordMin)
-    .max(adminCreateAccountBodyPasswordMax),
-  accountType: zod.enum(["guardian", "staff"]),
-  fullName: zod.string().min(1).max(adminCreateAccountBodyFullNameMax).optional(),
-  role: zod
-    .enum(["admin", "manager", "supervisor", "teacher", "accountant", "receptionist"])
-    .optional(),
-});
-export const AdminCreateAccountResponse = zod.object({
-  id: zod.number().int(),
-  accountType: zod.enum(["guardian", "staff"]),
-  phone: zod.string(),
-  accountStatus: zod.string(),
-  role: zod.string().optional(),
-  name: zod.string().optional(),
 });
 /**
  * @summary Get today's child attendance
@@ -2225,7 +2236,6 @@ export const RecordStaffAttendanceResponse = zod.object({
  */
 export const ListOperationalRecordsParams = zod.object({
   resource: zod.enum([
-    "branch",
     "stage",
     "teacher-assignment",
     "classroom-schedule",
@@ -2255,7 +2265,6 @@ export const ListOperationalRecordsParams = zod.object({
 export const ListOperationalRecordsResponseItem = zod.object({
   id: zod.number(),
   resource: zod.enum([
-    "branch",
     "stage",
     "teacher-assignment",
     "classroom-schedule",
@@ -2300,7 +2309,6 @@ export const ListOperationalRecordsResponse = zod.array(
  */
 export const CreateOperationalRecordParams = zod.object({
   resource: zod.enum([
-    "branch",
     "stage",
     "teacher-assignment",
     "classroom-schedule",
@@ -2340,7 +2348,6 @@ export const CreateOperationalRecordBody = zod.object({
 export const CreateOperationalRecordResponse = zod.object({
   id: zod.number(),
   resource: zod.enum([
-    "branch",
     "stage",
     "teacher-assignment",
     "classroom-schedule",
@@ -2382,7 +2389,6 @@ export const CreateOperationalRecordResponse = zod.object({
  */
 export const UpdateOperationalRecordParams = zod.object({
   resource: zod.enum([
-    "branch",
     "stage",
     "teacher-assignment",
     "classroom-schedule",
@@ -2422,7 +2428,6 @@ export const UpdateOperationalRecordBody = zod.object({
 export const UpdateOperationalRecordResponse = zod.object({
   id: zod.number(),
   resource: zod.enum([
-    "branch",
     "stage",
     "teacher-assignment",
     "classroom-schedule",
@@ -2464,7 +2469,6 @@ export const UpdateOperationalRecordResponse = zod.object({
  */
 export const DeleteOperationalRecordParams = zod.object({
   resource: zod.enum([
-    "branch",
     "stage",
     "teacher-assignment",
     "classroom-schedule",
@@ -2494,6 +2498,144 @@ export const DeleteOperationalRecordParams = zod.object({
 });
 export const DeleteOperationalRecordResponse = zod.void();
 /**
+ * @summary List organizations for the authenticated owner
+ */
+export const ListOrganizationsResponseItem = zod.object({
+  id: zod.number(),
+  name: zod.string(),
+  code: zod.string(),
+  type: zod.string(),
+  address: zod.string().nullish(),
+  phone: zod.string().nullish(),
+  email: zod.string().nullish(),
+  active: zod.boolean(),
+});
+export const ListOrganizationsResponse = zod.array(
+  ListOrganizationsResponseItem,
+);
+/**
+ * @summary Create an organization
+ */
+export const createOrganizationBodyTypeDefault = `nursery`;
+export const createOrganizationBodyActiveDefault = true;
+export const CreateOrganizationBody = zod.object({
+  name: zod.string().min(1),
+  code: zod.string().min(1),
+  type: zod.string().default(createOrganizationBodyTypeDefault),
+  address: zod.string().nullish(),
+  phone: zod.string().nullish(),
+  email: zod.string().email().nullish(),
+  active: zod.boolean().default(createOrganizationBodyActiveDefault),
+});
+export const CreateOrganizationResponse = zod.object({
+  id: zod.number(),
+  name: zod.string(),
+  code: zod.string(),
+  type: zod.string(),
+  address: zod.string().nullish(),
+  phone: zod.string().nullish(),
+  email: zod.string().nullish(),
+  active: zod.boolean(),
+});
+export const UpdateOrganizationParams = zod.object({
+  id: zod.coerce.number(),
+});
+export const UpdateOrganizationBody = zod.object({
+  name: zod.string().min(1).optional(),
+  code: zod.string().min(1).optional(),
+  type: zod.string().optional(),
+  address: zod.string().nullish(),
+  phone: zod.string().nullish(),
+  email: zod.string().email().nullish(),
+  active: zod.boolean().optional(),
+});
+export const UpdateOrganizationResponse = zod.object({
+  id: zod.number(),
+  name: zod.string(),
+  code: zod.string(),
+  type: zod.string(),
+  address: zod.string().nullish(),
+  phone: zod.string().nullish(),
+  email: zod.string().nullish(),
+  active: zod.boolean(),
+});
+export const DeleteOrganizationParams = zod.object({
+  id: zod.coerce.number(),
+});
+export const DeleteOrganizationResponse = zod.void();
+/**
+ * @summary List branches for the authenticated owner
+ */
+export const ListBranchesQueryParams = zod.object({
+  organizationId: zod.coerce.number().optional(),
+});
+export const ListBranchesResponseItem = zod.object({
+  id: zod.number(),
+  organizationId: zod.number(),
+  name: zod.string(),
+  code: zod.string(),
+  address: zod.string().nullish(),
+  phone: zod.string().nullish(),
+  capacity: zod.number(),
+  managerName: zod.string().nullish(),
+  active: zod.boolean(),
+});
+export const ListBranchesResponse = zod.array(ListBranchesResponseItem);
+/**
+ * @summary Create a branch in an organization
+ */
+export const createBranchBodyCapacityDefault = 0;
+export const createBranchBodyActiveDefault = true;
+export const CreateBranchBody = zod.object({
+  organizationId: zod.number(),
+  name: zod.string().min(1),
+  code: zod.string().min(1),
+  address: zod.string().nullish(),
+  phone: zod.string().nullish(),
+  capacity: zod.number().default(createBranchBodyCapacityDefault),
+  managerName: zod.string().nullish(),
+  active: zod.boolean().default(createBranchBodyActiveDefault),
+});
+export const CreateBranchResponse = zod.object({
+  id: zod.number(),
+  organizationId: zod.number(),
+  name: zod.string(),
+  code: zod.string(),
+  address: zod.string().nullish(),
+  phone: zod.string().nullish(),
+  capacity: zod.number(),
+  managerName: zod.string().nullish(),
+  active: zod.boolean(),
+});
+export const UpdateBranchParams = zod.object({
+  id: zod.coerce.number(),
+});
+export const UpdateBranchBody = zod.object({
+  organizationId: zod.number().optional(),
+  name: zod.string().min(1).optional(),
+  code: zod.string().min(1).optional(),
+  address: zod.string().nullish(),
+  phone: zod.string().nullish(),
+  capacity: zod.number().optional(),
+  managerName: zod.string().nullish(),
+  active: zod.boolean().optional(),
+});
+export const UpdateBranchResponse = zod.object({
+  id: zod.number(),
+  organizationId: zod.number(),
+  name: zod.string(),
+  code: zod.string(),
+  address: zod.string().nullish(),
+  phone: zod.string().nullish(),
+  capacity: zod.number(),
+  managerName: zod.string().nullish(),
+  active: zod.boolean(),
+});
+export const DeleteBranchParams = zod.object({
+  id: zod.coerce.number(),
+});
+export const DeleteBranchResponse = zod.void();
+/**
  * @summary Generate filtered operational, academic, or financial report
  */
 export const GetNurseryReportQueryParams = zod.object({
@@ -2513,7 +2655,6 @@ export const GetNurseryReportResponse = zod.object({
     zod.object({
       id: zod.number(),
       resource: zod.enum([
-        "branch",
         "stage",
         "teacher-assignment",
         "classroom-schedule",

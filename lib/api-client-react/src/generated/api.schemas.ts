@@ -39,8 +39,8 @@ export interface PublicRegistrationVerify {
   /** @pattern ^\d{6}$ */
   otp: string;
   /**
-   * @minLength 15
-   * @maxLength 128
+   * @minLength 4
+   * @maxLength 15
    */
   password: string;
 }
@@ -85,8 +85,8 @@ export interface PhonePasswordSignIn {
    */
   phone: string;
   /**
-   * @minLength 8
-   * @maxLength 128
+   * @minLength 4
+   * @maxLength 15
    */
   password: string;
 }
@@ -656,6 +656,63 @@ export interface StaffAccountResult {
   setupComplete: boolean;
 }
 
+export type AdminCreateAccountInputAccountType =
+  (typeof AdminCreateAccountInputAccountType)[keyof typeof AdminCreateAccountInputAccountType];
+
+export const AdminCreateAccountInputAccountType = {
+  guardian: "guardian",
+  staff: "staff",
+} as const;
+
+export type AdminCreateAccountInputRole =
+  (typeof AdminCreateAccountInputRole)[keyof typeof AdminCreateAccountInputRole];
+
+export const AdminCreateAccountInputRole = {
+  admin: "admin",
+  manager: "manager",
+  supervisor: "supervisor",
+  teacher: "teacher",
+  accountant: "accountant",
+  receptionist: "receptionist",
+} as const;
+
+export interface AdminCreateAccountInput {
+  /**
+   * @minLength 8
+   * @maxLength 30
+   */
+  phone: string;
+  /**
+   * @minLength 4
+   * @maxLength 15
+   */
+  password: string;
+  accountType: AdminCreateAccountInputAccountType;
+  /**
+   * @minLength 1
+   * @maxLength 200
+   */
+  fullName?: string;
+  role?: AdminCreateAccountInputRole;
+}
+
+export type AdminCreateAccountResultAccountType =
+  (typeof AdminCreateAccountResultAccountType)[keyof typeof AdminCreateAccountResultAccountType];
+
+export const AdminCreateAccountResultAccountType = {
+  guardian: "guardian",
+  staff: "staff",
+} as const;
+
+export interface AdminCreateAccountResult {
+  id: number;
+  accountType: AdminCreateAccountResultAccountType;
+  phone: string;
+  accountStatus: string;
+  role?: string;
+  name?: string;
+}
+
 export interface StaffPasswordResetRequest {
   email: string;
 }
@@ -673,8 +730,8 @@ export interface StaffPasswordResetComplete {
    */
   token: string;
   /**
-   * @minLength 8
-   * @maxLength 128
+   * @minLength 4
+   * @maxLength 15
    */
   password: string;
 }
@@ -1431,6 +1488,97 @@ export interface NurserySettingsInput {
   calendar: NurserySettingsInputCalendar;
 }
 
+export interface Organization {
+  id: number;
+  name: string;
+  code: string;
+  type: string;
+  /** @nullable */
+  address?: string | null;
+  /** @nullable */
+  phone?: string | null;
+  /** @nullable */
+  email?: string | null;
+  active: boolean;
+}
+
+export interface OrganizationInput {
+  /** @minLength 1 */
+  name: string;
+  /** @minLength 1 */
+  code: string;
+  type?: string;
+  /** @nullable */
+  address?: string | null;
+  /** @nullable */
+  phone?: string | null;
+  /** @nullable */
+  email?: string | null;
+  active?: boolean;
+}
+
+export interface OrganizationUpdate {
+  /** @minLength 1 */
+  name?: string;
+  /** @minLength 1 */
+  code?: string;
+  type?: string;
+  /** @nullable */
+  address?: string | null;
+  /** @nullable */
+  phone?: string | null;
+  /** @nullable */
+  email?: string | null;
+  active?: boolean;
+}
+
+export interface Branch {
+  id: number;
+  organizationId: number;
+  name: string;
+  code: string;
+  /** @nullable */
+  address?: string | null;
+  /** @nullable */
+  phone?: string | null;
+  capacity: number;
+  /** @nullable */
+  managerName?: string | null;
+  active: boolean;
+}
+
+export interface BranchInput {
+  organizationId: number;
+  /** @minLength 1 */
+  name: string;
+  /** @minLength 1 */
+  code: string;
+  /** @nullable */
+  address?: string | null;
+  /** @nullable */
+  phone?: string | null;
+  capacity?: number;
+  /** @nullable */
+  managerName?: string | null;
+  active?: boolean;
+}
+
+export interface BranchUpdate {
+  organizationId?: number;
+  /** @minLength 1 */
+  name?: string;
+  /** @minLength 1 */
+  code?: string;
+  /** @nullable */
+  address?: string | null;
+  /** @nullable */
+  phone?: string | null;
+  capacity?: number;
+  /** @nullable */
+  managerName?: string | null;
+  active?: boolean;
+}
+
 export interface PublicSiteSettings {
   /** @pattern ^965[569][0-9]{7}$ */
   registrationWhatsApp: string;
@@ -1534,7 +1682,6 @@ export type OperationalResource =
   (typeof OperationalResource)[keyof typeof OperationalResource];
 
 export const OperationalResource = {
-  branch: "branch",
   stage: "stage",
   "teacher-assignment": "teacher-assignment",
   "classroom-schedule": "classroom-schedule",
@@ -1936,6 +2083,10 @@ export type ListStaffAttendanceParams = {
   dateTo?: string;
 };
 
+export type ListBranchesParams = {
+  organizationId?: number;
+};
+
 export type GetNurseryReportParams = {
   domain: GetNurseryReportDomain;
   branchId?: number;
@@ -1992,43 +2143,3 @@ export type ListAuditLogsParams = {
   operation?: string;
   entityType?: string;
 };
-
-export type AdminCreateAccountInputAccountType =
-  (typeof AdminCreateAccountInputAccountType)[keyof typeof AdminCreateAccountInputAccountType];
-
-export const AdminCreateAccountInputAccountType = {
-  guardian: "guardian",
-  staff: "staff",
-} as const;
-
-export type AdminCreateAccountInputRole =
-  (typeof AdminCreateAccountInputRole)[keyof typeof AdminCreateAccountInputRole];
-
-export const AdminCreateAccountInputRole = {
-  admin: "admin",
-  manager: "manager",
-  supervisor: "supervisor",
-  teacher: "teacher",
-  accountant: "accountant",
-  receptionist: "receptionist",
-} as const;
-
-export interface AdminCreateAccountInput {
-  /** @minLength 8 @maxLength 30 */
-  phone: string;
-  /** @minLength 4 @maxLength 15 */
-  password: string;
-  accountType: AdminCreateAccountInputAccountType;
-  /** @minLength 1 @maxLength 200 */
-  fullName?: string;
-  role?: AdminCreateAccountInputRole;
-}
-
-export interface AdminCreateAccountResult {
-  id: number;
-  accountType: string;
-  phone: string;
-  accountStatus: string;
-  role?: string;
-  name?: string;
-}

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { exportNurseryReport, useGetNurseryReport, useListClassrooms, useListOperationalRecords } from '@workspace/api-client-react';
+import { exportNurseryReport, useGetNurseryReport, useListBranches, useListClassrooms } from '@workspace/api-client-react';
 import { Shell, Button, QueryState, PageHeader } from '../../App';
 import { Download, FileSpreadsheet, FileText } from 'lucide-react';
 import { useI18n } from '../../i18n';
@@ -23,7 +23,7 @@ export function Reports() {
   });
   const report = query.data;
   
-  const branchQuery = useListOperationalRecords('branch');
+  const branchQuery = useListBranches();
   const branches = branchQuery.data || [];
   const classroomQuery = useListClassrooms();
   const classrooms = classroomQuery.data || [];
@@ -82,7 +82,7 @@ export function Reports() {
         <div className="flex flex-wrap gap-3 items-center">
           <select data-testid="filter-report-branch" value={branchId} onChange={(e) => setBranchId(e.target.value)} className="rounded-xl border border-input bg-background px-3 py-1.5 text-xs font-bold outline-none">
             <option value="">{t('reports.allBranches')}</option>
-            {branches.map(b => <option key={b.id} value={b.id}>{b.title}</option>)}
+            {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
           </select>
           <select data-testid="filter-report-classroom" value={classroomId} onChange={(e) => setClassroomId(e.target.value)} className="rounded-xl border border-input bg-background px-3 py-1.5 text-xs font-bold outline-none">
             <option value="">{t('reports.allClassrooms')}</option>

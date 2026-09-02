@@ -105,6 +105,28 @@ export async function runApplicationMigrations(): Promise<void> {
       settings jsonb NOT NULL DEFAULT '{}'::jsonb,
       created_at timestamptz NOT NULL DEFAULT now()
     );
+    CREATE TABLE IF NOT EXISTS organizations (
+      id serial PRIMARY KEY,
+      owner_id text NOT NULL,
+      name text NOT NULL,
+      code text NOT NULL,
+      type text NOT NULL DEFAULT 'nursery',
+      address text,
+      phone text,
+      email text,
+      active boolean NOT NULL DEFAULT true,
+      settings jsonb NOT NULL DEFAULT '{}'::jsonb,
+      created_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS organizations_owner_lower_code_unique
+      ON organizations (owner_id, lower(code));
+    ALTER TABLE nursery_branches
+      ADD COLUMN IF NOT EXISTS organization_id integer,
+      ADD COLUMN IF NOT EXISTS manager_name text,
+      ADD COLUMN IF NOT EXISTS legacy_record_id integer;
+    CREATE UNIQUE INDEX IF NOT EXISTS nursery_branches_legacy_record_unique
+      ON nursery_branches (legacy_record_id)
+      WHERE legacy_record_id IS NOT NULL;
     CREATE TABLE IF NOT EXISTS nursery_stages (
       id serial PRIMARY KEY,
       owner_id text NOT NULL,
@@ -250,6 +272,149 @@ export async function runApplicationMigrations(): Promise<void> {
     );
     ALTER TABLE nursery_settings
       ADD COLUMN IF NOT EXISTS registration_whatsapp text NOT NULL DEFAULT '96590916677';
+    -- Seed one organization per existing tenant before migrating legacy branch records.
+    WITH candidate_owners AS (
+      SELECT owner_id FROM operational_records
+      UNION SELECT owner_id FROM classrooms
+      UNION SELECT owner_id FROM staff
+      UNION SELECT owner_id FROM nursery_settings
+      UNION SELECT owner_id FROM nursery_branches
+    ),
+    owners_without_organizations AS (
+      SELECT candidate_owners.owner_id
+      FROM candidate_owners
+      WHERE NOT EXISTS (
+        SELECT 1 FROM organizations
+        WHERE organizations.owner_id = candidate_owners.owner_id
+      )
+    )
+    INSERT INTO organizations (owner_id, name, code, type)
+      SELECT owners_without_organizations.owner_id,
+        COALESCE(NULLIF(settings.nursery_name, ''), 'المؤسسة الرئيسية'),
+        'MAIN', 'nursery'
+      FROM owners_without_organizations
+      LEFT JOIN LATERAL (
+        SELECT nursery_name
+        FROM nursery_settings
+        WHERE nursery_settings.owner_id = owners_without_organizations.owner_id
+        ORDER BY id
+        LIMIT 1
+      ) settings ON true;
+
+    -- Convert fake branch operational records without losing colliding legacy rows.
+    DO $migration$
+    DECLARE
+      legacy RECORD;
+      candidate_code text;
+      suffix integer;
+      branch_organization_id integer;
+    BEGIN
+      FOR legacy IN
+        SELECT records.*
+        FROM operational_records records
+        WHERE records.resource = 'branch'
+          AND NOT EXISTS (
+            SELECT 1
+            FROM nursery_branches existing
+            WHERE existing.legacy_record_id = records.id
+          )
+        ORDER BY records.id
+      LOOP
+        SELECT organizations.id INTO branch_organization_id
+        FROM organizations
+        WHERE organizations.owner_id = legacy.owner_id
+        ORDER BY organizations.id
+        LIMIT 1;
+        candidate_code := COALESCE(NULLIF(legacy.data->>'code', ''), 'B' || legacy.id::text);
+        suffix := 0;
+        WHILE EXISTS (
+          SELECT 1
+          FROM nursery_branches existing
+          WHERE existing.owner_id = legacy.owner_id
+            AND lower(existing.code) = lower(candidate_code)
+        ) LOOP
+          suffix := suffix + 1;
+          candidate_code := COALESCE(NULLIF(legacy.data->>'code', ''), 'B' || legacy.id::text)
+            || '_' || legacy.id::text
+            || CASE WHEN suffix > 1 THEN '_' || suffix::text ELSE '' END;
+        END LOOP;
+        INSERT INTO nursery_branches (
+          owner_id, organization_id, name, code, address, phone, capacity, active, legacy_record_id
+        ) VALUES (
+          legacy.owner_id,
+          branch_organization_id,
+          legacy.title,
+          candidate_code,
+          legacy.data->>'address',
+          legacy.data->>'phone',
+          CASE
+            WHEN legacy.amount IS NOT NULL THEN round(legacy.amount)::integer
+            WHEN (legacy.data->>'capacity') ~ '^-?[0-9]+$' THEN (legacy.data->>'capacity')::integer
+            ELSE 0
+          END,
+          legacy.status = 'active',
+          legacy.id
+        );
+      END LOOP;
+    END $migration$;
+
+    UPDATE nursery_branches AS branch
+      SET organization_id = organization.id
+      FROM organizations AS organization
+      WHERE branch.organization_id IS NULL
+        AND organization.owner_id = branch.owner_id;
+
+    UPDATE classrooms AS classroom
+      SET branch_id = branch.id
+      FROM nursery_branches AS branch
+      WHERE classroom.branch_id IS NOT NULL
+        AND classroom.owner_id = branch.owner_id
+        AND classroom.branch_id = branch.legacy_record_id
+        AND NOT EXISTS (
+          SELECT 1 FROM nursery_branches current_branch
+          WHERE current_branch.owner_id = classroom.owner_id
+            AND current_branch.id = classroom.branch_id
+        );
+    UPDATE staff AS staff_member
+      SET branch_id = branch.id
+      FROM nursery_branches AS branch
+      WHERE staff_member.branch_id IS NOT NULL
+        AND staff_member.owner_id = branch.owner_id
+        AND staff_member.branch_id = branch.legacy_record_id
+        AND NOT EXISTS (
+          SELECT 1 FROM nursery_branches current_branch
+          WHERE current_branch.owner_id = staff_member.owner_id
+            AND current_branch.id = staff_member.branch_id
+        );
+    UPDATE nursery_stages AS stage
+      SET branch_id = branch.id
+      FROM nursery_branches AS branch
+      WHERE stage.branch_id IS NOT NULL
+        AND stage.owner_id = branch.owner_id
+        AND stage.branch_id = branch.legacy_record_id
+        AND NOT EXISTS (
+          SELECT 1 FROM nursery_branches current_branch
+          WHERE current_branch.owner_id = stage.owner_id
+            AND current_branch.id = stage.branch_id
+        );
+    UPDATE operational_records AS record
+      SET branch_id = branch.id
+      FROM nursery_branches AS branch
+      WHERE record.branch_id IS NOT NULL
+        AND record.owner_id = branch.owner_id
+        AND record.branch_id = branch.legacy_record_id
+        AND NOT EXISTS (
+          SELECT 1 FROM nursery_branches current_branch
+          WHERE current_branch.owner_id = record.owner_id
+            AND current_branch.id = record.branch_id
+        );
+    DELETE FROM operational_records
+      WHERE resource = 'branch'
+        AND id IN (
+          SELECT legacy_record_id
+          FROM nursery_branches
+          WHERE legacy_record_id IS NOT NULL
+        );
     CREATE TABLE IF NOT EXISTS billing_plans (
       id serial PRIMARY KEY,
       owner_id text NOT NULL,
@@ -371,6 +536,41 @@ export async function runApplicationMigrations(): Promise<void> {
       ON audit_logs (owner_id, operation, entity_type, created_at DESC);
     CREATE UNIQUE INDEX IF NOT EXISTS nursery_branches_owner_code_unique
       ON nursery_branches (owner_id, code);
+    DO $branch_codes$
+    DECLARE
+      branch RECORD;
+      original_code text;
+      candidate_code text;
+      suffix integer;
+    BEGIN
+      FOR branch IN
+        SELECT id, owner_id, code
+        FROM nursery_branches
+        ORDER BY owner_id, id
+      LOOP
+        original_code := branch.code;
+        candidate_code := original_code;
+        suffix := 0;
+        WHILE EXISTS (
+          SELECT 1
+          FROM nursery_branches existing
+          WHERE existing.owner_id = branch.owner_id
+            AND lower(existing.code) = lower(candidate_code)
+            AND existing.id <> branch.id
+        ) LOOP
+          suffix := suffix + 1;
+          candidate_code := original_code || '_' || branch.id::text
+            || CASE WHEN suffix > 1 THEN '_' || suffix::text ELSE '' END;
+        END LOOP;
+        IF candidate_code <> branch.code THEN
+          UPDATE nursery_branches
+            SET code = candidate_code
+            WHERE id = branch.id;
+        END IF;
+      END LOOP;
+    END $branch_codes$;
+    CREATE UNIQUE INDEX IF NOT EXISTS nursery_branches_owner_lower_code_unique
+      ON nursery_branches (owner_id, lower(code));
     CREATE TABLE IF NOT EXISTS attendance_duplicate_archive (
       original_attendance_id integer PRIMARY KEY,
       snapshot jsonb NOT NULL,

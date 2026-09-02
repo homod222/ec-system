@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/reac
 import {
   Activity as ActivityIcon, ArrowUpRight, Baby, BarChart3, Bell, BookOpen,
   CalendarCheck, Check, ChevronLeft, ChevronRight, CircleAlert, CircleDollarSign, Clock3, Contact,
-  FileText, GraduationCap, KeyRound, LayoutDashboard, LogOut, Menu, MoreHorizontal,
+  Building2, FileText, GraduationCap, KeyRound, LayoutDashboard, LogOut, Menu, MoreHorizontal,
   Phone, Plus, ScrollText, Search, Settings as SettingsIcon, ShieldCheck, Sparkles, TrendingUp, UserCog, Users, Wallet, X, Images,
 } from 'lucide-react';
 import {
@@ -41,6 +41,7 @@ import { Users as UsersPage } from './pages/admin/Users';
 import { Settings } from './pages/admin/Settings';
 import { Audit } from './pages/admin/Audit';
 import { SiteGallery } from './pages/admin/SiteGallery';
+import { Organizations } from './pages/admin/Organizations';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { useI18n, type Locale, type TranslationKey } from '@/i18n';
 import {
@@ -79,6 +80,7 @@ const pagePermissions = {
   users: ['read:users'],
   gallery: ['read:site-gallery'],
   settings: ['read:setting', 'read:holiday', 'read:integration'],
+  organizations: ['read:organization', 'read:branch'],
 } satisfies Record<string, readonly string[]>;
 
 const hasAnyPermission = (effective: readonly string[] | undefined, required?: readonly string[]) =>
@@ -120,6 +122,7 @@ const navGroups = [
   {
     label: 'nav.group.system',
     items: [
+      { href: '/organizations', label: 'nav.organizations', icon: Building2, permission: pagePermissions.organizations },
       { href: '/users', label: 'nav.users', icon: UserCog, permission: pagePermissions.users },
       { href: '/permissions', label: 'nav.permissions', icon: KeyRound, permission: pagePermissions.permissions },
       { href: '/audit', label: 'nav.audit', icon: ScrollText, permission: pagePermissions.audit },
@@ -636,7 +639,7 @@ function Protected({ children, allowedRole, permission }: { children: React.Reac
   if (session.data) {
     const role = session.data.role;
     const isParentRole = role === 'parent';
-    const isAdminRoute = location.startsWith('/dashboard') || location.startsWith('/children') || location.startsWith('/guardians') || location.startsWith('/classrooms') || location.startsWith('/staff') || location.startsWith('/finance') || location.startsWith('/education') || location.startsWith('/activities') || location.startsWith('/reports') || location.startsWith('/permissions') || location.startsWith('/users') || location.startsWith('/site-gallery') || location.startsWith('/settings') || location.startsWith('/audit') || location.startsWith('/applications');
+    const isAdminRoute = location.startsWith('/dashboard') || location.startsWith('/children') || location.startsWith('/guardians') || location.startsWith('/classrooms') || location.startsWith('/staff') || location.startsWith('/finance') || location.startsWith('/education') || location.startsWith('/activities') || location.startsWith('/reports') || location.startsWith('/permissions') || location.startsWith('/users') || location.startsWith('/site-gallery') || location.startsWith('/settings') || location.startsWith('/audit') || location.startsWith('/applications') || location.startsWith('/organizations');
     const isParentRoute = location.startsWith('/parent');
 
     if (role === 'pending') {
@@ -996,6 +999,7 @@ function Router() {
         <Route path="/site-gallery"><Protected allowedRole="admin" permission={pagePermissions.gallery}><SiteGallery /></Protected></Route>
         <Route path="/settings"><Protected allowedRole="admin" permission={pagePermissions.settings}><Settings /></Protected></Route>
         <Route path="/audit"><Protected allowedRole="admin" permission={pagePermissions.audit}><Audit /></Protected></Route>
+        <Route path="/organizations"><Protected allowedRole="admin" permission={pagePermissions.organizations}><Organizations /></Protected></Route>
         <Route><Redirect to="/" /></Route>
       </Switch>
     </RoutedErrorBoundary>

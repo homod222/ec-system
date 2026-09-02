@@ -13,8 +13,8 @@ export interface PhonePasswordSignIn {
      */
   phone: string;
   /**
-     * @minLength 8
-     * @maxLength 128
+     * @minLength 4
+     * @maxLength 15
      */
   password: string;
 }

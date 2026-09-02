@@ -112,6 +112,7 @@ export function defaultAllowed(role: string, operation: string) {
       || operation === "read:classroom"
       || operation === "read:stage"
       || operation === "read:branch"
+      || operation === "read:organization"
       || operation === "read:dashboard"
       || operation === "read:report-academic"
       || operation === "write:attendance"
@@ -130,7 +131,7 @@ export function defaultAllowed(role: string, operation: string) {
   }
   if (role === "receptionist") {
     return [
-      "read:dashboard", "read:branch", "read:stage", "read:classroom", "write:classroom",
+      "read:dashboard", "read:branch", "read:organization", "read:stage", "read:classroom", "write:classroom",
       "read:attendance", "read:child-record", "read:children", "write:children", "write:attendance",
       "read:application", "write:application", "write:application-document",
     ]
