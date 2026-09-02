@@ -57,8 +57,7 @@ function branchResponse(row: typeof branchesTable.$inferSelect) {
     capacity: _capacity,
     ...response
   } = row;
-  const { managerName: _managerName, ...sanitizedResponse } = response as typeof response & { managerName?: unknown };
-  return sanitizedResponse;
+  return response;
 }
 
 router.get("/organizations", async (req, res): Promise<void> => {
