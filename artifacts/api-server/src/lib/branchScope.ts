@@ -13,6 +13,24 @@ export type BranchScope = number[] | null;
 
 export const FULL_ACCESS_ROLES = new Set(["owner", "superadmin", "admin", "nursery_admin"]);
 
+export function defaultScopedBranchId(
+  scope: BranchScope,
+  provided: number | null | undefined,
+):
+  | { kind: "ok"; branchId: number | null }
+  | { kind: "forbidden" }
+  | { kind: "ambiguous" } {
+  if (scope === null) return { kind: "ok", branchId: provided ?? null };
+  if (provided != null) {
+    return scope.includes(provided)
+      ? { kind: "ok", branchId: provided }
+      : { kind: "forbidden" };
+  }
+  if (scope.length === 1) return { kind: "ok", branchId: scope[0] };
+  if (scope.length === 0) return { kind: "forbidden" };
+  return { kind: "ambiguous" };
+}
+
 export function branchCondition(column: AnyPgColumn, scope: BranchScope): SQL | undefined {
   if (scope === null) return undefined;
   if (scope.length === 0) return sql`false`;

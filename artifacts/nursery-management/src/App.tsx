@@ -246,7 +246,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const availableBranches = branches.data || [];
 
   useEffect(() => {
-    if (selectedBranchId && !availableBranches.some((branch) => String(branch.id) === selectedBranchId)) {
+    if (branches.data !== undefined && selectedBranchId && !availableBranches.some((branch) => String(branch.id) === selectedBranchId)) {
       localStorage.removeItem('ec.selectedBranchId');
       setSelectedBranchId('');
       queryClient.invalidateQueries();

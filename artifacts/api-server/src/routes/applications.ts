@@ -39,12 +39,11 @@ import {
   ObjectStorageService,
 } from "../lib/objectStorage";
 import { checkClassroomCapacity } from "../lib/classroomCapacity";
-import { branchCondition, classroomBranchMismatch, defaultBranchId } from "../lib/branchScope";
+import { branchCondition, classroomBranchMismatch, defaultBranchId, defaultScopedBranchId } from "../lib/branchScope";
 import {
   auditNurseryOperation,
   nurseryContext,
   requireNurseryPermission,
-  requireBranchAccess,
   resolveNurseryContext,
 } from "./nurseryOperations";
 
@@ -137,8 +136,10 @@ router.post("/applications", requireNurseryPermission("write:application"), asyn
 
   const { ownerId, branchIds } = nurseryContext(req);
   const result = await db.transaction(async (tx) => {
-    const branchId = await defaultBranchId(tx, ownerId, branchIds);
-    if (!requireBranchAccess({ branchIds }, branchId)) return { kind: "branchNotPermitted" as const };
+    const branch = defaultScopedBranchId(branchIds, undefined);
+    if (branch.kind === "forbidden") return { kind: "branchNotPermitted" as const };
+    if (branch.kind === "ambiguous") return { kind: "branchRequired" as const };
+    const branchId = branch.branchId;
     if (parsed.data.classroomId != null) {
       if (await classroomBranchMismatch(tx, ownerId, parsed.data.classroomId, branchId)) {
         return { kind: "missing" as const };
@@ -164,6 +165,10 @@ router.post("/applications", requireNurseryPermission("write:application"), asyn
   }
   if (result.kind === "branchNotPermitted") {
     res.status(403).json({ error: "Branch not permitted" });
+    return;
+  }
+  if (result.kind === "branchRequired") {
+    res.status(400).json({ error: "Branch required" });
     return;
   }
   if (result.kind === "full") {
@@ -504,8 +509,10 @@ router.post("/applications/:id/accept", requireNurseryPermission("accept:applica
       return { kind: "accepted" as const, application, before: null };
     }
     if (application.status !== "reviewing") return { kind: "illegal" as const };
-    const applicationBranchId = application.branchId ?? await defaultBranchId(tx, application.ownerId, branchIds);
-    if (!requireBranchAccess({ branchIds }, applicationBranchId)) return { kind: "branchNotPermitted" as const };
+    const branch = defaultScopedBranchId(branchIds, application.branchId);
+    if (branch.kind === "forbidden") return { kind: "branchNotPermitted" as const };
+    if (branch.kind === "ambiguous") return { kind: "branchRequired" as const };
+    const applicationBranchId = branch.branchId;
     let childId: number;
     if (application.type === "renewal") {
       if (!application.sourceChildId) return { kind: "childMissing" as const };
@@ -639,6 +646,10 @@ router.post("/applications/:id/accept", requireNurseryPermission("accept:applica
   }
   if (result.kind === "branchNotPermitted") {
     res.status(403).json({ error: "Branch not permitted" });
+    return;
+  }
+  if (result.kind === "branchRequired") {
+    res.status(400).json({ error: "Branch required" });
     return;
   }
   if (result.kind === "childMissing") {

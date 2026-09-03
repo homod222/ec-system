@@ -60,7 +60,7 @@ import {
   staffAttendanceTable,
   staffTable,
 } from "@workspace/db";
-import { branchCondition, type BranchScope, FULL_ACCESS_ROLES, resolveStaffScope } from "../lib/branchScope";
+import { branchCondition, type BranchScope, defaultScopedBranchId, FULL_ACCESS_ROLES, resolveStaffScope } from "../lib/branchScope";
 import {
   configurableOperations,
   configurableOperationSet,
@@ -82,11 +82,12 @@ export function nurseryContext(req: Request) {
   const auth = getLocalAuth(req);
   if (!auth) return { actorId: "anonymous", ownerId: "anonymous", role: "pending", branchIds: [] };
   const role = (auth.role || "staff").toLowerCase();
+  const ownerId = auth.ownerId ?? auth.sub;
   return {
     actorId: auth.sub,
-    ownerId: auth.ownerId ?? auth.sub,
+    ownerId,
     role,
-    branchIds: FULL_ACCESS_ROLES.has(role) ? null : [],
+    branchIds: auth.sub === ownerId || FULL_ACCESS_ROLES.has(role) ? null : [],
   };
 }
 
@@ -331,11 +332,12 @@ export const resolveNurseryContext: RequestHandler = async (req, res, next) => {
 
         // Use JWT-embedded role/ownerId as fallback
         const role = (account.role ?? auth.role ?? "staff").toLowerCase();
+        const resolvedOwnerId = account.ownerId ?? auth.ownerId ?? actorId;
         scopedContext(req, {
           actorId,
-          ownerId: account.ownerId ?? auth.ownerId ?? actorId,
+          ownerId: resolvedOwnerId,
           role,
-          branchIds: FULL_ACCESS_ROLES.has(role) ? null : [],
+          branchIds: actorId === resolvedOwnerId || FULL_ACCESS_ROLES.has(role) ? null : [],
         });
         next();
         return;
@@ -344,11 +346,12 @@ export const resolveNurseryContext: RequestHandler = async (req, res, next) => {
 
     // Final fallback from JWT payload
     const role = (auth.role || "staff").toLowerCase();
+    const resolvedOwnerId = auth.ownerId ?? actorId;
     scopedContext(req, {
       actorId,
-      ownerId: auth.ownerId ?? actorId,
+      ownerId: resolvedOwnerId,
       role,
-      branchIds: FULL_ACCESS_ROLES.has(role) ? null : [],
+      branchIds: actorId === resolvedOwnerId || FULL_ACCESS_ROLES.has(role) ? null : [],
     });
     next();
   } catch (error) {
@@ -509,13 +512,18 @@ router.post("/operations/:resource", async (req, res): Promise<void> => {
     return;
   }
   const { ownerId, actorId, branchIds } = nurseryContext(req);
-  const targetBranchId = body.data.branchId ?? null;
-  if (!requireBranchAccess({ branchIds }, targetBranchId)) {
+  const branch = defaultScopedBranchId(branchIds, body.data.branchId);
+  if (branch.kind === "forbidden") {
     res.status(403).json({ error: "Branch not permitted" });
+    return;
+  }
+  if (branch.kind === "ambiguous") {
+    res.status(400).json({ error: "Branch required" });
     return;
   }
   const [created] = await db.insert(operationalRecordsTable).values({
     ownerId, createdBy: actorId, resource: params.data.resource, ...body.data,
+    branchId: branch.branchId,
     data: body.data.data ?? {},
   }).returning();
   await auditNurseryOperation(req, "create", params.data.resource, String(created.id), null, created as unknown as Record<string, unknown>);

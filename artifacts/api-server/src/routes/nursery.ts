@@ -106,6 +106,7 @@ import {
   branchCondition,
   classroomBranchMismatch,
   defaultBranchId,
+  defaultScopedBranchId,
   FULL_ACCESS_ROLES,
   resolveBranchId,
   resolveStaffScope,
@@ -274,9 +275,13 @@ router.post("/admin/create-account", async (req, res): Promise<void> => {
       )).returning();
       recordId = linked.id;
     } else {
-      const branchId = await defaultBranchId(db, ownerId, branchIds);
-      if (!requireBranchAccess({ branchIds }, branchId)) {
+      const branch = defaultScopedBranchId(branchIds, undefined);
+      if (branch.kind === "forbidden") {
         res.status(403).json({ error: "Branch not permitted" });
+        return;
+      }
+      if (branch.kind === "ambiguous") {
+        res.status(400).json({ error: "Branch required" });
         return;
       }
       const [created] = await db.insert(staffTable).values({
@@ -286,7 +291,7 @@ router.post("/admin/create-account", async (req, res): Promise<void> => {
         phone,
         clerkUserId: `local_pending`,
         accountStatus: "active",
-        branchId,
+        branchId: branch.branchId,
       }).returning();
       recordId = created.id;
     }
@@ -310,9 +315,13 @@ router.post("/admin/create-account", async (req, res): Promise<void> => {
       ));
       recordId = match.id;
     } else {
-      const branchId = await defaultBranchId(db, ownerId, branchIds);
-      if (!requireBranchAccess({ branchIds }, branchId)) {
+      const branch = defaultScopedBranchId(branchIds, undefined);
+      if (branch.kind === "forbidden") {
         res.status(403).json({ error: "Branch not permitted" });
+        return;
+      }
+      if (branch.kind === "ambiguous") {
+        res.status(400).json({ error: "Branch required" });
         return;
       }
       const [created] = await db.insert(guardiansTable).values({
@@ -320,7 +329,7 @@ router.post("/admin/create-account", async (req, res): Promise<void> => {
         name: fullName,
         phone,
         clerkUserId: `local_pending`,
-        branchId,
+        branchId: branch.branchId,
       }).returning();
       recordId = created.id;
     }
