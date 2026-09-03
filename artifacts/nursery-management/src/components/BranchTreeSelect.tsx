@@ -56,6 +56,9 @@ export type BranchTreeSelectProps = SingleProps | MultiProps;
 
 export function BranchTreeSelect(props: BranchTreeSelectProps) {
   const { t, dir } = useI18n();
+  const mirrored = dir === 'rtl';
+  const rowDirection = mirrored ? 'flex-row-reverse' : '';
+  const branchIndent = mirrored ? 'ps-2 pe-10' : 'pe-2 ps-10';
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [collapsedOrganizations, setCollapsedOrganizations] = useState<Set<number>>(new Set());
@@ -232,6 +235,7 @@ export function BranchTreeSelect(props: BranchTreeSelectProps) {
               type="button"
               className={cn(
                 'flex w-full items-center gap-2 border-b border-border px-4 py-3 text-start text-sm font-medium transition-colors hover:bg-muted',
+                rowDirection,
                 (props.mode === 'single' ? !props.value : !selectedLabels.length) && 'bg-primary/10 text-primary',
               )}
               onClick={clearSelection}
@@ -239,11 +243,11 @@ export function BranchTreeSelect(props: BranchTreeSelectProps) {
               <span className="flex h-4 w-4 shrink-0 items-center justify-center">
                 {(props.mode === 'single' ? !props.value : !selectedLabels.length) && <Check className="h-4 w-4" />}
               </span>
-              <span>{props.allLabel || t('branchTree.allBranches')}</span>
+              <span className="min-w-0 flex-1 truncate">{props.allLabel || t('branchTree.allBranches')}</span>
             </button>
           )}
 
-          <ScrollArea className="max-h-80">
+          <ScrollArea className="max-h-80" dir={dir}>
             <div className="space-y-1 p-2">
               {visibleTree.length ? visibleTree.map(({ organization, branches: organizationBranches }) => {
                 const organizationSelected = props.mode === 'multi'
@@ -251,7 +255,7 @@ export function BranchTreeSelect(props: BranchTreeSelectProps) {
                 const expanded = search.trim() !== '' || !collapsedOrganizations.has(organization.id);
                 return (
                   <div key={organization.id} className="rounded-lg">
-                    <div className="flex items-center gap-1 rounded-lg px-2 py-2 hover:bg-muted">
+                    <div className={cn('flex items-center gap-1 rounded-lg px-2 py-2 hover:bg-muted', rowDirection)}>
                       {props.mode === 'multi' ? (
                         <Checkbox
                           data-testid={`${props.testId}-org-${organization.id}`}
@@ -264,12 +268,12 @@ export function BranchTreeSelect(props: BranchTreeSelectProps) {
                       )}
                       <button
                         type="button"
-                        className="flex min-w-0 flex-1 items-center gap-2 text-start"
+                        className={cn('flex min-w-0 flex-1 items-center gap-2 text-start', rowDirection)}
                         onClick={() => toggleCollapsed(organization.id)}
                       >
                         <Building2 className="h-4 w-4 shrink-0 text-primary" />
                         {expanded ? <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground rtl:rotate-180" />}
-                        <span className="min-w-0 truncate text-sm font-bold">{organization.name}</span>
+                        <span className="min-w-0 flex-1 truncate text-sm font-bold">{organization.name}</span>
                       </button>
                     </div>
                     {expanded && (
@@ -284,7 +288,9 @@ export function BranchTreeSelect(props: BranchTreeSelectProps) {
                                 type="button"
                                 data-testid={`${props.testId}-branch-${branch.id}`}
                                 className={cn(
-                                  'flex w-full items-center gap-2 rounded-lg py-2 pe-2 ps-10 text-start text-sm transition-colors hover:bg-muted',
+                                  'flex w-full items-center gap-2 rounded-lg py-2 text-start text-sm transition-colors hover:bg-muted',
+                                  rowDirection,
+                                  branchIndent,
                                   branchSelected && 'bg-primary/10 font-bold text-primary',
                                 )}
                                 onClick={() => {
@@ -295,7 +301,7 @@ export function BranchTreeSelect(props: BranchTreeSelectProps) {
                                 <span className="flex h-4 w-4 shrink-0 items-center justify-center">
                                   {branchSelected && <Check className="h-4 w-4" />}
                                 </span>
-                                <span className="min-w-0 truncate">{branch.name}</span>
+                                <span className="min-w-0 flex-1 truncate">{branch.name}</span>
                               </button>
                             );
                           }
@@ -303,7 +309,9 @@ export function BranchTreeSelect(props: BranchTreeSelectProps) {
                             <label
                               key={branch.id}
                               className={cn(
-                                'flex items-center gap-2 rounded-lg py-2 pe-2 ps-10 text-sm transition-colors hover:bg-muted',
+                                'flex items-center gap-2 rounded-lg py-2 text-sm transition-colors hover:bg-muted',
+                                rowDirection,
+                                branchIndent,
                                 disabled && 'opacity-70',
                               )}
                             >
@@ -314,7 +322,7 @@ export function BranchTreeSelect(props: BranchTreeSelectProps) {
                                 onCheckedChange={() => toggleBranch(branch.id)}
                                 aria-label={branch.name}
                               />
-                              <span className="min-w-0 truncate">{branch.name}</span>
+                              <span className="min-w-0 flex-1 truncate">{branch.name}</span>
                             </label>
                           );
                         })}
