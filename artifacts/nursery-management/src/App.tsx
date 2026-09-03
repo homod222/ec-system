@@ -187,13 +187,15 @@ export function Avatar({ name, className = '' }: { name: string; className?: str
 function BranchScopeSwitcher({
   branches,
   fullAccess,
-  selectedBranchId,
+  selectedBranchIds,
+  selectedOrganizationIds,
   onChange,
 }: {
-  branches: Array<{ id: number; name: string; code: string }>;
+  branches: Array<{ id: number; name: string; code: string; organizationId: number }>;
   fullAccess: boolean;
-  selectedBranchId: string;
-  onChange: (value: string) => void;
+  selectedBranchIds: string;
+  selectedOrganizationIds: number[];
+  onChange: (value: { organizationIds: number[]; branchIds: number[] }) => void;
 }) {
   const { t } = useI18n();
   if (!fullAccess && branches.length === 0) {
@@ -206,8 +208,11 @@ function BranchScopeSwitcher({
     <div className="min-w-0">
       <span className="sr-only">{t('admin.currentBranch')}</span>
       <BranchTreeSelect
-        mode="single"
-        value={selectedBranchId}
+        mode="multi"
+        value={{
+          organizationIds: selectedOrganizationIds,
+          branchIds: selectedBranchIds.split(',').filter(Boolean).map(Number),
+        }}
         onChange={onChange}
         allowAll={fullAccess || branches.length > 1}
         allLabel={t('admin.allBranches')}
@@ -240,22 +245,50 @@ export function Shell({ children }: { children: React.ReactNode }) {
     query: { enabled: Boolean(isSignedIn), queryKey: getListBranchesQueryKey(), retry: false },
     request: { headers: { 'x-branch-id': '' } },
   });
-  const [selectedBranchId, setSelectedBranchId] = useState(() => localStorage.getItem('ec.selectedBranchId') || '');
+  const [selectedBranchIds, setSelectedBranchIds] = useState(() => localStorage.getItem('ec.selectedBranchId') || '');
+  const [selectedOrganizationIds, setSelectedOrganizationIds] = useState<number[]>([]);
+  const selectionHydrated = useRef(false);
   const branchScope = session.data?.branchScope;
   const availableBranches = branches.data || [];
 
   useEffect(() => {
-    if (branches.data !== undefined && selectedBranchId && !availableBranches.some((branch) => String(branch.id) === selectedBranchId)) {
-      localStorage.removeItem('ec.selectedBranchId');
-      setSelectedBranchId('');
+    if (branches.data === undefined) return;
+    const selectedIds = selectedBranchIds.split(',').filter(Boolean).map(Number);
+    const validIds = selectedIds.filter((id) => availableBranches.some((branch) => branch.id === id));
+    if (validIds.length !== selectedIds.length) {
+      const nextValue = validIds.join(',');
+      if (nextValue) localStorage.setItem('ec.selectedBranchId', nextValue);
+      else localStorage.removeItem('ec.selectedBranchId');
+      setSelectedBranchIds(nextValue);
       queryClient.invalidateQueries();
     }
-  }, [availableBranches, selectedBranchId]);
+    if (!selectionHydrated.current) {
+      const organizationIds = availableBranches
+        .reduce<number[]>((ids, branch, _index, allBranches) => {
+          if (ids.includes(branch.organizationId)) return ids;
+          const organizationBranches = allBranches.filter((candidate) => candidate.organizationId === branch.organizationId);
+          if (organizationBranches.length > 0 && organizationBranches.every((candidate) => validIds.includes(candidate.id))) {
+            ids.push(branch.organizationId);
+          }
+          return ids;
+        }, []);
+      setSelectedOrganizationIds(organizationIds);
+      selectionHydrated.current = true;
+    }
+  }, [availableBranches, branches.data, selectedBranchIds]);
 
-  const handleBranchChange = (value: string) => {
+  const handleBranchChange = ({ organizationIds, branchIds }: { organizationIds: number[]; branchIds: number[] }) => {
+    const expandedBranchIds = [
+      ...branchIds,
+      ...availableBranches
+        .filter((branch) => organizationIds.includes(branch.organizationId))
+        .map((branch) => branch.id),
+    ];
+    const value = [...new Set(expandedBranchIds)].join(',');
     if (value) localStorage.setItem('ec.selectedBranchId', value);
     else localStorage.removeItem('ec.selectedBranchId');
-    setSelectedBranchId(value);
+    setSelectedBranchIds(value);
+    setSelectedOrganizationIds(organizationIds);
     queryClient.invalidateQueries();
   };
   const effectivePermissions = session.data?.effectivePermissions;
@@ -315,7 +348,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
             <BranchScopeSwitcher
               branches={availableBranches}
               fullAccess={branchScope?.fullAccess ?? false}
-              selectedBranchId={selectedBranchId}
+              selectedBranchIds={selectedBranchIds}
+              selectedOrganizationIds={selectedOrganizationIds}
               onChange={handleBranchChange}
             />
           </div>

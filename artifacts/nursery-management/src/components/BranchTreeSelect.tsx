@@ -46,6 +46,9 @@ type MultiProps = {
   value: MultiValue;
   onChange: (value: MultiValue) => void;
   testId: string;
+  allowAll?: boolean;
+  allLabel?: string;
+  compact?: boolean;
   disabled?: boolean;
 };
 
@@ -115,7 +118,7 @@ export function BranchTreeSelect(props: BranchTreeSelectProps) {
         .filter((organization) => props.value.organizationIds.includes(organization.id))
         .map((organization) => ({ key: `organization-${organization.id}`, label: organization.name })),
       ...branches
-        .filter((branch) => props.value.branchIds.includes(branch.id))
+        .filter((branch) => props.value.branchIds.includes(branch.id) && !props.value.organizationIds.includes(branch.organizationId))
         .map((branch) => ({ key: `branch-${branch.id}`, label: branch.name })),
     ]
     : [];
@@ -160,6 +163,12 @@ export function BranchTreeSelect(props: BranchTreeSelectProps) {
     if (!open) setSearch('');
   }, [open]);
 
+  const clearSelection = () => {
+    if (props.mode === 'single') props.onChange('');
+    else props.onChange({ organizationIds: [], branchIds: [] });
+    setOpen(false);
+  };
+
   const triggerLabel = props.mode === 'single'
     ? selectedBranch
       ? selectedBranch.name
@@ -167,12 +176,14 @@ export function BranchTreeSelect(props: BranchTreeSelectProps) {
         ? props.allLabel || t('branchTree.allBranches')
         : props.placeholder || t('branchTree.selectBranch')
     : selectedLabels.length
-      ? selectedLabels.length > 3
+      ? selectedLabels.length > (props.compact ? 2 : 3)
         ? t('branchTree.selected', { count: selectedLabels.length })
-        : selectedLabels.map(({ key, label }) => (
-          <Badge key={key} variant="secondary">{label}</Badge>
-        ))
-      : t('branchTree.selectBranch');
+        : props.compact
+          ? selectedLabels.map(({ label }) => label).join(dir === 'rtl' ? '، ' : ', ')
+          : selectedLabels.map(({ key, label }) => (
+            <Badge key={key} variant="secondary">{label}</Badge>
+          ))
+      : props.allowAll ? props.allLabel || t('branchTree.allBranches') : t('branchTree.selectBranch');
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -184,7 +195,7 @@ export function BranchTreeSelect(props: BranchTreeSelectProps) {
           variant="outline"
           className={cn(
             'w-full justify-between border-border bg-card text-foreground hover:bg-muted',
-            props.mode === 'multi' ? 'min-h-10' : props.compact ? 'h-8 rounded-full px-3 py-1.5 text-xs' : 'min-h-10',
+            props.compact ? 'h-8 rounded-full px-3 py-1.5 text-xs' : 'min-h-10',
           )}
         >
           <span className={cn(
@@ -198,139 +209,143 @@ export function BranchTreeSelect(props: BranchTreeSelectProps) {
         </Button>
       </PopoverTrigger>
       <PopoverContent
+        dir={dir}
         align={dir === 'rtl' ? 'end' : 'start'}
         className="w-[min(24rem,calc(100vw-2rem))] border-border bg-card p-0 text-foreground"
       >
-        <div className="border-b border-border p-3">
-          <div className="relative">
-            <Search className="pointer-events-none absolute inset-y-0 start-3 my-auto h-4 w-4 text-muted-foreground" />
-            <Input
-              data-testid={`${props.testId}-search`}
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder={t('branchTree.search')}
-              className="ps-9 pe-3"
-            />
-          </div>
-        </div>
-
-        {props.mode === 'single' && props.allowAll && (
-          <button
-            type="button"
-            className={cn(
-              'flex w-full items-center gap-2 border-b border-border px-4 py-3 text-start text-sm font-medium transition-colors hover:bg-muted',
-              !props.value && 'bg-primary/10 text-primary',
-            )}
-            onClick={() => {
-              props.onChange('');
-              setOpen(false);
-            }}
-          >
-            {!props.value && <Check className="h-4 w-4" />}
-            <span className={!props.value ? '' : 'ps-6'}>{props.allLabel || t('branchTree.allBranches')}</span>
-          </button>
-        )}
-
-        <ScrollArea className="max-h-80">
-          <div className="space-y-1 p-2">
-            {visibleTree.length ? visibleTree.map(({ organization, branches: organizationBranches }) => {
-              const organizationSelected = props.mode === 'multi'
-                && props.value.organizationIds.includes(organization.id);
-              const expanded = search.trim() !== '' || !collapsedOrganizations.has(organization.id);
-              return (
-                <div key={organization.id} className="rounded-lg">
-                  <div className="flex items-center gap-1 rounded-lg px-2 py-2 hover:bg-muted">
-                    {props.mode === 'multi' ? (
-                      <Checkbox
-                        data-testid={`${props.testId}-org-${organization.id}`}
-                        checked={organizationSelected}
-                        onCheckedChange={() => toggleOrganization(organization.id)}
-                        aria-label={organization.name}
-                      />
-                    ) : (
-                      <Building2 className="h-4 w-4 shrink-0 text-primary" />
-                    )}
-                    <button
-                      type="button"
-                      className="flex min-w-0 flex-1 items-center gap-2 text-start"
-                      onClick={() => toggleCollapsed(organization.id)}
-                    >
-                      {expanded ? <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />}
-                      {props.mode === 'multi' && <Building2 className="h-4 w-4 shrink-0 text-primary" />}
-                      <span className="min-w-0 truncate text-sm font-bold">{organization.name}</span>
-                    </button>
-                  </div>
-                  {expanded && (
-                    <div className="space-y-1">
-                      {organizationBranches.map((branch) => {
-                        const branchSelected = selectedBranchIds.includes(branch.id);
-                        const disabled = props.mode === 'multi' && organizationSelected;
-                        if (props.mode === 'single') {
-                          return (
-                            <button
-                              key={branch.id}
-                              type="button"
-                              data-testid={`${props.testId}-branch-${branch.id}`}
-                              className={cn(
-                                'flex w-full items-center gap-2 rounded-lg py-2 pe-2 ps-10 text-start text-sm transition-colors hover:bg-muted',
-                                branchSelected && 'bg-primary/10 font-bold text-primary',
-                              )}
-                              onClick={() => {
-                                props.onChange(String(branch.id));
-                                setOpen(false);
-                              }}
-                            >
-                              <span className="min-w-0 truncate">{branch.name}</span>
-                              {branchSelected && <Check className="h-4 w-4 shrink-0" />}
-                            </button>
-                          );
-                        }
-                        return (
-                          <label
-                            key={branch.id}
-                            className={cn(
-                              'flex items-center gap-2 rounded-lg py-2 pe-2 ps-10 text-sm transition-colors hover:bg-muted',
-                              disabled && 'opacity-70',
-                            )}
-                          >
-                            <Checkbox
-                              data-testid={`${props.testId}-branch-${branch.id}`}
-                              checked={branchSelected || disabled}
-                              disabled={disabled}
-                              onCheckedChange={() => toggleBranch(branch.id)}
-                              aria-label={branch.name}
-                            />
-                            <span className="min-w-0 truncate">{branch.name}</span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              );
-            }) : (
-              <p className="px-3 py-8 text-center text-sm text-muted-foreground">{t('branchTree.noResults')}</p>
-            )}
-          </div>
-        </ScrollArea>
-
-        {props.mode === 'multi' && (
-          <div className="space-y-3 border-t border-border p-3">
-            <div className="flex items-center justify-between gap-3 text-xs font-medium text-muted-foreground">
-              <span>{t('branchTree.organizationsCount', { count: props.value.organizationIds.length })}</span>
-              <span>{t('branchTree.branchesCount', { count: props.value.branchIds.length })}</span>
+        <div dir={dir}>
+          <div className="border-b border-border p-3">
+            <div className="relative">
+              <Search className="pointer-events-none absolute inset-y-0 start-3 my-auto h-4 w-4 text-muted-foreground" />
+              <Input
+                data-testid={`${props.testId}-search`}
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder={t('branchTree.search')}
+                className="ps-9 pe-3"
+              />
             </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="w-full"
-              onClick={() => props.onChange({ organizationIds: [], branchIds: [] })}
-            >
-              <X className="h-4 w-4" />{t('branchTree.clearAll')}
-            </Button>
           </div>
-        )}
+
+          {props.allowAll && (
+            <button
+              type="button"
+              className={cn(
+                'flex w-full items-center gap-2 border-b border-border px-4 py-3 text-start text-sm font-medium transition-colors hover:bg-muted',
+                (props.mode === 'single' ? !props.value : !selectedLabels.length) && 'bg-primary/10 text-primary',
+              )}
+              onClick={clearSelection}
+            >
+              <span className="flex h-4 w-4 shrink-0 items-center justify-center">
+                {(props.mode === 'single' ? !props.value : !selectedLabels.length) && <Check className="h-4 w-4" />}
+              </span>
+              <span>{props.allLabel || t('branchTree.allBranches')}</span>
+            </button>
+          )}
+
+          <ScrollArea className="max-h-80">
+            <div className="space-y-1 p-2">
+              {visibleTree.length ? visibleTree.map(({ organization, branches: organizationBranches }) => {
+                const organizationSelected = props.mode === 'multi'
+                  && props.value.organizationIds.includes(organization.id);
+                const expanded = search.trim() !== '' || !collapsedOrganizations.has(organization.id);
+                return (
+                  <div key={organization.id} className="rounded-lg">
+                    <div className="flex items-center gap-1 rounded-lg px-2 py-2 hover:bg-muted">
+                      {props.mode === 'multi' ? (
+                        <Checkbox
+                          data-testid={`${props.testId}-org-${organization.id}`}
+                          checked={organizationSelected}
+                          onCheckedChange={() => toggleOrganization(organization.id)}
+                          aria-label={organization.name}
+                        />
+                      ) : (
+                        <span className="h-4 w-4 shrink-0" />
+                      )}
+                      <button
+                        type="button"
+                        className="flex min-w-0 flex-1 items-center gap-2 text-start"
+                        onClick={() => toggleCollapsed(organization.id)}
+                      >
+                        <Building2 className="h-4 w-4 shrink-0 text-primary" />
+                        {expanded ? <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground rtl:rotate-180" />}
+                        <span className="min-w-0 truncate text-sm font-bold">{organization.name}</span>
+                      </button>
+                    </div>
+                    {expanded && (
+                      <div className="space-y-1">
+                        {organizationBranches.map((branch) => {
+                          const branchSelected = selectedBranchIds.includes(branch.id);
+                          const disabled = props.mode === 'multi' && organizationSelected;
+                          if (props.mode === 'single') {
+                            return (
+                              <button
+                                key={branch.id}
+                                type="button"
+                                data-testid={`${props.testId}-branch-${branch.id}`}
+                                className={cn(
+                                  'flex w-full items-center gap-2 rounded-lg py-2 pe-2 ps-10 text-start text-sm transition-colors hover:bg-muted',
+                                  branchSelected && 'bg-primary/10 font-bold text-primary',
+                                )}
+                                onClick={() => {
+                                  props.onChange(String(branch.id));
+                                  setOpen(false);
+                                }}
+                              >
+                                <span className="flex h-4 w-4 shrink-0 items-center justify-center">
+                                  {branchSelected && <Check className="h-4 w-4" />}
+                                </span>
+                                <span className="min-w-0 truncate">{branch.name}</span>
+                              </button>
+                            );
+                          }
+                          return (
+                            <label
+                              key={branch.id}
+                              className={cn(
+                                'flex items-center gap-2 rounded-lg py-2 pe-2 ps-10 text-sm transition-colors hover:bg-muted',
+                                disabled && 'opacity-70',
+                              )}
+                            >
+                              <Checkbox
+                                data-testid={`${props.testId}-branch-${branch.id}`}
+                                checked={branchSelected || disabled}
+                                disabled={disabled}
+                                onCheckedChange={() => toggleBranch(branch.id)}
+                                aria-label={branch.name}
+                              />
+                              <span className="min-w-0 truncate">{branch.name}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              }) : (
+                <p className="px-3 py-8 text-center text-sm text-muted-foreground">{t('branchTree.noResults')}</p>
+              )}
+            </div>
+          </ScrollArea>
+
+          {props.mode === 'multi' && (
+            <div className="space-y-3 border-t border-border p-3">
+              <div className="flex items-center justify-between gap-3 text-xs font-medium text-muted-foreground">
+                <span>{t('branchTree.organizationsCount', { count: props.value.organizationIds.length })}</span>
+                <span>{t('branchTree.branchesCount', { count: props.value.branchIds.length })}</span>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="w-full"
+                onClick={() => props.onChange({ organizationIds: [], branchIds: [] })}
+              >
+                <X className="h-4 w-4" />{t('branchTree.clearAll')}
+              </Button>
+            </div>
+          )}
+        </div>
       </PopoverContent>
     </Popover>
   );

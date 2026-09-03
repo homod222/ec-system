@@ -259,10 +259,14 @@ function scopedContext(
 ) {
   const baseBranchIds = context.branchIds;
   const requested = req.header("x-branch-id");
-  const requestedId = requested && /^\d+$/.test(requested) ? Number(requested) : null;
-  const selectedBranchIds = requestedId !== null
-    && (baseBranchIds === null || baseBranchIds.includes(requestedId))
-    ? [requestedId]
+  const requestedBranchIds = requested && /^\d+(,\d+)*$/.test(requested)
+    ? [...new Set(requested.split(",").map(Number))]
+    : [];
+  const allowedRequestedBranchIds = baseBranchIds === null
+    ? requestedBranchIds
+    : requestedBranchIds.filter((id) => baseBranchIds.includes(id));
+  const selectedBranchIds = allowedRequestedBranchIds.length > 0
+    ? allowedRequestedBranchIds
     : baseBranchIds;
   req.res!.locals.operationsBaseBranchScope = baseBranchIds;
   req.res!.locals.operationsContext = { ...context, branchIds: selectedBranchIds };
