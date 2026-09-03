@@ -697,6 +697,21 @@ paths:
           content: { application/json: { schema: { $ref: "#/components/schemas/AdminCreateAccountResult" } } }
         "400": { description: Invalid input }
         "409": { description: Phone already registered or account conflict }
+  /staff/{id}/scope:
+    put:
+      operationId: setStaffScope
+      tags: [staff]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/StaffScopeInput" } } }
+      responses:
+        "200":
+          description: Updated staff scope
+          content: { application/json: { schema: { $ref: "#/components/schemas/StaffMember" } } }
+        "400": { description: Invalid scope target }
+        "403": { description: Staff write access required }
+        "404": { description: Staff member not found }
   /staff/password-reset/request:
     post:
       operationId: requestStaffPasswordReset
@@ -2178,7 +2193,7 @@ components:
         schedule: { type: object, additionalProperties: true }
     StaffMember:
       type: object
-      required: [id, name, role, phone, status, attendanceRate, accountStatus]
+      required: [id, name, role, phone, status, attendanceRate, accountStatus, scope]
       properties:
         id: { type: number }
         name: { type: string }
@@ -2197,6 +2212,28 @@ components:
           type: string
           enum: [unlinked, pending_verification, active, disabled]
         branchId: { type: ["number", "null"] }
+        scope:
+          type: object
+          required: [organizationIds, branchIds, fullAccess]
+          properties:
+            organizationIds:
+              type: array
+              items: { type: number }
+            branchIds:
+              type: array
+              items: { type: number }
+            fullAccess: { type: boolean }
+    StaffScopeInput:
+      type: object
+      required: [organizationIds, branchIds]
+      additionalProperties: false
+      properties:
+        organizationIds:
+          type: array
+          items: { type: number }
+        branchIds:
+          type: array
+          items: { type: number }
     StaffInput:
       type: object
       required: [name, role, phone, status]
@@ -2588,7 +2625,7 @@ components:
         announcementsCount: { type: number }
     SessionContext:
       type: object
-      required: [role, effectivePermissions]
+      required: [role, effectivePermissions, branchScope]
       properties:
         role:
           type: string
@@ -2596,6 +2633,14 @@ components:
         effectivePermissions:
           type: array
           items: { type: string }
+        branchScope:
+          type: object
+          required: [fullAccess, branchIds]
+          properties:
+            fullAccess: { type: boolean }
+            branchIds:
+              type: array
+              items: { type: number }
     ProgressReport:
       type: object
       required: [id, childId, childName, title, summary, period, educatorName, publishedAt]

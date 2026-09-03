@@ -19,6 +19,7 @@ import {
   requireNurseryPermission,
   resolveNurseryContext,
 } from "./nurseryOperations";
+import { branchCondition } from "../lib/branchScope";
 
 const router: IRouter = Router();
 const storage = new ObjectStorageService();
@@ -91,12 +92,13 @@ router.post(
     res.status(415).json({ error: "Unsupported document type" });
     return;
   }
-  const ownerId = nurseryContext(req).ownerId;
+  const { ownerId, branchIds } = nurseryContext(req);
   const [existing] = await db.select({ id: applicationsTable.id })
     .from(applicationsTable)
     .where(and(
       eq(applicationsTable.id, parsed.data.applicationId),
       eq(applicationsTable.ownerId, ownerId),
+      branchCondition(applicationsTable.branchId, branchIds),
     ));
   if (!existing) {
     res.status(404).json({ error: "Application not found" });
@@ -109,6 +111,7 @@ router.post(
     const [application] = await tx.select().from(applicationsTable).where(and(
       eq(applicationsTable.id, parsed.data.applicationId),
       eq(applicationsTable.ownerId, ownerId),
+      branchCondition(applicationsTable.branchId, branchIds),
     ));
     if (!application) return "missing" as const;
     if (application.status === "accepted") return "accepted" as const;
@@ -156,7 +159,7 @@ router.put(
   activeUploads += 1;
   const contentType = (req.header("content-type") ?? "").toLowerCase();
   const contentLength = Number(req.header("content-length"));
-  const ownerId = nurseryContext(req).ownerId;
+  const { ownerId, branchIds } = nurseryContext(req);
   const [permissionGrant] = await db.select({
     targetType: uploadGrantsTable.targetType,
   }).from(uploadGrantsTable).where(and(
@@ -188,6 +191,7 @@ router.put(
         .where(and(
           eq(applicationsTable.id, grant.applicationId),
           eq(applicationsTable.ownerId, ownerId),
+          branchCondition(applicationsTable.branchId, branchIds),
         ));
       if (!application) return { kind: "applicationMissing" as const };
       if (application.status === "accepted") return { kind: "accepted" as const };

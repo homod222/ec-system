@@ -13,6 +13,7 @@ import {
   invoicesTable,
   pool,
 } from "@workspace/db";
+import { branchCondition, type BranchScope } from "./branchScope";
 
 export type ScheduleItem = {
   sequence: number;
@@ -127,7 +128,11 @@ export function computeBillingSchedule(input: {
   });
 }
 
-export async function billingPlanDetails(ownerId: string, guardianId?: number) {
+export async function billingPlanDetails(
+  ownerId: string,
+  guardianId?: number,
+  branchIds: BranchScope = null,
+) {
   const plans = await db.select({
     plan: billingPlansTable,
     firstName: childrenTable.firstName,
@@ -137,10 +142,12 @@ export async function billingPlanDetails(ownerId: string, guardianId?: number) {
     .innerJoin(childrenTable, and(
       eq(childrenTable.id, billingPlansTable.childId),
       eq(childrenTable.ownerId, ownerId),
+      branchCondition(childrenTable.branchId, branchIds),
     ))
     .innerJoin(guardiansTable, and(
       eq(guardiansTable.id, billingPlansTable.guardianId),
       eq(guardiansTable.ownerId, ownerId),
+      branchCondition(guardiansTable.branchId, branchIds),
     ))
     .where(and(
       eq(billingPlansTable.ownerId, ownerId),

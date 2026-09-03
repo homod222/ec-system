@@ -60,6 +60,7 @@ import {
   staffAttendanceTable,
   staffTable,
 } from "@workspace/db";
+import { branchCondition, type BranchScope, defaultScopedBranchId, FULL_ACCESS_ROLES, resolveStaffScope } from "../lib/branchScope";
 import {
   configurableOperations,
   configurableOperationSet,
@@ -75,15 +76,26 @@ export function nurseryContext(req: Request) {
     actorId: string;
     ownerId: string;
     role: string;
+    branchIds: BranchScope;
   } | undefined;
   if (resolved) return resolved;
   const auth = getLocalAuth(req);
-  if (!auth) return { actorId: "anonymous", ownerId: "anonymous", role: "pending" };
+  if (!auth) return { actorId: "anonymous", ownerId: "anonymous", role: "pending", branchIds: [] };
+  const role = (auth.role || "staff").toLowerCase();
+  const ownerId = auth.ownerId ?? auth.sub;
   return {
     actorId: auth.sub,
-    ownerId: auth.ownerId ?? auth.sub,
-    role: auth.role || "staff",
+    ownerId,
+    role,
+    branchIds: auth.sub === ownerId || FULL_ACCESS_ROLES.has(role) ? null : [],
   };
+}
+
+export function requireBranchAccess(
+  ctx: { branchIds: BranchScope },
+  branchId: number | null,
+): boolean {
+  return ctx.branchIds === null || (branchId !== null && ctx.branchIds.includes(branchId));
 }
 
 const requireAuth: RequestHandler = (req, res, next) => {
@@ -241,6 +253,21 @@ function serializeRecord<T extends { createdAt: Date; updatedAt: Date; ownerId: 
   return { ...record, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
 }
 
+function scopedContext(
+  req: Request,
+  context: { actorId: string; ownerId: string; role: string; branchIds: BranchScope },
+) {
+  const baseBranchIds = context.branchIds;
+  const requested = req.header("x-branch-id");
+  const requestedId = requested && /^\d+$/.test(requested) ? Number(requested) : null;
+  const selectedBranchIds = requestedId !== null
+    && (baseBranchIds === null || baseBranchIds.includes(requestedId))
+    ? [requestedId]
+    : baseBranchIds;
+  req.res!.locals.operationsBaseBranchScope = baseBranchIds;
+  req.res!.locals.operationsContext = { ...context, branchIds: selectedBranchIds };
+}
+
 router.use(requireAuth);
 export const resolveNurseryContext: RequestHandler = async (req, res, next) => {
   try {
@@ -254,7 +281,7 @@ export const resolveNurseryContext: RequestHandler = async (req, res, next) => {
 
     // Check if actor is the configured owner
     if (ownerId && actorId === ownerId) {
-      res.locals.operationsContext = { actorId, ownerId, role: "owner" };
+      scopedContext(req, { actorId, ownerId, role: "owner", branchIds: null });
       next();
       return;
     }
@@ -268,11 +295,12 @@ export const resolveNurseryContext: RequestHandler = async (req, res, next) => {
         const accountEmail = account.email?.toLowerCase();
         const ownerEmails = configuredOwnerEmails();
         if (accountEmail && ownerEmails.includes(accountEmail)) {
-          res.locals.operationsContext = {
+          scopedContext(req, {
             actorId,
             ownerId: ownerId ?? actorId,
             role: "owner",
-          };
+            branchIds: null,
+          });
           next();
           return;
         }
@@ -288,33 +316,43 @@ export const resolveNurseryContext: RequestHandler = async (req, res, next) => {
             "active", "disabled", "unlinked", "pending_verification", "provisioning", "issuing_otp",
           ]);
           if (managedAccountStatuses.has(staff.accountStatus)) {
-            res.locals.operationsContext = {
+            const branchIds = staff.accountStatus === "active"
+              ? await resolveStaffScope(db, staff.ownerId ?? actorId, staff)
+              : [];
+            scopedContext(req, {
               actorId,
               ownerId: staff.ownerId ?? actorId,
               role: staff.accountStatus === "active" ? staff.role.toLowerCase() : "disabled",
-            };
+              branchIds,
+            });
             next();
             return;
           }
         }
 
         // Use JWT-embedded role/ownerId as fallback
-        res.locals.operationsContext = {
+        const role = (account.role ?? auth.role ?? "staff").toLowerCase();
+        const resolvedOwnerId = account.ownerId ?? auth.ownerId ?? actorId;
+        scopedContext(req, {
           actorId,
-          ownerId: account.ownerId ?? auth.ownerId ?? actorId,
-          role: (account.role ?? auth.role ?? "staff").toLowerCase(),
-        };
+          ownerId: resolvedOwnerId,
+          role,
+          branchIds: actorId === resolvedOwnerId || FULL_ACCESS_ROLES.has(role) ? null : [],
+        });
         next();
         return;
       }
     }
 
     // Final fallback from JWT payload
-    res.locals.operationsContext = {
+    const role = (auth.role || "staff").toLowerCase();
+    const resolvedOwnerId = auth.ownerId ?? actorId;
+    scopedContext(req, {
       actorId,
-      ownerId: auth.ownerId ?? actorId,
-      role: auth.role || "staff",
-    };
+      ownerId: resolvedOwnerId,
+      role,
+      branchIds: actorId === resolvedOwnerId || FULL_ACCESS_ROLES.has(role) ? null : [],
+    });
     next();
   } catch (error) {
     next(error);
@@ -332,9 +370,10 @@ router.get("/children/:id/records", async (req, res): Promise<void> => {
     res.status(403).json({ error: "Operation not permitted" });
     return;
   }
-  const { ownerId } = nurseryContext(req);
+  const { ownerId, branchIds } = nurseryContext(req);
   const [child] = await db.select({ id: childrenTable.id }).from(childrenTable).where(and(
     eq(childrenTable.id, params.data.id), eq(childrenTable.ownerId, ownerId),
+    branchCondition(childrenTable.branchId, branchIds),
   ));
   if (!child) {
     res.status(404).json({ error: "Child not found" });
@@ -360,9 +399,10 @@ router.post("/children/:id/records", async (req, res): Promise<void> => {
     res.status(403).json({ error: "Operation not permitted" });
     return;
   }
-  const { ownerId, actorId } = nurseryContext(req);
+  const { ownerId, actorId, branchIds } = nurseryContext(req);
   const [child] = await db.select({ id: childrenTable.id }).from(childrenTable).where(and(
     eq(childrenTable.id, params.data.id), eq(childrenTable.ownerId, ownerId),
+    branchCondition(childrenTable.branchId, branchIds),
   ));
   if (!child) {
     res.status(404).json({ error: "Child not found" });
@@ -387,14 +427,23 @@ router.get("/staff-attendance", async (req, res): Promise<void> => {
     res.status(403).json({ error: "Operation not permitted" });
     return;
   }
-  const { ownerId } = nurseryContext(req);
-  const rows = await db.select().from(staffAttendanceTable).where(and(
-    eq(staffAttendanceTable.ownerId, ownerId),
-    query.data.staffId ? eq(staffAttendanceTable.staffId, query.data.staffId) : undefined,
-    query.data.dateFrom ? gte(staffAttendanceTable.date, query.data.dateFrom) : undefined,
-    query.data.dateTo ? lte(staffAttendanceTable.date, query.data.dateTo) : undefined,
-  )).orderBy(desc(staffAttendanceTable.date));
-  res.json(ListStaffAttendanceResponse.parse(rows.map(({ ownerId: _, ...row }) => row)));
+  const { ownerId, branchIds } = nurseryContext(req);
+  const rows = await db.select({ attendance: staffAttendanceTable }).from(staffAttendanceTable)
+    .innerJoin(staffTable, and(
+      eq(staffTable.id, staffAttendanceTable.staffId),
+      eq(staffTable.ownerId, ownerId),
+      branchCondition(staffTable.branchId, branchIds),
+    ))
+    .where(and(
+      eq(staffAttendanceTable.ownerId, ownerId),
+      query.data.staffId ? eq(staffAttendanceTable.staffId, query.data.staffId) : undefined,
+      query.data.dateFrom ? gte(staffAttendanceTable.date, query.data.dateFrom) : undefined,
+      query.data.dateTo ? lte(staffAttendanceTable.date, query.data.dateTo) : undefined,
+    )).orderBy(desc(staffAttendanceTable.date));
+  res.json(ListStaffAttendanceResponse.parse(rows.map(({ attendance: row }) => {
+    const { ownerId: _, ...attendance } = row;
+    return attendance;
+  })));
 });
 
 router.post("/staff-attendance", async (req, res): Promise<void> => {
@@ -407,10 +456,11 @@ router.post("/staff-attendance", async (req, res): Promise<void> => {
     res.status(403).json({ error: "Operation not permitted" });
     return;
   }
-  const { ownerId, actorId } = nurseryContext(req);
+  const { ownerId, actorId, branchIds } = nurseryContext(req);
   const [staff] = await db.select({ id: staffTable.id }).from(staffTable).where(and(
     eq(staffTable.id, body.data.staffId),
     eq(staffTable.ownerId, ownerId),
+    branchCondition(staffTable.branchId, branchIds),
   ));
   if (!staff) {
     res.status(404).json({ error: "Staff member not found" });
@@ -441,10 +491,11 @@ router.get("/operations/:resource", async (req, res): Promise<void> => {
     res.status(403).json({ error: "Operation not permitted" });
     return;
   }
-  const { ownerId } = nurseryContext(req);
+  const { ownerId, branchIds } = nurseryContext(req);
   const rows = await db.select().from(operationalRecordsTable).where(and(
     eq(operationalRecordsTable.ownerId, ownerId),
     eq(operationalRecordsTable.resource, params.data.resource),
+    branchCondition(operationalRecordsTable.branchId, branchIds),
   )).orderBy(desc(operationalRecordsTable.createdAt));
   res.json(ListOperationalRecordsResponse.parse(rows.map(serializeRecord)));
 });
@@ -460,9 +511,19 @@ router.post("/operations/:resource", async (req, res): Promise<void> => {
     res.status(403).json({ error: "Operation not permitted" });
     return;
   }
-  const { ownerId, actorId } = nurseryContext(req);
+  const { ownerId, actorId, branchIds } = nurseryContext(req);
+  const branch = defaultScopedBranchId(branchIds, body.data.branchId);
+  if (branch.kind === "forbidden") {
+    res.status(403).json({ error: "Branch not permitted" });
+    return;
+  }
+  if (branch.kind === "ambiguous") {
+    res.status(400).json({ error: "Branch required" });
+    return;
+  }
   const [created] = await db.insert(operationalRecordsTable).values({
     ownerId, createdBy: actorId, resource: params.data.resource, ...body.data,
+    branchId: branch.branchId,
     data: body.data.data ?? {},
   }).returning();
   await auditNurseryOperation(req, "create", params.data.resource, String(created.id), null, created as unknown as Record<string, unknown>);
@@ -480,18 +541,23 @@ router.patch("/operations/:resource/:id", async (req, res): Promise<void> => {
     res.status(403).json({ error: "Operation not permitted" });
     return;
   }
-  const { ownerId } = nurseryContext(req);
+  const { ownerId, branchIds } = nurseryContext(req);
   const [before] = await db.select().from(operationalRecordsTable).where(and(
     eq(operationalRecordsTable.id, params.data.id),
     eq(operationalRecordsTable.ownerId, ownerId),
     eq(operationalRecordsTable.resource, params.data.resource),
+    branchCondition(operationalRecordsTable.branchId, branchIds),
   ));
   if (!before) {
     res.status(404).json({ error: "Record not found" });
     return;
   }
   const [updated] = await db.update(operationalRecordsTable).set(body.data)
-    .where(eq(operationalRecordsTable.id, before.id)).returning();
+    .where(and(
+      eq(operationalRecordsTable.id, before.id),
+      eq(operationalRecordsTable.ownerId, ownerId),
+      branchCondition(operationalRecordsTable.branchId, branchIds),
+    )).returning();
   await auditNurseryOperation(req, "update", params.data.resource, String(updated.id),
     before as unknown as Record<string, unknown>, updated as unknown as Record<string, unknown>);
   res.json(UpdateOperationalRecordResponse.parse(serializeRecord(updated)));
@@ -507,11 +573,12 @@ router.delete("/operations/:resource/:id", async (req, res): Promise<void> => {
     res.status(403).json({ error: "Operation not permitted" });
     return;
   }
-  const { ownerId } = nurseryContext(req);
+  const { ownerId, branchIds } = nurseryContext(req);
   const [deleted] = await db.delete(operationalRecordsTable).where(and(
     eq(operationalRecordsTable.id, params.data.id),
     eq(operationalRecordsTable.ownerId, ownerId),
     eq(operationalRecordsTable.resource, params.data.resource),
+    branchCondition(operationalRecordsTable.branchId, branchIds),
   )).returning();
   if (!deleted) {
     res.status(404).json({ error: "Record not found" });
@@ -538,7 +605,7 @@ function hasInvalidReportDate({ dateFrom, dateTo }: ReportFilters) {
   });
 }
 
-async function buildNurseryReport(ownerId: string, filters: ReportFilters) {
+async function buildNurseryReport(ownerId: string, filters: ReportFilters, branchIds: BranchScope) {
   const resources = filters.domain === "academic"
     ? [...academicResources]
     : filters.domain === "financial"
@@ -547,9 +614,13 @@ async function buildNurseryReport(ownerId: string, filters: ReportFilters) {
   if (filters.domain === "financial") {
     const [classrooms, children] = await Promise.all([
       db.select({ id: classroomsTable.id, branchId: classroomsTable.branchId })
-        .from(classroomsTable).where(eq(classroomsTable.ownerId, ownerId)),
+        .from(classroomsTable).where(and(
+          eq(classroomsTable.ownerId, ownerId), branchCondition(classroomsTable.branchId, branchIds),
+        )),
       db.select({ id: childrenTable.id, classroomId: childrenTable.classroomId })
-        .from(childrenTable).where(eq(childrenTable.ownerId, ownerId)),
+        .from(childrenTable).where(and(
+          eq(childrenTable.ownerId, ownerId), branchCondition(childrenTable.branchId, branchIds),
+        )),
     ]);
     const classroomBranches = new Map(classrooms.map(({ id, branchId }) => [id, branchId]));
     const childDimensions = new Map(children.map(({ id, classroomId }) => [
@@ -564,6 +635,7 @@ async function buildNurseryReport(ownerId: string, filters: ReportFilters) {
       : null;
     const invoices = await db.select().from(invoicesTable).where(and(
       eq(invoicesTable.ownerId, ownerId),
+      branchCondition(invoicesTable.branchId, branchIds),
       childIds ? (childIds.length ? inArray(invoicesTable.childId, childIds) : sql`false`) : undefined,
       filters.status ? eq(invoicesTable.status, filters.status) : undefined,
     ));
@@ -651,6 +723,7 @@ async function buildNurseryReport(ownerId: string, filters: ReportFilters) {
   }
   const rows = await db.select().from(operationalRecordsTable).where(and(
     eq(operationalRecordsTable.ownerId, ownerId),
+    branchCondition(operationalRecordsTable.branchId, branchIds),
     resources ? inArray(operationalRecordsTable.resource, resources) : undefined,
     filters.branchId ? eq(operationalRecordsTable.branchId, filters.branchId) : undefined,
     filters.classroomId ? eq(operationalRecordsTable.subjectId, filters.classroomId) : undefined,
@@ -676,7 +749,8 @@ router.get("/reports", async (req, res): Promise<void> => {
   if (!await permitted(req, `read:report-${query.data.domain}`)) {
     return void res.status(403).json({ error: "Operation not permitted" });
   }
-  res.json(await buildNurseryReport(nurseryContext(req).ownerId, query.data));
+  const context = nurseryContext(req);
+  res.json(await buildNurseryReport(context.ownerId, query.data, context.branchIds));
 });
 
 router.get("/reports/export", async (req, res): Promise<void> => {
@@ -688,7 +762,8 @@ router.get("/reports/export", async (req, res): Promise<void> => {
   }
   const { ownerId } = nurseryContext(req);
   const { format, ...filters } = query.data;
-  const report = await buildNurseryReport(ownerId, filters);
+  const { branchIds } = nurseryContext(req);
+  const report = await buildNurseryReport(ownerId, filters, branchIds);
   const [settings] = await db.select({ nurseryName: nurserySettingsTable.nurseryName })
     .from(nurserySettingsTable).where(eq(nurserySettingsTable.ownerId, ownerId)).limit(1);
   const nurseryName = settings?.nurseryName ?? "حضانة EC";

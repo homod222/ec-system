@@ -558,6 +558,12 @@ export const StaffMemberAccountStatus = {
   disabled: "disabled",
 } as const;
 
+export type StaffMemberScope = {
+  organizationIds: number[];
+  branchIds: number[];
+  fullAccess: boolean;
+};
+
 export interface StaffMember {
   id: number;
   name: string;
@@ -578,6 +584,12 @@ export interface StaffMember {
   accountStatus: StaffMemberAccountStatus;
   /** @nullable */
   branchId?: number | null;
+  scope: StaffMemberScope;
+}
+
+export interface StaffScopeInput {
+  organizationIds: number[];
+  branchIds: number[];
 }
 
 export type StaffInputStatus =
@@ -1280,9 +1292,15 @@ export const SessionContextRole = {
   pending: "pending",
 } as const;
 
+export type SessionContextBranchScope = {
+  fullAccess: boolean;
+  branchIds: number[];
+};
+
 export interface SessionContext {
   role: SessionContextRole;
   effectivePermissions: string[];
+  branchScope: SessionContextBranchScope;
 }
 
 export interface ProgressReport {

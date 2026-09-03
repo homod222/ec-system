@@ -9,6 +9,9 @@ import {
   useUpdateStaff,
   useDeleteStaff,
   useGetSessionContext,
+  useListBranches,
+  useListOrganizations,
+  useSetStaffScope,
 } from '@workspace/api-client-react';
 import type { GuardianAccountResult, StaffMember } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -325,6 +328,7 @@ function StaffTab({ search }: { search: string }) {
   const query = useListStaff();
   const queryClient = useQueryClient();
   const [accountMember, setAccountMember] = useState<StaffMember | null>(null);
+  const [scopeMember, setScopeMember] = useState<StaffMember | null>(null);
   const [editMember, setEditMember] = useState<StaffMember | null>(null);
   const [deleteMember, setDeleteMember] = useState<StaffMember | null>(null);
   const { canWrite, canDelete } = useUsersPermissions();
@@ -334,18 +338,19 @@ function StaffTab({ search }: { search: string }) {
     <>
       <QueryState loading={query.isLoading} error={query.isError} empty={!staff.length} onRetry={() => query.refetch()}>
         <div className="mb-10 overflow-hidden rounded-[1.5rem] border border-border bg-card shadow-sm">
-          <div className="hidden grid-cols-[1.3fr_.8fr_.9fr_.8fr_auto] gap-4 border-b border-border bg-secondary/30 px-6 py-4 text-xs font-bold text-muted-foreground md:grid">
+        <div className="hidden grid-cols-[1.2fr_.8fr_.8fr_.8fr_1fr_auto] gap-4 border-b border-border bg-secondary/30 px-6 py-4 text-xs font-bold text-muted-foreground md:grid">
             <span>{t('usersPage.name')}</span>
             <span>{t('usersPage.phone')}</span>
             <span>{t('usersPage.status')}</span>
             <span>{t('staffAccounts.attendance')}</span>
+            <span>{t('users.scope')}</span>
             <span>{t('usersPage.actions')}</span>
           </div>
           {staff.map((member) => (
             <div
               key={member.id}
               data-testid={`row-user-staff-${member.id}`}
-              className={`grid gap-3 border-b border-border px-6 py-5 last:border-0 hover:bg-muted/50 md:grid-cols-[1.3fr_.8fr_.9fr_.8fr_auto] md:items-center md:gap-4 ${member.accountStatus === 'pending_verification' ? 'bg-sky-50/60 dark:bg-sky-950/20' : ''}`}
+              className={`grid gap-3 border-b border-border px-6 py-5 last:border-0 hover:bg-muted/50 md:grid-cols-[1.2fr_.8fr_.8fr_.8fr_1fr_auto] md:items-center md:gap-4 ${member.accountStatus === 'pending_verification' ? 'bg-sky-50/60 dark:bg-sky-950/20' : ''}`}
             >
               <div className="flex items-center gap-4">
                 <Avatar name={member.name} className="h-11 w-11" />
@@ -364,6 +369,16 @@ function StaffTab({ search }: { search: string }) {
               </div>
               <div className="text-sm font-medium text-muted-foreground">
                 {formatNumber(member.attendanceRate / 100, { style: 'percent', maximumFractionDigits: 0 })}
+              </div>
+              <div className="text-sm font-medium text-muted-foreground">
+                {member.scope.fullAccess
+                  ? t('users.scopeSummaryAll')
+                  : member.scope.organizationIds.length || member.scope.branchIds.length
+                    ? t('users.scopeSummaryAssigned', {
+                      organizations: member.scope.organizationIds.length,
+                      branches: member.scope.branchIds.length,
+                    })
+                    : t('users.scopeSummaryOwn')}
               </div>
               <div className="flex gap-2">
                 {canWrite && (
@@ -394,6 +409,16 @@ function StaffTab({ search }: { search: string }) {
                     <KeyRound size={16} />
                   </Button>
                 )}
+                {canWrite && member.accountStatus !== 'unlinked' && member.clerkUserId && (
+                  <Button
+                    data-testid={`button-scope-staff-${member.id}`}
+                    variant="soft"
+                    className="!px-3 !py-2"
+                    onClick={() => setScopeMember(member)}
+                  >
+                    {t('users.scope')}
+                  </Button>
+                )}
               </div>
             </div>
           ))}
@@ -401,6 +426,7 @@ function StaffTab({ search }: { search: string }) {
       </QueryState>
 
       {accountMember && <StaffAccountDialog member={accountMember} onClose={() => setAccountMember(null)} />}
+      {scopeMember && <StaffScopeDialog member={scopeMember} onClose={() => setScopeMember(null)} onSaved={() => { setScopeMember(null); queryClient.invalidateQueries({ queryKey: getListStaffQueryKey() }); }} />}
 
       {editMember && (
         <EditStaffDialog
@@ -418,6 +444,108 @@ function StaffTab({ search }: { search: string }) {
         />
       )}
     </>
+  );
+}
+
+function StaffScopeDialog({
+  member,
+  onClose,
+  onSaved,
+}: {
+  member: StaffMember;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { t } = useI18n();
+  const organizations = useListOrganizations({ request: { headers: { 'x-branch-id': '' } } });
+  const branches = useListBranches(undefined, { request: { headers: { 'x-branch-id': '' } } });
+  const setScope = useSetStaffScope();
+  const [organizationIds, setOrganizationIds] = useState<number[]>(member.scope.organizationIds);
+  const [branchIds, setBranchIds] = useState<number[]>(member.scope.branchIds);
+  const [error, setError] = useState('');
+
+  const toggle = (values: number[], id: number, setter: (next: number[]) => void) => {
+    setter(values.includes(id) ? values.filter((value) => value !== id) : [...values, id]);
+  };
+
+  const handleSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
+    setError('');
+    setScope.mutate(
+      { id: member.id, data: { organizationIds, branchIds } },
+      { onSuccess: onSaved, onError: () => setError(t('users.scopeError')) },
+    );
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-primary/40 p-4 backdrop-blur-md">
+      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-[2rem] bg-card p-8 shadow-2xl">
+        <div className="mb-5 flex items-start justify-between">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-widest text-primary">{t('users.scopeTitle')}</p>
+            <h2 className="mt-1 text-xl font-bold">{member.name}</h2>
+          </div>
+          <Button type="button" variant="ghost" onClick={onClose} className="!p-2"><X /></Button>
+        </div>
+
+        {member.scope.fullAccess ? (
+          <Pill tone="blue">{t('users.scopeFullAccess')}</Pill>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <fieldset>
+              <legend className="mb-3 text-sm font-bold">{t('users.scopeOrganizations')}</legend>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {(organizations.data || []).map((organization) => (
+                  <label key={organization.id} className="flex items-center gap-3 rounded-xl border border-border bg-background px-4 py-3 text-sm font-medium">
+                    <input
+                      type="checkbox"
+                      checked={organizationIds.includes(organization.id)}
+                      onChange={() => toggle(organizationIds, organization.id, setOrganizationIds)}
+                      className="h-4 w-4 accent-primary"
+                    />
+                    <span>{organization.name} <span className="text-xs text-muted-foreground">({organization.code})</span></span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+
+            <fieldset>
+              <legend className="mb-3 text-sm font-bold">{t('users.scopeBranches')}</legend>
+              <div className="space-y-4">
+                {(organizations.data || []).map((organization) => {
+                  const organizationBranches = (branches.data || []).filter((branch) => branch.organizationId === organization.id);
+                  if (!organizationBranches.length) return null;
+                  return (
+                    <div key={organization.id}>
+                      <p className="mb-2 text-xs font-bold text-muted-foreground">{organization.name}</p>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {organizationBranches.map((branch) => (
+                          <label key={branch.id} className="flex items-center gap-3 rounded-xl border border-border bg-background px-4 py-3 text-sm font-medium">
+                            <input
+                              type="checkbox"
+                              checked={branchIds.includes(branch.id)}
+                              onChange={() => toggle(branchIds, branch.id, setBranchIds)}
+                              className="h-4 w-4 accent-primary"
+                            />
+                            <span>{branch.name} <span className="text-xs text-muted-foreground">({branch.code})</span></span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </fieldset>
+
+            <p className="rounded-xl bg-secondary/60 px-4 py-3 text-sm text-muted-foreground">{t('users.scopeHint')}</p>
+            {error && <p className="text-sm font-medium text-destructive">{error}</p>}
+            <Button type="submit" disabled={setScope.isPending} className="w-full">
+              {setScope.isPending ? t('common.loading') : t('users.scopeSave')}
+            </Button>
+          </form>
+        )}
+      </div>
+    </div>
   );
 }
 

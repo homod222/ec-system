@@ -1,5 +1,5 @@
 import { Router, type IRouter, type RequestHandler } from "express";
-import { and, eq } from "drizzle-orm";
+import { and, eq, exists } from "drizzle-orm";
 import { getLocalAuth } from "../lib/localAuth";
 import {
   CreateBranchBody,
@@ -23,6 +23,7 @@ import {
   classroomsTable,
   db,
   organizationsTable,
+  staffScopeAssignmentsTable,
   staffTable,
   stagesTable,
 } from "@workspace/db";
@@ -30,8 +31,10 @@ import {
   auditNurseryOperation,
   nurseryContext,
   permitted,
+  requireBranchAccess,
   resolveNurseryContext,
 } from "./nurseryOperations";
+import { branchCondition } from "../lib/branchScope";
 import {
   branchCode,
   derivePrefix,
@@ -78,9 +81,18 @@ router.get("/organizations", async (req, res): Promise<void> => {
     res.status(403).json({ error: "Operation not permitted" });
     return;
   }
-  const { ownerId } = nurseryContext(req);
+  const { ownerId, branchIds } = nurseryContext(req);
   const rows = await db.select().from(organizationsTable)
-    .where(eq(organizationsTable.ownerId, ownerId))
+    .where(and(
+      eq(organizationsTable.ownerId, ownerId),
+      branchIds === null ? undefined : exists(
+        db.select({ id: branchesTable.id }).from(branchesTable).where(and(
+          eq(branchesTable.organizationId, organizationsTable.id),
+          eq(branchesTable.ownerId, ownerId),
+          branchCondition(branchesTable.id, branchIds),
+        )),
+      ),
+    ))
     .orderBy(organizationsTable.name);
   res.json(ListOrganizationsResponse.parse(rows.map(organizationResponse)));
 });
@@ -139,10 +151,17 @@ router.patch("/organizations/:id", async (req, res): Promise<void> => {
     res.status(403).json({ error: "Operation not permitted" });
     return;
   }
-  const { ownerId } = nurseryContext(req);
+  const { ownerId, branchIds } = nurseryContext(req);
   const [before] = await db.select().from(organizationsTable).where(and(
     eq(organizationsTable.id, params.data.id),
     eq(organizationsTable.ownerId, ownerId),
+    branchIds === null ? undefined : exists(
+      db.select({ id: branchesTable.id }).from(branchesTable).where(and(
+        eq(branchesTable.organizationId, organizationsTable.id),
+        eq(branchesTable.ownerId, ownerId),
+        branchCondition(branchesTable.id, branchIds),
+      )),
+    ),
   ));
   if (!before) {
     res.status(404).json({ error: "Organization not found" });
@@ -151,6 +170,13 @@ router.patch("/organizations/:id", async (req, res): Promise<void> => {
   const [updated] = await db.update(organizationsTable).set(body.data).where(and(
     eq(organizationsTable.id, before.id),
     eq(organizationsTable.ownerId, ownerId),
+    branchIds === null ? undefined : exists(
+      db.select({ id: branchesTable.id }).from(branchesTable).where(and(
+        eq(branchesTable.organizationId, organizationsTable.id),
+        eq(branchesTable.ownerId, ownerId),
+        branchCondition(branchesTable.id, branchIds),
+      )),
+    ),
   )).returning();
   await auditNurseryOperation(
     req,
@@ -173,10 +199,17 @@ router.delete("/organizations/:id", async (req, res): Promise<void> => {
     res.status(403).json({ error: "Operation not permitted" });
     return;
   }
-  const { ownerId } = nurseryContext(req);
+  const { ownerId, branchIds } = nurseryContext(req);
   const [organization] = await db.select().from(organizationsTable).where(and(
     eq(organizationsTable.id, params.data.id),
     eq(organizationsTable.ownerId, ownerId),
+    branchIds === null ? undefined : exists(
+      db.select({ id: branchesTable.id }).from(branchesTable).where(and(
+        eq(branchesTable.organizationId, organizationsTable.id),
+        eq(branchesTable.ownerId, ownerId),
+        branchCondition(branchesTable.id, branchIds),
+      )),
+    ),
   ));
   if (!organization) {
     res.status(404).json({ error: "Organization not found" });
@@ -193,6 +226,13 @@ router.delete("/organizations/:id", async (req, res): Promise<void> => {
   await db.delete(organizationsTable).where(and(
     eq(organizationsTable.id, organization.id),
     eq(organizationsTable.ownerId, ownerId),
+    branchIds === null ? undefined : exists(
+      db.select({ id: branchesTable.id }).from(branchesTable).where(and(
+        eq(branchesTable.organizationId, organizationsTable.id),
+        eq(branchesTable.ownerId, ownerId),
+        branchCondition(branchesTable.id, branchIds),
+      )),
+    ),
   ));
   await auditNurseryOperation(
     req,
@@ -215,8 +255,8 @@ router.get("/branches", async (req, res): Promise<void> => {
     res.status(403).json({ error: "Operation not permitted" });
     return;
   }
-  const { ownerId } = nurseryContext(req);
-  const conditions = [eq(branchesTable.ownerId, ownerId)];
+  const { ownerId, branchIds } = nurseryContext(req);
+  const conditions = [eq(branchesTable.ownerId, ownerId), branchCondition(branchesTable.id, branchIds)];
   if (query.data.organizationId !== undefined) {
     conditions.push(eq(branchesTable.organizationId, query.data.organizationId));
   }
@@ -236,7 +276,27 @@ router.post("/branches", async (req, res): Promise<void> => {
     res.status(403).json({ error: "Operation not permitted" });
     return;
   }
-  const { ownerId } = nurseryContext(req);
+  const { ownerId, branchIds } = nurseryContext(req);
+  if (branchIds !== null) {
+    const context = nurseryContext(req);
+    const [staff] = await db.select({ id: staffTable.id }).from(staffTable).where(and(
+      eq(staffTable.ownerId, ownerId),
+      eq(staffTable.clerkUserId, `local_${context.actorId}`),
+    )).limit(1);
+    const [assignment] = staff
+      ? await db.select({ id: staffScopeAssignmentsTable.id })
+        .from(staffScopeAssignmentsTable)
+        .where(and(
+          eq(staffScopeAssignmentsTable.ownerId, ownerId),
+          eq(staffScopeAssignmentsTable.staffId, staff.id),
+          eq(staffScopeAssignmentsTable.organizationId, body.data.organizationId),
+        )).limit(1)
+      : [];
+    if (!assignment) {
+      res.status(403).json({ error: "Branch not permitted" });
+      return;
+    }
+  }
   const [organization] = await db.select({
     id: organizationsTable.id,
     code: organizationsTable.code,
@@ -301,14 +361,37 @@ router.patch("/branches/:id", async (req, res): Promise<void> => {
     res.status(403).json({ error: "Operation not permitted" });
     return;
   }
-  const { ownerId } = nurseryContext(req);
+  const { ownerId, branchIds } = nurseryContext(req);
   const [before] = await db.select().from(branchesTable).where(and(
     eq(branchesTable.id, params.data.id),
     eq(branchesTable.ownerId, ownerId),
+    branchCondition(branchesTable.id, branchIds),
   ));
   if (!before) {
     res.status(404).json({ error: "Branch not found" });
     return;
+  }
+  if (branchIds !== null) {
+    const targetOrganizationId = body.data.organizationId ?? before.organizationId;
+    if (targetOrganizationId === null) {
+      res.status(400).json({ error: "Organization is required" });
+      return;
+    }
+    const [allowedOrganization] = await db.select({ id: organizationsTable.id })
+      .from(organizationsTable)
+      .where(and(
+        eq(organizationsTable.id, targetOrganizationId),
+        eq(organizationsTable.ownerId, ownerId),
+        exists(db.select({ id: branchesTable.id }).from(branchesTable).where(and(
+          eq(branchesTable.organizationId, organizationsTable.id),
+          eq(branchesTable.ownerId, ownerId),
+          branchCondition(branchesTable.id, branchIds),
+        ))),
+      )).limit(1);
+    if (!allowedOrganization) {
+      res.status(403).json({ error: "Branch not permitted" });
+      return;
+    }
   }
   if (body.data.organizationId !== undefined) {
     const [organization] = await db.select({ id: organizationsTable.id })
@@ -324,6 +407,7 @@ router.patch("/branches/:id", async (req, res): Promise<void> => {
   const [updated] = await db.update(branchesTable).set(body.data).where(and(
     eq(branchesTable.id, before.id),
     eq(branchesTable.ownerId, ownerId),
+    branchCondition(branchesTable.id, branchIds),
   )).returning();
   await auditNurseryOperation(
     req,
@@ -346,10 +430,11 @@ router.delete("/branches/:id", async (req, res): Promise<void> => {
     res.status(403).json({ error: "Operation not permitted" });
     return;
   }
-  const { ownerId } = nurseryContext(req);
+  const { ownerId, branchIds } = nurseryContext(req);
   const [branch] = await db.select().from(branchesTable).where(and(
     eq(branchesTable.id, params.data.id),
     eq(branchesTable.ownerId, ownerId),
+    branchCondition(branchesTable.id, branchIds),
   ));
   if (!branch) {
     res.status(404).json({ error: "Branch not found" });
@@ -370,6 +455,7 @@ router.delete("/branches/:id", async (req, res): Promise<void> => {
   await db.delete(branchesTable).where(and(
     eq(branchesTable.id, branch.id),
     eq(branchesTable.ownerId, ownerId),
+    branchCondition(branchesTable.id, branchIds),
   ));
   await auditNurseryOperation(
     req,
