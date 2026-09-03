@@ -269,6 +269,22 @@ export async function runApplicationMigrations(): Promise<void> {
       updated_at timestamptz NOT NULL DEFAULT now(),
       CONSTRAINT user_permissions_owner_user_operation_unique UNIQUE (owner_id, user_id, operation)
     );
+    CREATE TABLE IF NOT EXISTS staff_scope_assignments (
+      id serial PRIMARY KEY,
+      owner_id text NOT NULL,
+      staff_id integer NOT NULL,
+      organization_id integer,
+      branch_id integer,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT staff_scope_assignments_one_target
+        CHECK ((organization_id IS NULL) <> (branch_id IS NULL))
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS staff_scope_assignments_unique
+      ON staff_scope_assignments (
+        staff_id,
+        coalesce(organization_id, 0),
+        coalesce(branch_id, 0)
+      );
     CREATE TABLE IF NOT EXISTS operational_records (
       id serial PRIMARY KEY,
       owner_id text NOT NULL,

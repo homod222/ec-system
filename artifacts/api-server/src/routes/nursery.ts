@@ -22,6 +22,9 @@ import {
   GetDashboardSummaryResponse,
   GetFinanceSummaryResponse,
   GetSessionContextResponse,
+  SetStaffScopeBody,
+  SetStaffScopeParams,
+  SetStaffScopeResponse,
   GetTodayAttendanceResponse,
   GetParentOverviewResponse,
   ListChildrenQueryParams,
@@ -93,10 +96,20 @@ import {
   parentMessagesTable,
   progressReportsTable,
   publicAuthAccountsTable,
+  organizationsTable,
   staffTable,
+  staffScopeAssignmentsTable,
+  branchesTable,
 } from "@workspace/db";
 import { checkClassroomCapacity } from "../lib/classroomCapacity";
-import { classroomBranchMismatch, defaultBranchId, resolveBranchId } from "../lib/branchScope";
+import {
+  branchCondition,
+  classroomBranchMismatch,
+  defaultBranchId,
+  FULL_ACCESS_ROLES,
+  resolveBranchId,
+  resolveStaffScope,
+} from "../lib/branchScope";
 import {
   createInvoiceCheckoutSession,
   isAllowedReturnUrl,
@@ -111,6 +124,7 @@ import {
   configurableOperations,
   nurseryContext,
   permitted,
+  requireBranchAccess,
   resolveNurseryContext,
 } from "./nurseryOperations";
 
@@ -119,11 +133,24 @@ const today = () => new Date().toISOString().slice(0, 10);
 const staffAccountRoles = new Set(["admin", "manager", "supervisor", "teacher", "accountant", "receptionist"]);
 const verificationRate = new Map<string, { count: number; resetAt: number }>();
 
-function staffResponse(member: typeof staffTable.$inferSelect) {
+async function staffResponse(member: typeof staffTable.$inferSelect) {
+  const assignments = await db.select({
+    organizationId: staffScopeAssignmentsTable.organizationId,
+    branchId: staffScopeAssignmentsTable.branchId,
+  }).from(staffScopeAssignmentsTable).where(and(
+    eq(staffScopeAssignmentsTable.ownerId, member.ownerId),
+    eq(staffScopeAssignmentsTable.staffId, member.id),
+  ));
+  const branchIds = await resolveStaffScope(db, member.ownerId, member);
   return {
     ...member,
     accountStatus: ["provisioning", "issuing_otp"].includes(member.accountStatus) ? "pending_verification" : member.accountStatus,
     attendanceRate: member.status === "present" ? 100 : member.status === "leave" ? 85 : 70,
+    scope: {
+      organizationIds: assignments.flatMap((item) => item.organizationId == null ? [] : [item.organizationId]),
+      branchIds: assignments.flatMap((item) => item.branchId == null ? [] : [item.branchId]),
+      fullAccess: branchIds === null,
+    },
   };
 }
 
@@ -193,7 +220,7 @@ router.post("/admin/create-account", async (req, res): Promise<void> => {
     res.status(403).json({ error: "Operation not permitted" });
     return;
   }
-  const { ownerId } = nurseryContext(req);
+  const { ownerId, branchIds } = nurseryContext(req);
   const phone = normalizeKuwaitPhone(body.data.phone);
   if (!phone) {
     res.status(400).json({ error: "Invalid Kuwait mobile number" });
@@ -223,6 +250,7 @@ router.post("/admin/create-account", async (req, res): Promise<void> => {
     // Find existing unlinked staff with this phone, or create new
     const existingStaff = await db.select().from(staffTable).where(and(
       eq(staffTable.ownerId, ownerId),
+      branchCondition(staffTable.branchId, branchIds),
       eq(staffTable.accountStatus, "unlinked"),
       sql`${staffTable.clerkUserId} is null`,
     ));
@@ -246,6 +274,11 @@ router.post("/admin/create-account", async (req, res): Promise<void> => {
       )).returning();
       recordId = linked.id;
     } else {
+      const branchId = await defaultBranchId(db, ownerId, branchIds);
+      if (!requireBranchAccess({ branchIds }, branchId)) {
+        res.status(403).json({ error: "Branch not permitted" });
+        return;
+      }
       const [created] = await db.insert(staffTable).values({
         ownerId,
         name: fullName,
@@ -253,7 +286,7 @@ router.post("/admin/create-account", async (req, res): Promise<void> => {
         phone,
         clerkUserId: `local_pending`,
         accountStatus: "active",
-        branchId: await defaultBranchId(db, ownerId),
+        branchId,
       }).returning();
       recordId = created.id;
     }
@@ -261,6 +294,7 @@ router.post("/admin/create-account", async (req, res): Promise<void> => {
     // Guardian: find existing unlinked guardian or create new
     const existingGuardians = await db.select().from(guardiansTable).where(and(
       eq(guardiansTable.ownerId, ownerId),
+      branchCondition(guardiansTable.branchId, branchIds),
       sql`${guardiansTable.clerkUserId} is null`,
     ));
     const match = existingGuardians.find(g => {
@@ -276,12 +310,17 @@ router.post("/admin/create-account", async (req, res): Promise<void> => {
       ));
       recordId = match.id;
     } else {
+      const branchId = await defaultBranchId(db, ownerId, branchIds);
+      if (!requireBranchAccess({ branchIds }, branchId)) {
+        res.status(403).json({ error: "Branch not permitted" });
+        return;
+      }
       const [created] = await db.insert(guardiansTable).values({
         ownerId,
         name: fullName,
         phone,
         clerkUserId: `local_pending`,
-        branchId: await defaultBranchId(db, ownerId),
+        branchId,
       }).returning();
       recordId = created.id;
     }
@@ -515,16 +554,26 @@ const requireParentGuardian: RequestHandler = async (req, res, next) => {
   }
 };
 
-async function childRows(ownerId: string) {
+async function childRows(ownerId: string, branchIds: import("../lib/branchScope").BranchScope) {
   const [children, guardians, classrooms, attendance] = await Promise.all([
-    db.select().from(childrenTable).where(eq(childrenTable.ownerId, ownerId)),
-    db.select().from(guardiansTable).where(eq(guardiansTable.ownerId, ownerId)),
-    db.select().from(classroomsTable).where(eq(classroomsTable.ownerId, ownerId)),
+    db.select().from(childrenTable).where(and(
+      eq(childrenTable.ownerId, ownerId),
+      branchCondition(childrenTable.branchId, branchIds),
+    )),
+    db.select().from(guardiansTable).where(and(
+      eq(guardiansTable.ownerId, ownerId),
+      branchCondition(guardiansTable.branchId, branchIds),
+    )),
+    db.select().from(classroomsTable).where(and(
+      eq(classroomsTable.ownerId, ownerId),
+      branchCondition(classroomsTable.branchId, branchIds),
+    )),
     db.select({ attendance: attendanceTable })
       .from(attendanceTable)
       .innerJoin(childrenTable, and(
         eq(attendanceTable.childId, childrenTable.id),
         eq(childrenTable.ownerId, ownerId),
+        branchCondition(childrenTable.branchId, branchIds),
       )),
   ]);
   const guardianMap = new Map(guardians.map((guardian) => [guardian.id, guardian]));
@@ -575,17 +624,32 @@ router.get("/session/context", resolveNurseryContext, async (req, res, next): Pr
       "receptionist", "owner", "superadmin",
     ]);
     if (identity.role && administrativeRoles.has(identity.role)) {
-      res.json(GetSessionContextResponse.parse({ role: "admin", effectivePermissions }));
+      const context = nurseryContext(req);
+      const baseScope: import("../lib/branchScope").BranchScope =
+        res.locals.operationsBaseBranchScope ?? context.branchIds;
+      const allowedBranches: Array<{ id: number }> = baseScope === null
+        ? await db.select({ id: branchesTable.id }).from(branchesTable).where(eq(branchesTable.ownerId, context.ownerId))
+        : baseScope.map((id: number) => ({ id }));
+      res.json(GetSessionContextResponse.parse({
+        role: "admin", effectivePermissions,
+        branchScope: { fullAccess: baseScope === null, branchIds: allowedBranches.map((branch) => branch.id) },
+      }));
       return;
     }
     if (!identity.role || identity.role === "parent" || identity.role === "guardian") {
       const guardian = await resolveGuardian(req);
       if (guardian) {
-        res.json(GetSessionContextResponse.parse({ role: "parent", effectivePermissions }));
+        res.json(GetSessionContextResponse.parse({
+          role: "parent", effectivePermissions,
+          branchScope: { fullAccess: false, branchIds: [] },
+        }));
         return;
       }
     }
-    res.json(GetSessionContextResponse.parse({ role: "pending", effectivePermissions }));
+    res.json(GetSessionContextResponse.parse({
+      role: "pending", effectivePermissions,
+      branchScope: { fullAccess: false, branchIds: [] },
+    }));
   } catch (error) {
     req.log.error({ err: error }, "Failed to resolve application session context");
     next(error);
@@ -638,31 +702,49 @@ router.use(async (req, res, next) => {
 });
 
 router.get("/dashboard/summary", async (req, res): Promise<void> => {
-  const ownerId = nurseryContext(req).ownerId;
+  const { ownerId, branchIds } = nurseryContext(req);
   const [children, attendance, staff, invoiceRows, payments, refunds] = await Promise.all([
-    db.select().from(childrenTable).where(eq(childrenTable.ownerId, ownerId)),
+    db.select().from(childrenTable).where(and(
+      eq(childrenTable.ownerId, ownerId), branchCondition(childrenTable.branchId, branchIds),
+    )),
     db.select({ attendance: attendanceTable })
       .from(attendanceTable)
       .innerJoin(childrenTable, and(
         eq(attendanceTable.childId, childrenTable.id),
         eq(childrenTable.ownerId, ownerId),
+        branchCondition(childrenTable.branchId, branchIds),
       ))
       .where(eq(attendanceTable.date, today())),
-    db.select().from(staffTable).where(eq(staffTable.ownerId, nurseryContext(req).ownerId)),
+    db.select().from(staffTable).where(and(
+      eq(staffTable.ownerId, ownerId), branchCondition(staffTable.branchId, branchIds),
+    )),
     db
       .select({ invoice: invoicesTable })
       .from(invoicesTable)
       .innerJoin(childrenTable, and(
         eq(invoicesTable.childId, childrenTable.id),
         eq(childrenTable.ownerId, ownerId),
+        branchCondition(childrenTable.branchId, branchIds),
       ))
       .innerJoin(guardiansTable, and(
         eq(invoicesTable.guardianId, guardiansTable.id),
         eq(guardiansTable.ownerId, ownerId),
+        branchCondition(guardiansTable.branchId, branchIds),
       ))
-      .where(eq(invoicesTable.ownerId, ownerId)),
-    db.select().from(invoicePaymentsTable).where(and(eq(invoicePaymentsTable.ownerId, ownerId), inArray(invoicePaymentsTable.status, ["completed", "succeeded"]))),
-    db.select().from(invoiceRefundsTable).where(eq(invoiceRefundsTable.ownerId, ownerId)),
+      .where(and(eq(invoicesTable.ownerId, ownerId), branchCondition(invoicesTable.branchId, branchIds))),
+    db.select().from(invoicePaymentsTable).where(and(
+      eq(invoicePaymentsTable.ownerId, ownerId),
+      inArray(invoicePaymentsTable.status, ["completed", "succeeded"]),
+      inArray(invoicePaymentsTable.invoiceId, db.select({ id: invoicesTable.id }).from(invoicesTable).where(and(
+        eq(invoicesTable.ownerId, ownerId), branchCondition(invoicesTable.branchId, branchIds),
+      ))),
+    )),
+    db.select().from(invoiceRefundsTable).where(and(
+      eq(invoiceRefundsTable.ownerId, ownerId),
+      inArray(invoiceRefundsTable.invoiceId, db.select({ id: invoicesTable.id }).from(invoicesTable).where(and(
+        eq(invoicesTable.ownerId, ownerId), branchCondition(invoicesTable.branchId, branchIds),
+      ))),
+    )),
   ]);
   const invoices = invoiceRows.map(({ invoice }) => invoice);
   const presentToday = attendance.filter(({ attendance: entry }) => entry.status === "present" || entry.status === "late").length;
@@ -691,7 +773,7 @@ router.get("/dashboard/summary", async (req, res): Promise<void> => {
 });
 
 router.get("/dashboard/activity", async (req, res): Promise<void> => {
-  const ownerId = nurseryContext(req).ownerId;
+  const { ownerId, branchIds } = nurseryContext(req);
   const activities = await db
     .select()
     .from(activitiesTable)
@@ -711,7 +793,8 @@ router.get("/children", async (req, res): Promise<void> => {
     return;
   }
   const search = parsed.data.search?.trim().toLowerCase();
-  const rows = (await childRows(nurseryContext(req).ownerId)).filter((child) => {
+  const context = nurseryContext(req);
+  const rows = (await childRows(context.ownerId, context.branchIds)).filter((child) => {
     const matchesSearch = !search || `${child.fullName} ${child.guardianName}`.toLowerCase().includes(search);
     const matchesClassroom = !parsed.data.classroomId || child.classroomId === parsed.data.classroomId;
     return matchesSearch && matchesClassroom;
@@ -726,10 +809,15 @@ router.post("/children", async (req, res): Promise<void> => {
     return;
   }
   const input = parsed.data;
-  const ownerId = nurseryContext(req).ownerId;
+  const { ownerId, branchIds } = nurseryContext(req);
+  if (input.branchId != null && !requireBranchAccess({ branchIds }, input.branchId)) {
+    res.status(403).json({ error: "Branch not permitted" });
+    return;
+  }
   const result = await db.transaction(async (tx) => {
-    const branch = await resolveBranchId(tx, ownerId, input.branchId);
+    const branch = await resolveBranchId(tx, ownerId, input.branchId, branchIds);
     if (branch.kind === "missing") return { kind: "branchMissing" as const };
+    if (!requireBranchAccess({ branchIds }, branch.branchId)) return { kind: "branchNotPermitted" as const };
     if (input.classroomId != null) {
       if (await classroomBranchMismatch(tx, ownerId, input.classroomId, branch.branchId)) {
         return { kind: "branchMismatch" as const };
@@ -744,6 +832,7 @@ router.post("/children", async (req, res): Promise<void> => {
       const normalizedDbPhoneExpr = sql`'965' || right(regexp_replace(${guardiansTable.phone}, '\\D', '', 'g'), 8)`;
       const [existing] = await tx.select().from(guardiansTable).where(and(
         eq(guardiansTable.ownerId, ownerId),
+        branchCondition(guardiansTable.branchId, branchIds),
         eq(normalizedDbPhoneExpr, normalizedPhone),
       )).limit(1);
       if (existing) {
@@ -785,6 +874,10 @@ router.post("/children", async (req, res): Promise<void> => {
     res.status(400).json({ error: "Branch not found" });
     return;
   }
+  if (result.kind === "branchNotPermitted") {
+    res.status(403).json({ error: "Branch not permitted" });
+    return;
+  }
   if (result.kind === "branchMismatch") {
     res.status(409).json({ error: "Classroom belongs to another branch" });
     return;
@@ -798,7 +891,7 @@ router.post("/children", async (req, res): Promise<void> => {
     return;
   }
   const child = result.child;
-  const record = (await childRows(ownerId)).find((row) => row.id === child.id);
+  const record = (await childRows(ownerId, branchIds)).find((row) => row.id === child.id);
   await auditNurseryOperation(req, "create", "child", String(child.id), null, child as unknown as Record<string, unknown>);
   res.status(201).json(CreateChildResponse.parse(record));
 });
@@ -809,7 +902,8 @@ router.get("/children/:id", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  const record = (await childRows(nurseryContext(req).ownerId)).find((row) => row.id === parsed.data.id);
+  const context = nurseryContext(req);
+  const record = (await childRows(context.ownerId, context.branchIds)).find((row) => row.id === parsed.data.id);
   if (!record) {
     res.status(404).json({ error: "Child not found" });
     return;
@@ -828,10 +922,11 @@ router.patch("/children/:id", async (req, res): Promise<void> => {
     res.status(400).json({ error: body.error.message });
     return;
   }
-  const ownerId = nurseryContext(req).ownerId;
+  const { ownerId, branchIds } = nurseryContext(req);
   const [current] = await db.select().from(childrenTable).where(and(
     eq(childrenTable.id, params.data.id),
     eq(childrenTable.ownerId, ownerId),
+    branchCondition(childrenTable.branchId, branchIds),
   ));
   if (!current) {
     res.status(404).json({ error: "Child not found" });
@@ -839,8 +934,9 @@ router.patch("/children/:id", async (req, res): Promise<void> => {
   }
   const updateResult = await db.transaction(async (tx) => {
     const targetBranchId = body.data.branchId ?? current.branchId;
-    const branch = await resolveBranchId(tx, ownerId, targetBranchId);
+    const branch = await resolveBranchId(tx, ownerId, targetBranchId, branchIds);
     if (branch.kind === "missing") return { kind: "branchMissing" as const };
+    if (!requireBranchAccess({ branchIds }, branch.branchId)) return { kind: "branchNotPermitted" as const };
     const targetClassroomId = body.data.classroomId === undefined
       ? current.classroomId
       : body.data.classroomId;
@@ -861,6 +957,7 @@ router.patch("/children/:id", async (req, res): Promise<void> => {
       }).where(and(
         eq(guardiansTable.id, current.guardianId),
         eq(guardiansTable.ownerId, ownerId),
+        branchCondition(guardiansTable.branchId, branchIds),
       ));
     }
     await tx.update(childrenTable).set({
@@ -876,11 +973,16 @@ router.patch("/children/:id", async (req, res): Promise<void> => {
     }).where(and(
       eq(childrenTable.id, params.data.id),
       eq(childrenTable.ownerId, ownerId),
+      branchCondition(childrenTable.branchId, branchIds),
     ));
     return { kind: "updated" as const };
   });
   if (updateResult.kind === "branchMissing") {
     res.status(400).json({ error: "Branch not found" });
+    return;
+  }
+  if (updateResult.kind === "branchNotPermitted") {
+    res.status(403).json({ error: "Branch not permitted" });
     return;
   }
   if (updateResult.kind === "branchMismatch") {
@@ -895,7 +997,7 @@ router.patch("/children/:id", async (req, res): Promise<void> => {
     res.status(409).json({ error: "Classroom is full" });
     return;
   }
-  const record = (await childRows(ownerId)).find((row) => row.id === params.data.id);
+  const record = (await childRows(ownerId, branchIds)).find((row) => row.id === params.data.id);
   await auditNurseryOperation(
     req, "update", "child", String(current.id),
     current as unknown as Record<string, unknown>,
@@ -910,7 +1012,7 @@ router.delete("/children/:id", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  const ownerId = nurseryContext(req).ownerId;
+  const { ownerId, branchIds } = nurseryContext(req);
   const deletion = await db.transaction(async (tx) => {
     await tx.execute(sql`
       select id from children
@@ -920,6 +1022,7 @@ router.delete("/children/:id", async (req, res): Promise<void> => {
     const [child] = await tx.select().from(childrenTable).where(and(
       eq(childrenTable.id, parsed.data.id),
       eq(childrenTable.ownerId, ownerId),
+      branchCondition(childrenTable.branchId, branchIds),
     ));
     if (!child) return { kind: "missing" as const };
     const [plan] = await tx.select({ id: billingPlansTable.id }).from(billingPlansTable)
@@ -929,6 +1032,7 @@ router.delete("/children/:id", async (req, res): Promise<void> => {
     const [deleted] = await tx.delete(childrenTable).where(and(
       eq(childrenTable.id, child.id),
       eq(childrenTable.ownerId, ownerId),
+      branchCondition(childrenTable.branchId, branchIds),
     )).returning();
     return deleted ? { kind: "deleted" as const, deleted } : { kind: "missing" as const };
   });
@@ -946,10 +1050,14 @@ router.delete("/children/:id", async (req, res): Promise<void> => {
 });
 
 router.get("/guardians", async (req, res): Promise<void> => {
-  const ownerId = nurseryContext(req).ownerId;
+  const { ownerId, branchIds } = nurseryContext(req);
   const [guardians, children] = await Promise.all([
-    db.select().from(guardiansTable).where(eq(guardiansTable.ownerId, ownerId)),
-    db.select().from(childrenTable).where(eq(childrenTable.ownerId, ownerId)),
+    db.select().from(guardiansTable).where(and(
+      eq(guardiansTable.ownerId, ownerId), branchCondition(guardiansTable.branchId, branchIds),
+    )),
+    db.select().from(childrenTable).where(and(
+      eq(childrenTable.ownerId, ownerId), branchCondition(childrenTable.branchId, branchIds),
+    )),
   ]);
   res.json(ListGuardiansResponse.parse(guardians.map((guardian) => ({
     id: guardian.id,
@@ -981,8 +1089,10 @@ function guardianAccountResponse(
 }
 
 router.get("/guardians/accounts", async (req, res): Promise<void> => {
-  const { ownerId } = nurseryContext(req);
-  const guardians = await db.select().from(guardiansTable).where(eq(guardiansTable.ownerId, ownerId));
+  const { ownerId, branchIds } = nurseryContext(req);
+  const guardians = await db.select().from(guardiansTable).where(and(
+    eq(guardiansTable.ownerId, ownerId), branchCondition(guardiansTable.branchId, branchIds),
+  ));
   const accounts = await db.select().from(publicAuthAccountsTable)
     .where(and(eq(publicAuthAccountsTable.accountType, "guardian"), eq(publicAuthAccountsTable.ownerId, ownerId)));
   const accountsByGuardianId = new Map(accounts.filter((account) => account.guardianId !== null)
@@ -1002,9 +1112,10 @@ router.patch("/guardians/:id/account", async (req, res): Promise<void> => {
     res.status(403).json({ error: "Operation not permitted" });
     return;
   }
-  const { ownerId } = nurseryContext(req);
+  const { ownerId, branchIds } = nurseryContext(req);
   const [guardian] = await db.select().from(guardiansTable).where(and(
     eq(guardiansTable.id, params.data.id), eq(guardiansTable.ownerId, ownerId),
+    branchCondition(guardiansTable.branchId, branchIds),
   )).limit(1);
   if (!guardian) {
     res.status(404).json({ error: "Linked guardian account not found" });
@@ -1032,9 +1143,10 @@ router.patch("/guardians/:id/details", async (req, res): Promise<void> => {
   const { name, phone, email } = req.body as { name?: string; phone?: string; email?: string };
   if (!name && !phone && !email) { res.status(400).json({ error: "Provide at least one field to update" }); return; }
   if (!await accountManager(req)) { res.status(403).json({ error: "Operation not permitted" }); return; }
-  const { ownerId } = nurseryContext(req);
+  const { ownerId, branchIds } = nurseryContext(req);
   const [guardian] = await db.select().from(guardiansTable).where(and(
     eq(guardiansTable.id, id), eq(guardiansTable.ownerId, ownerId),
+    branchCondition(guardiansTable.branchId, branchIds),
   )).limit(1);
   if (!guardian) { res.status(404).json({ error: "Guardian not found" }); return; }
   const updates: Partial<{ name: string; phone: string; email: string }> = {};
@@ -1044,6 +1156,7 @@ router.patch("/guardians/:id/details", async (req, res): Promise<void> => {
   if (Object.keys(updates).length === 0) { res.status(400).json({ error: "No valid updates" }); return; }
   const [updated] = await db.update(guardiansTable).set(updates).where(and(
     eq(guardiansTable.id, id), eq(guardiansTable.ownerId, ownerId),
+    branchCondition(guardiansTable.branchId, branchIds),
   )).returning();
   // Also update publicAuthAccountsTable if account exists
   if (updated) {
@@ -1065,9 +1178,10 @@ router.delete("/guardians/:id", async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (!id || isNaN(id)) { res.status(400).json({ error: "Invalid guardian ID" }); return; }
   if (!await accountManager(req, "delete:users")) { res.status(403).json({ error: "Operation not permitted" }); return; }
-  const { ownerId } = nurseryContext(req);
+  const { ownerId, branchIds } = nurseryContext(req);
   const [guardian] = await db.select().from(guardiansTable).where(and(
     eq(guardiansTable.id, id), eq(guardiansTable.ownerId, ownerId),
+    branchCondition(guardiansTable.branchId, branchIds),
   )).limit(1);
   if (!guardian) { res.status(404).json({ error: "Guardian not found" }); return; }
   // Delete linked auth account
@@ -1078,16 +1192,21 @@ router.delete("/guardians/:id", async (req, res): Promise<void> => {
   // Delete guardian record
   await db.delete(guardiansTable).where(and(
     eq(guardiansTable.id, id), eq(guardiansTable.ownerId, ownerId),
+    branchCondition(guardiansTable.branchId, branchIds),
   ));
   await auditNurseryOperation(req, "delete-guardian", "guardian", String(id), { name: guardian.name, phone: guardian.phone }, null);
   res.json({ ok: true });
 });
 
 router.get("/classrooms", async (req, res): Promise<void> => {
-  const ownerId = nurseryContext(req).ownerId;
+  const { ownerId, branchIds } = nurseryContext(req);
   const [classrooms, children] = await Promise.all([
-    db.select().from(classroomsTable).where(eq(classroomsTable.ownerId, ownerId)),
-    db.select().from(childrenTable).where(eq(childrenTable.ownerId, ownerId)),
+    db.select().from(classroomsTable).where(and(
+      eq(classroomsTable.ownerId, ownerId), branchCondition(classroomsTable.branchId, branchIds),
+    )),
+    db.select().from(childrenTable).where(and(
+      eq(childrenTable.ownerId, ownerId), branchCondition(childrenTable.branchId, branchIds),
+    )),
   ]);
   res.json(ListClassroomsResponse.parse(classrooms.map(({ ownerId: _ownerId, ...classroom }) => ({
     ...classroom,
@@ -1097,8 +1216,12 @@ router.get("/classrooms", async (req, res): Promise<void> => {
 });
 
 router.get("/staff", async (req, res): Promise<void> => {
-  const staff = await db.select().from(staffTable).where(eq(staffTable.ownerId, nurseryContext(req).ownerId));
-  res.json(ListStaffResponse.parse(staff.map(staffResponse)));
+  const { ownerId, branchIds } = nurseryContext(req);
+  const staff = await db.select().from(staffTable).where(and(
+    eq(staffTable.ownerId, ownerId),
+    branchCondition(staffTable.branchId, branchIds),
+  ));
+  res.json(ListStaffResponse.parse(await Promise.all(staff.map(staffResponse))));
 });
 
 router.post("/staff", async (req, res): Promise<void> => {
@@ -1107,10 +1230,18 @@ router.post("/staff", async (req, res): Promise<void> => {
     res.status(400).json({ error: body.error.message });
     return;
   }
-  const { ownerId } = nurseryContext(req);
-  const branch = await resolveBranchId(db, ownerId, body.data.branchId);
+  const { ownerId, branchIds } = nurseryContext(req);
+  if (body.data.branchId != null && !requireBranchAccess({ branchIds }, body.data.branchId)) {
+    res.status(403).json({ error: "Branch not permitted" });
+    return;
+  }
+  const branch = await resolveBranchId(db, ownerId, body.data.branchId, branchIds);
   if (branch.kind === "missing") {
     res.status(400).json({ error: "Branch not found" });
+    return;
+  }
+  if (!requireBranchAccess({ branchIds }, branch.branchId)) {
+    res.status(403).json({ error: "Branch not permitted" });
     return;
   }
   const [created] = await db.insert(staffTable).values({
@@ -1121,7 +1252,7 @@ router.post("/staff", async (req, res): Promise<void> => {
   await auditNurseryOperation(req, "create-staff", "staff", String(created.id), null, {
     id: created.id, name: created.name, role: created.role, accountStatus: created.accountStatus,
   });
-  res.status(201).json(CreateStaffResponse.parse(staffResponse(created)));
+  res.status(201).json(CreateStaffResponse.parse(await staffResponse(created)));
 });
 
 router.patch("/staff/:id", async (req, res): Promise<void> => {
@@ -1131,9 +1262,10 @@ router.patch("/staff/:id", async (req, res): Promise<void> => {
     res.status(400).json({ error: params.success ? body.error?.message : params.error.message });
     return;
   }
-  const { ownerId } = nurseryContext(req);
+  const { ownerId, branchIds } = nurseryContext(req);
   const [existing] = await db.select().from(staffTable).where(and(
     eq(staffTable.id, params.data.id), eq(staffTable.ownerId, ownerId),
+    branchCondition(staffTable.branchId, branchIds),
   )).limit(1);
   if (!existing) {
     res.status(404).json({ error: "Staff member not found" });
@@ -1143,7 +1275,11 @@ router.patch("/staff/:id", async (req, res): Promise<void> => {
     res.status(409).json({ error: "Use staff account management to change a linked account role" });
     return;
   }
-  const branch = await resolveBranchId(db, ownerId, body.data.branchId ?? existing.branchId);
+  if (body.data.branchId != null && !requireBranchAccess({ branchIds }, body.data.branchId)) {
+    res.status(403).json({ error: "Branch not permitted" });
+    return;
+  }
+  const branch = await resolveBranchId(db, ownerId, body.data.branchId ?? existing.branchId, branchIds);
   if (branch.kind === "missing") {
     res.status(400).json({ error: "Branch not found" });
     return;
@@ -1153,10 +1289,11 @@ router.patch("/staff/:id", async (req, res): Promise<void> => {
     branchId: branch.branchId,
   }).where(and(
     eq(staffTable.id, existing.id), eq(staffTable.ownerId, ownerId),
+    branchCondition(staffTable.branchId, branchIds),
   )).returning();
   await auditNurseryOperation(req, "update-staff", "staff", String(updated.id),
     staffAuditSnapshot(existing), staffAuditSnapshot(updated));
-  res.json(UpdateStaffResponse.parse(staffResponse(updated)));
+  res.json(UpdateStaffResponse.parse(await staffResponse(updated)));
 });
 
 router.delete("/staff/:id", async (req, res): Promise<void> => {
@@ -1165,9 +1302,10 @@ router.delete("/staff/:id", async (req, res): Promise<void> => {
     res.status(400).json({ error: params.error.message });
     return;
   }
-  const { ownerId } = nurseryContext(req);
+  const { ownerId, branchIds } = nurseryContext(req);
   const [existing] = await db.select().from(staffTable).where(and(
     eq(staffTable.id, params.data.id), eq(staffTable.ownerId, ownerId),
+    branchCondition(staffTable.branchId, branchIds),
   )).limit(1);
   if (!existing) {
     res.status(404).json({ error: "Staff member not found" });
@@ -1177,10 +1315,65 @@ router.delete("/staff/:id", async (req, res): Promise<void> => {
     res.status(409).json({ error: "Disable and unlink the staff account before deleting the record" });
     return;
   }
-  await db.delete(staffTable).where(and(eq(staffTable.id, existing.id), eq(staffTable.ownerId, ownerId)));
+  await db.delete(staffTable).where(and(
+    eq(staffTable.id, existing.id), eq(staffTable.ownerId, ownerId),
+    branchCondition(staffTable.branchId, branchIds),
+  ));
   await auditNurseryOperation(req, "delete-staff", "staff", String(existing.id),
     staffAuditSnapshot(existing), null);
   res.sendStatus(204);
+});
+
+router.put("/staff/:id/scope", async (req, res): Promise<void> => {
+  const params = SetStaffScopeParams.safeParse(req.params);
+  const body = SetStaffScopeBody.safeParse(req.body);
+  if (!params.success || !body.success) {
+    res.status(400).json({ error: params.success ? body.error?.message : params.error.message });
+    return;
+  }
+  const context = nurseryContext(req);
+  const [member] = await db.select().from(staffTable).where(and(
+    eq(staffTable.id, params.data.id),
+    eq(staffTable.ownerId, context.ownerId),
+    branchCondition(staffTable.branchId, context.branchIds),
+  )).limit(1);
+  if (!member) {
+    res.status(404).json({ error: "Staff member not found" });
+    return;
+  }
+  const organizationIds = [...new Set(body.data.organizationIds)];
+  const branchIds = [...new Set(body.data.branchIds)];
+  const organizations = organizationIds.length === 0 ? [] : await db.select({ id: organizationsTable.id })
+    .from(organizationsTable).where(and(
+      eq(organizationsTable.ownerId, context.ownerId),
+      inArray(organizationsTable.id, organizationIds),
+    ));
+  const branches = branchIds.length === 0 ? [] : await db.select({ id: branchesTable.id })
+    .from(branchesTable).where(and(
+      eq(branchesTable.ownerId, context.ownerId),
+      inArray(branchesTable.id, branchIds),
+    ));
+  if (organizations.length !== organizationIds.length || branches.length !== branchIds.length) {
+    res.status(400).json({ error: "Scope references must belong to this nursery" });
+    return;
+  }
+  await db.transaction(async (tx) => {
+    await tx.delete(staffScopeAssignmentsTable).where(and(
+      eq(staffScopeAssignmentsTable.ownerId, context.ownerId),
+      eq(staffScopeAssignmentsTable.staffId, member.id),
+    ));
+    if (organizationIds.length > 0 || branchIds.length > 0) {
+      await tx.insert(staffScopeAssignmentsTable).values([
+        ...organizationIds.map((organizationId) => ({
+          ownerId: context.ownerId, staffId: member.id, organizationId, branchId: null,
+        })),
+        ...branchIds.map((branchId) => ({
+          ownerId: context.ownerId, staffId: member.id, organizationId: null, branchId,
+        })),
+      ]);
+    }
+  });
+  res.json(SetStaffScopeResponse.parse(await staffResponse(member)));
 });
 
 router.post("/staff/:id/account", async (req, res): Promise<void> => {
@@ -1194,9 +1387,10 @@ router.post("/staff/:id/account", async (req, res): Promise<void> => {
     res.status(403).json({ error: "Operation not permitted" });
     return;
   }
-  const { ownerId } = nurseryContext(req);
+  const { ownerId, branchIds } = nurseryContext(req);
   const [member] = await db.select().from(staffTable).where(and(
     eq(staffTable.id, params.data.id), eq(staffTable.ownerId, ownerId),
+    branchCondition(staffTable.branchId, branchIds),
   )).limit(1);
   if (!member) {
     res.status(404).json({ error: "Staff member not found" });
@@ -1236,6 +1430,7 @@ router.post("/staff/:id/account", async (req, res): Promise<void> => {
   }).where(and(
     eq(staffTable.id, member.id),
     eq(staffTable.ownerId, ownerId),
+    branchCondition(staffTable.branchId, branchIds),
     sql`${staffTable.clerkUserId} is null`,
     inArray(staffTable.accountStatus, ["unlinked", "pending_verification"]),
   )).returning();
@@ -1265,9 +1460,10 @@ router.patch("/staff/:id/account", async (req, res): Promise<void> => {
     res.status(403).json({ error: "Operation not permitted" });
     return;
   }
-  const { ownerId } = nurseryContext(req);
+  const { ownerId, branchIds } = nurseryContext(req);
   const [member] = await db.select().from(staffTable).where(and(
     eq(staffTable.id, params.data.id), eq(staffTable.ownerId, ownerId),
+    branchCondition(staffTable.branchId, branchIds),
   )).limit(1);
   if (!member || !member.clerkUserId) {
     res.status(404).json({ error: "Linked staff account not found" });
@@ -1282,7 +1478,11 @@ router.patch("/staff/:id/account", async (req, res): Promise<void> => {
       otpHash: null,
       otpExpiresAt: null,
       otpAttempts: 0,
-    }).where(eq(staffTable.id, member.id)).returning();
+    }).where(and(
+      eq(staffTable.id, member.id),
+      eq(staffTable.ownerId, ownerId),
+      branchCondition(staffTable.branchId, branchIds),
+    )).returning();
     // Update the linked account record
     if (member.clerkUserId) {
       const accountId = member.clerkUserId.startsWith("local_") ? Number(member.clerkUserId.slice(6)) : null;
@@ -1306,7 +1506,11 @@ router.patch("/staff/:id/account", async (req, res): Promise<void> => {
     otpHash: null,
     otpExpiresAt: null,
     otpAttempts: 0,
-  }).where(eq(staffTable.id, member.id)).returning();
+  }).where(and(
+    eq(staffTable.id, member.id),
+    eq(staffTable.ownerId, ownerId),
+    branchCondition(staffTable.branchId, branchIds),
+  )).returning();
   // Update the linked account record
   if (member.clerkUserId) {
     const accountId = member.clerkUserId.startsWith("local_") ? Number(member.clerkUserId.slice(6)) : null;
@@ -1325,16 +1529,19 @@ router.patch("/staff/:id/account", async (req, res): Promise<void> => {
 });
 
 router.get("/attendance/today", async (req, res): Promise<void> => {
-  const ownerId = nurseryContext(req).ownerId;
+  const { ownerId, branchIds } = nurseryContext(req);
   const [records, children] = await Promise.all([
     db.select({ attendance: attendanceTable })
       .from(attendanceTable)
       .innerJoin(childrenTable, and(
         eq(attendanceTable.childId, childrenTable.id),
         eq(childrenTable.ownerId, ownerId),
+        branchCondition(childrenTable.branchId, branchIds),
       ))
       .where(eq(attendanceTable.date, today())),
-    db.select().from(childrenTable).where(eq(childrenTable.ownerId, ownerId)),
+    db.select().from(childrenTable).where(and(
+      eq(childrenTable.ownerId, ownerId), branchCondition(childrenTable.branchId, branchIds),
+    )),
   ]);
   const childMap = new Map(children.map((child) => [child.id, child]));
   res.json(GetTodayAttendanceResponse.parse(records.map(({ attendance: record }) => {
@@ -1353,9 +1560,11 @@ router.post("/attendance", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
+  const { branchIds } = nurseryContext(req);
   const [child] = await db.select().from(childrenTable).where(and(
     eq(childrenTable.id, parsed.data.childId),
     eq(childrenTable.ownerId, nurseryContext(req).ownerId),
+    branchCondition(childrenTable.branchId, branchIds),
   ));
   if (!child) {
     res.status(404).json({ error: "Child not found" });
@@ -1426,14 +1635,28 @@ router.post("/classrooms", async (req, res): Promise<void> => {
     });
     return;
   }
+  const context = nurseryContext(req);
+  if (parsed.data.branchId != null && !requireBranchAccess(context, parsed.data.branchId)) {
+    res.status(403).json({ error: "Branch not permitted" });
+    return;
+  }
+  const branch = await resolveBranchId(db, context.ownerId, parsed.data.branchId, context.branchIds);
+  if (branch.kind === "missing") {
+    res.status(400).json({ error: "Branch not found" });
+    return;
+  }
+  if (!requireBranchAccess(context, branch.branchId)) {
+    res.status(403).json({ error: "Branch not permitted" });
+    return;
+  }
   const [classroom] = await db.insert(classroomsTable).values({
-    ownerId: nurseryContext(req).ownerId,
+    ownerId: context.ownerId,
     name: parsed.data.name,
     level: parsed.data.level,
     teacherName: parsed.data.teacherName,
     capacity: parsed.data.capacity,
     color: parsed.data.color ?? "teal",
-    branchId: parsed.data.branchId ?? null,
+    branchId: branch.branchId,
     stageId: parsed.data.stageId ?? null,
     schedule: parsed.data.schedule ?? {},
   }).returning();
@@ -1445,23 +1668,36 @@ router.post("/classrooms", async (req, res): Promise<void> => {
 const arMonthLabel = new Intl.DateTimeFormat("ar", { month: "long" });
 
 router.get("/finance/summary", async (req, res): Promise<void> => {
-  const ownerId = nurseryContext(req).ownerId;
+  const { ownerId, branchIds } = nurseryContext(req);
   const invoiceRows = await db
     .select({ invoice: invoicesTable })
     .from(invoicesTable)
     .innerJoin(childrenTable, and(
       eq(invoicesTable.childId, childrenTable.id),
       eq(childrenTable.ownerId, ownerId),
+      branchCondition(childrenTable.branchId, branchIds),
     ))
     .innerJoin(guardiansTable, and(
       eq(invoicesTable.guardianId, guardiansTable.id),
       eq(guardiansTable.ownerId, ownerId),
+      branchCondition(guardiansTable.branchId, branchIds),
     ))
-    .where(eq(invoicesTable.ownerId, ownerId));
+    .where(and(eq(invoicesTable.ownerId, ownerId), branchCondition(invoicesTable.branchId, branchIds)));
   const invoices = invoiceRows.map(({ invoice }) => invoice);
   const [payments, refunds] = await Promise.all([
-    db.select().from(invoicePaymentsTable).where(and(eq(invoicePaymentsTable.ownerId, ownerId), inArray(invoicePaymentsTable.status, ["completed", "succeeded"]))),
-    db.select().from(invoiceRefundsTable).where(eq(invoiceRefundsTable.ownerId, ownerId)),
+    db.select().from(invoicePaymentsTable).where(and(
+      eq(invoicePaymentsTable.ownerId, ownerId),
+      inArray(invoicePaymentsTable.status, ["completed", "succeeded"]),
+      inArray(invoicePaymentsTable.invoiceId, db.select({ id: invoicesTable.id }).from(invoicesTable).where(and(
+        eq(invoicesTable.ownerId, ownerId), branchCondition(invoicesTable.branchId, branchIds),
+      ))),
+    )),
+    db.select().from(invoiceRefundsTable).where(and(
+      eq(invoiceRefundsTable.ownerId, ownerId),
+      inArray(invoiceRefundsTable.invoiceId, db.select({ id: invoicesTable.id }).from(invoicesTable).where(and(
+        eq(invoicesTable.ownerId, ownerId), branchCondition(invoicesTable.branchId, branchIds),
+      ))),
+    )),
   ]);
   const now = new Date();
   const isSameMonth = (date: Date, ref: Date) =>
@@ -1501,7 +1737,7 @@ router.get("/invoices", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  const ownerId = nurseryContext(req).ownerId;
+  const { ownerId, branchIds } = nurseryContext(req);
   const invoiceRows = await db
     .select({
       invoice: invoicesTable,
@@ -1513,12 +1749,14 @@ router.get("/invoices", async (req, res): Promise<void> => {
     .innerJoin(childrenTable, and(
       eq(invoicesTable.childId, childrenTable.id),
       eq(childrenTable.ownerId, ownerId),
+      branchCondition(childrenTable.branchId, branchIds),
     ))
     .innerJoin(guardiansTable, and(
       eq(invoicesTable.guardianId, guardiansTable.id),
       eq(guardiansTable.ownerId, ownerId),
+      branchCondition(guardiansTable.branchId, branchIds),
     ))
-    .where(eq(invoicesTable.ownerId, ownerId));
+    .where(and(eq(invoicesTable.ownerId, ownerId), branchCondition(invoicesTable.branchId, branchIds)));
   const rows = invoiceRows
     .filter(({ invoice }) => !parsed.data.status || invoice.status === parsed.data.status)
     .map(({ invoice, guardianName, childFirstName, childLastName }) => ({
@@ -1541,21 +1779,28 @@ router.get("/invoices", async (req, res): Promise<void> => {
 });
 
 /** Loads an invoice only when the invoice and both related records share the authenticated owner. */
-async function loadOwnedInvoice(ownerId: string, invoiceId: number) {
+async function loadOwnedInvoice(
+  ownerId: string,
+  invoiceId: number,
+  branchIds: import("../lib/branchScope").BranchScope = null,
+) {
   const [row] = await db
     .select({ invoice: invoicesTable })
     .from(invoicesTable)
     .innerJoin(childrenTable, and(
       eq(invoicesTable.childId, childrenTable.id),
       eq(childrenTable.ownerId, ownerId),
+      branchCondition(childrenTable.branchId, branchIds),
     ))
     .innerJoin(guardiansTable, and(
       eq(invoicesTable.guardianId, guardiansTable.id),
       eq(guardiansTable.ownerId, ownerId),
+      branchCondition(guardiansTable.branchId, branchIds),
     ))
     .where(and(
       eq(invoicesTable.id, invoiceId),
       eq(invoicesTable.ownerId, ownerId),
+      branchCondition(invoicesTable.branchId, branchIds),
     ));
   return row?.invoice ?? null;
 }
@@ -1575,7 +1820,8 @@ router.post("/invoices/:id/checkout-session", async (req, res): Promise<void> =>
     res.status(400).json({ error: "Invalid return URL" });
     return;
   }
-  const invoice = await loadOwnedInvoice(nurseryContext(req).ownerId, params.data.id);
+  const context = nurseryContext(req);
+  const invoice = await loadOwnedInvoice(context.ownerId, params.data.id, context.branchIds);
   if (!invoice) {
     res.status(404).json({ error: "Invoice not found" });
     return;
@@ -1586,7 +1832,11 @@ router.post("/invoices/:id/checkout-session", async (req, res): Promise<void> =>
     res.status(409).json({ error: "Invoice is not payable" });
     return;
   }
-  const [guardian] = await db.select().from(guardiansTable).where(eq(guardiansTable.id, invoice.guardianId));
+  const [guardian] = await db.select().from(guardiansTable).where(and(
+    eq(guardiansTable.id, invoice.guardianId),
+    eq(guardiansTable.ownerId, context.ownerId),
+    branchCondition(guardiansTable.branchId, context.branchIds),
+  ));
   if (!guardian) {
     res.status(404).json({ error: "Guardian not found for invoice" });
     return;
@@ -1634,7 +1884,7 @@ router.post("/invoices/:id/cash-payment", async (req, res): Promise<void> => {
   }
 
   const context = nurseryContext(req);
-  const invoice = await loadOwnedInvoice(context.ownerId, params.data.id);
+  const invoice = await loadOwnedInvoice(context.ownerId, params.data.id, context.branchIds);
   if (!invoice) {
     res.status(404).json({ error: "Invoice not found" });
     return;
@@ -1670,6 +1920,7 @@ router.post("/invoices/:id/cash-payment", async (req, res): Promise<void> => {
       .where(and(
         eq(invoicesTable.id, invoice.id),
         eq(invoicesTable.ownerId, context.ownerId),
+        branchCondition(invoicesTable.branchId, context.branchIds),
         ne(invoicesTable.status, "paid"),
       ))
       .returning();
@@ -1719,12 +1970,17 @@ router.post("/invoices/:id/reminder", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  const invoice = await loadOwnedInvoice(nurseryContext(req).ownerId, parsed.data.id);
+  const context = nurseryContext(req);
+  const invoice = await loadOwnedInvoice(context.ownerId, parsed.data.id, context.branchIds);
   if (!invoice) {
     res.status(404).json({ error: "Invoice not found" });
     return;
   }
-  const [guardian] = await db.select().from(guardiansTable).where(eq(guardiansTable.id, invoice.guardianId));
+  const [guardian] = await db.select().from(guardiansTable).where(and(
+    eq(guardiansTable.id, invoice.guardianId),
+    eq(guardiansTable.ownerId, context.ownerId),
+    branchCondition(guardiansTable.branchId, context.branchIds),
+  ));
   if (!guardian) {
     res.status(404).json({ error: "Guardian not found for invoice" });
     return;

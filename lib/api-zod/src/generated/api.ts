@@ -856,6 +856,11 @@ export const ListStaffResponseItem = zod.object({
     "disabled",
   ]),
   branchId: zod.number().nullish(),
+  scope: zod.object({
+    organizationIds: zod.array(zod.number()),
+    branchIds: zod.array(zod.number()),
+    fullAccess: zod.boolean(),
+  }),
 });
 export const ListStaffResponse = zod.array(ListStaffResponseItem);
 export const createStaffBodyPhoneMin = 5;
@@ -888,6 +893,11 @@ export const CreateStaffResponse = zod.object({
     "disabled",
   ]),
   branchId: zod.number().nullish(),
+  scope: zod.object({
+    organizationIds: zod.array(zod.number()),
+    branchIds: zod.array(zod.number()),
+    fullAccess: zod.boolean(),
+  }),
 });
 export const LinkStaffAccountParams = zod.object({
   id: zod.coerce.number(),
@@ -984,6 +994,38 @@ export const AdminCreateAccountResponse = zod.object({
   accountStatus: zod.string(),
   role: zod.string().optional(),
   name: zod.string().optional(),
+});
+export const SetStaffScopeParams = zod.object({
+  id: zod.coerce.number(),
+});
+export const SetStaffScopeBody = zod.object({
+  organizationIds: zod.array(zod.number()),
+  branchIds: zod.array(zod.number()),
+});
+export const SetStaffScopeResponse = zod.object({
+  id: zod.number(),
+  name: zod.string(),
+  role: zod.string(),
+  phone: zod.string(),
+  status: zod.enum(["present", "absent", "leave"]),
+  attendanceRate: zod.number(),
+  avatarUrl: zod.string().nullish(),
+  email: zod.string().nullish(),
+  jobTitle: zod.string().nullish(),
+  hireDate: zod.string().nullish(),
+  clerkUserId: zod.string().nullish(),
+  accountStatus: zod.enum([
+    "unlinked",
+    "pending_verification",
+    "active",
+    "disabled",
+  ]),
+  branchId: zod.number().nullish(),
+  scope: zod.object({
+    organizationIds: zod.array(zod.number()),
+    branchIds: zod.array(zod.number()),
+    fullAccess: zod.boolean(),
+  }),
 });
 export const RequestStaffPasswordResetBody = zod.object({
   email: zod.string().email(),
@@ -1721,6 +1763,10 @@ export const GetParentOverviewResponse = zod.object({
 export const GetSessionContextResponse = zod.object({
   role: zod.enum(["parent", "admin", "pending"]),
   effectivePermissions: zod.array(zod.string()),
+  branchScope: zod.object({
+    fullAccess: zod.boolean(),
+    branchIds: zod.array(zod.number()),
+  }),
 });
 /**
  * @summary List children belonging to the authenticated guardian
@@ -2136,6 +2182,11 @@ export const UpdateStaffResponse = zod.object({
     "disabled",
   ]),
   branchId: zod.number().nullish(),
+  scope: zod.object({
+    organizationIds: zod.array(zod.number()),
+    branchIds: zod.array(zod.number()),
+    fullAccess: zod.boolean(),
+  }),
 });
 export const DeleteStaffParams = zod.object({
   id: zod.coerce.number(),

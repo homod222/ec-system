@@ -602,6 +602,114 @@ describe.sequential("application registration regression flow", () => {
     }
   });
 
+  it("enforces staff branch scopes, organization assignments, branch selection, and admin access", async () => {
+    const ownerId = `branch-scope-owner-${randomUUID()}`;
+    const organizationId = (await pool.query<{ id: number }>(
+      "insert into organizations (owner_id, name, code) values ($1, $2, $3) returning id",
+      [ownerId, "Branch scope organization", `SCOPE-${randomUUID()}`],
+    )).rows[0].id;
+    const branchA = (await pool.query<{ id: number }>(
+      "insert into nursery_branches (owner_id, organization_id, name, code) values ($1, $2, $3, $4) returning id",
+      [ownerId, organizationId, "Branch A", `SCOPEA-${randomUUID()}`],
+    )).rows[0].id;
+    const branchB = (await pool.query<{ id: number }>(
+      "insert into nursery_branches (owner_id, organization_id, name, code) values ($1, $2, $3, $4) returning id",
+      [ownerId, organizationId, "Branch B", `SCOPEB-${randomUUID()}`],
+    )).rows[0].id;
+    const otherBranch = (await pool.query<{ id: number }>(
+      "insert into nursery_branches (owner_id, name, code) values ($1, $2, $3) returning id",
+      [ownerB, "Other branch", `SCOPEOTHER-${randomUUID()}`],
+    )).rows[0].id;
+    const createChild = async (branchId: number, label: string) => {
+      const guardian = (await pool.query<{ id: number }>(
+        "insert into guardians (owner_id, branch_id, name, phone) values ($1, $2, $3, $4) returning id",
+        [ownerId, branchId, `Guardian ${label}`, `scope-${randomUUID()}`],
+      )).rows[0].id;
+      return (await pool.query<{ id: number }>(
+        `insert into children
+          (owner_id, branch_id, guardian_id, first_name, last_name, gender, birth_date, level)
+         values ($1, $2, $3, $4, 'Scope', 'female', '2021-01-01', 'test')
+         returning id`,
+        [ownerId, branchId, guardian, label],
+      )).rows[0].id;
+    };
+    const childA = await createChild(branchA, "A");
+    const childB = await createChild(branchB, "B");
+    const teacherAccount = (await pool.query<{ id: number }>(
+      `insert into public_auth_accounts
+        (normalized_phone, full_name, email, account_type, account_status, role, owner_id)
+       values ($1, 'Scoped teacher', $2, 'staff', 'active', 'teacher', $3) returning id`,
+      [`scope-${randomUUID()}`, `scope-teacher-${randomUUID()}@example.test`, ownerId],
+    )).rows[0].id;
+    const teacherId = (await pool.query<{ id: number }>(
+      `insert into staff
+        (owner_id, branch_id, name, role, phone, clerk_user_id, account_status)
+       values ($1, $2, 'Scoped teacher', 'teacher', $3, $4, 'active') returning id`,
+      [ownerId, branchA, `965${Math.floor(1_000_000 + Math.random() * 9_000_000)}`, `local_${teacherAccount}`],
+    )).rows[0].id;
+    await pool.query("update public_auth_accounts set staff_id = $1 where id = $2", [teacherId, teacherAccount]);
+    await pool.query(
+      "insert into user_permissions (owner_id, user_id, operation, allowed) values ($1, $2, 'write:children', true)",
+      [ownerId, String(teacherAccount)],
+    );
+    const adminAccount = (await pool.query<{ id: number }>(
+      `insert into public_auth_accounts
+        (normalized_phone, full_name, email, account_type, account_status, role, owner_id)
+       values ($1, 'Scoped admin', $2, 'staff', 'active', 'admin', $3) returning id`,
+      [`admin-scope-${randomUUID()}`, `scope-admin-${randomUUID()}@example.test`, ownerId],
+    )).rows[0].id;
+    const adminId = (await pool.query<{ id: number }>(
+      `insert into staff
+        (owner_id, branch_id, name, role, phone, clerk_user_id, account_status)
+       values ($1, $2, 'Scoped admin', 'admin', $3, $4, 'active') returning id`,
+      [ownerId, branchA, `965${Math.floor(1_000_000 + Math.random() * 9_000_000)}`, `local_${adminAccount}`],
+    )).rows[0].id;
+    await pool.query("update public_auth_accounts set staff_id = $1 where id = $2", [adminId, adminAccount]);
+
+    const teacherHeaders = () => auth(String(teacherAccount), "teacher");
+    const adminHeaders = () => auth(String(adminAccount), "admin");
+    try {
+      await pool.query(
+        "insert into staff_scope_assignments (owner_id, staff_id, branch_id) values ($1, $2, $3)",
+        [ownerId, teacherId, branchB],
+      );
+      await request(app).get("/api/children").set(teacherHeaders()).expect(200)
+        .expect(({ body }) => {
+          expect(body.map((child: { id: number }) => child.id)).toEqual([childB]);
+        });
+      await request(app).get("/api/branches").set(teacherHeaders()).expect(200)
+        .expect(({ body }) => expect(body.map((branch: { id: number }) => branch.id)).toEqual([branchB]));
+      await request(app).post("/api/children").set(teacherHeaders()).send({
+        firstName: "Denied", lastName: "Child", gender: "female", birthDate: "2022-01-01",
+        branchId: branchA, guardianName: "Denied guardian", guardianPhone: "0555555555", level: "test",
+      }).expect(403, { error: "Branch not permitted" });
+
+      await pool.query("delete from staff_scope_assignments where staff_id = $1", [teacherId]);
+      await pool.query(
+        "insert into staff_scope_assignments (owner_id, staff_id, organization_id) values ($1, $2, $3)",
+        [ownerId, teacherId, organizationId],
+      );
+      await request(app).get("/api/branches").set(teacherHeaders()).expect(200)
+        .expect(({ body }) => expect(body.map((branch: { id: number }) => branch.id).sort()).toEqual([branchA, branchB].sort()));
+      await request(app).get("/api/children").set({ ...teacherHeaders(), "x-branch-id": String(branchA) }).expect(200)
+        .expect(({ body }) => expect(body.map((child: { id: number }) => child.id)).toEqual([childA]));
+      await request(app).get("/api/children").set({ ...teacherHeaders(), "x-branch-id": String(otherBranch) }).expect(200)
+        .expect(({ body }) => expect(body.map((child: { id: number }) => child.id).sort()).toEqual([childA, childB].sort()));
+      await request(app).get("/api/children").set(adminHeaders()).expect(200)
+        .expect(({ body }) => expect(body.map((child: { id: number }) => child.id).sort()).toEqual([childA, childB].sort()));
+    } finally {
+      await pool.query("delete from staff_scope_assignments where owner_id = $1", [ownerId]);
+      await pool.query("delete from user_permissions where owner_id = $1", [ownerId]);
+      await pool.query("delete from public_auth_accounts where id = any($1::int[])", [[teacherAccount, adminAccount]]);
+      await pool.query("delete from staff where id = any($1::int[])", [[teacherId, adminId]]);
+      await pool.query("delete from children where id = any($1::int[])", [[childA, childB]]);
+      await pool.query("delete from guardians where owner_id = $1", [ownerId]);
+      await pool.query("delete from nursery_branches where id = any($1::int[])", [[branchA, branchB]]);
+      await pool.query("delete from organizations where id = $1", [organizationId]);
+      await pool.query("delete from nursery_branches where id = $1", [otherBranch]);
+    }
+  });
+
   it("lets one active legacy account in the public nursery use phone and Clerk password", async () => {
     const clerkUserId = `legacy-password-user-${randomUUID()}`;
     const phone = `6${Math.floor(1_000_000 + Math.random() * 9_000_000)}`;

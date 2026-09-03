@@ -5,9 +5,11 @@
  * API for the nursery management platform
  * OpenAPI spec version: 0.1.0
  */
+import type { SessionContextBranchScope } from './sessionContextBranchScope';
 import type { SessionContextRole } from './sessionContextRole';
 
 export interface SessionContext {
   role: SessionContextRole;
   effectivePermissions: string[];
+  branchScope: SessionContextBranchScope;
 }

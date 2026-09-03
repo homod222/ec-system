@@ -127,6 +127,7 @@ import type {
   StaffPasswordResetCompleteResult,
   StaffPasswordResetRequest,
   StaffPasswordResetRequestResult,
+  StaffScopeInput,
   UploadUrlRequest,
   UploadUrlResponse,
   UserPermission,
@@ -3203,6 +3204,87 @@ export const useAdminCreateAccount = <
   TContext
 > => {
   return useMutation(getAdminCreateAccountMutationOptions(options));
+};
+
+export const getSetStaffScopeUrl = (id: number) => {
+  return `/api/staff/${id}/scope`;
+};
+
+export const setStaffScope = async (
+  id: number,
+  staffScopeInput: StaffScopeInput,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<StaffMember> => {
+  return customFetch<StaffMember>(getSetStaffScopeUrl(id), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(staffScopeInput),
+  });
+};
+
+export const getSetStaffScopeMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof setStaffScope>>,
+    TError,
+    { id: number; data: BodyType<StaffScopeInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof setStaffScope>>,
+  TError,
+  { id: number; data: BodyType<StaffScopeInput> },
+  TContext
+> => {
+  const mutationKey = ["setStaffScope"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof setStaffScope>>,
+    { id: number; data: BodyType<StaffScopeInput> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return setStaffScope(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SetStaffScopeMutationResult = NonNullable<
+  Awaited<ReturnType<typeof setStaffScope>>
+>;
+export type SetStaffScopeMutationBody = BodyType<StaffScopeInput>;
+export type SetStaffScopeMutationError = ErrorType<void>;
+
+export const useSetStaffScope = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof setStaffScope>>,
+    TError,
+    { id: number; data: BodyType<StaffScopeInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof setStaffScope>>,
+  TError,
+  { id: number; data: BodyType<StaffScopeInput> },
+  TContext
+> => {
+  return useMutation(getSetStaffScopeMutationOptions(options));
 };
 
 export const getRequestStaffPasswordResetUrl = () => {

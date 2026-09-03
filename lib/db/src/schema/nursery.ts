@@ -8,6 +8,7 @@ import {
   serial,
   text,
   timestamp,
+  check,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
@@ -140,6 +141,25 @@ export const staffTable = pgTable("staff", {
   passwordResetRequestedAt: timestamp("password_reset_requested_at", { withTimezone: true }),
 }, (table) => [
   uniqueIndex("staff_clerk_user_id_unique").on(table.clerkUserId),
+]);
+
+export const staffScopeAssignmentsTable = pgTable("staff_scope_assignments", {
+  id: serial("id").primaryKey(),
+  ownerId: text("owner_id").notNull(),
+  staffId: integer("staff_id").notNull(),
+  organizationId: integer("organization_id"),
+  branchId: integer("branch_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("staff_scope_assignments_unique").on(
+    table.staffId,
+    sql`coalesce(${table.organizationId}, 0)`,
+    sql`coalesce(${table.branchId}, 0)`,
+  ),
+  check(
+    "staff_scope_assignments_one_target",
+    sql`(${table.organizationId} is null) <> (${table.branchId} is null)`,
+  ),
 ]);
 
 export const attendanceTable = pgTable("attendance", {

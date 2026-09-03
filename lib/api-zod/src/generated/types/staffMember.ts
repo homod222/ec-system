@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { StaffMemberAccountStatus } from './staffMemberAccountStatus';
+import type { StaffMemberScope } from './staffMemberScope';
 import type { StaffMemberStatus } from './staffMemberStatus';
 
 export interface StaffMember {
@@ -28,4 +29,5 @@ export interface StaffMember {
   accountStatus: StaffMemberAccountStatus;
   /** @nullable */
   branchId?: number | null;
+  scope: StaffMemberScope;
 }

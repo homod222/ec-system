@@ -39,11 +39,12 @@ import {
   ObjectStorageService,
 } from "../lib/objectStorage";
 import { checkClassroomCapacity } from "../lib/classroomCapacity";
-import { defaultBranchId } from "../lib/branchScope";
+import { branchCondition, classroomBranchMismatch, defaultBranchId } from "../lib/branchScope";
 import {
   auditNurseryOperation,
   nurseryContext,
   requireNurseryPermission,
+  requireBranchAccess,
   resolveNurseryContext,
 } from "./nurseryOperations";
 
@@ -90,6 +91,7 @@ async function lockApplication(
   tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
   id: number,
   ownerId: string,
+  branchIds: import("../lib/branchScope").BranchScope = null,
 ) {
   await tx.execute(sql`select id from applications where id = ${id} and owner_id = ${ownerId} for update`);
   const [application] = await tx
@@ -98,6 +100,7 @@ async function lockApplication(
     .where(and(
       eq(applicationsTable.id, id),
       eq(applicationsTable.ownerId, ownerId),
+      branchCondition(applicationsTable.branchId, branchIds),
     ));
   return application;
 }
@@ -116,6 +119,7 @@ router.get("/applications", requireNurseryPermission("read:application"), async 
     .from(applicationsTable)
     .where(and(
       eq(applicationsTable.ownerId, nurseryContext(req).ownerId),
+      branchCondition(applicationsTable.branchId, nurseryContext(req).branchIds),
       parsed.data.status ? eq(applicationsTable.status, parsed.data.status) : undefined,
       parsed.data.type ? eq(applicationsTable.type, parsed.data.type) : undefined,
     ))
@@ -131,10 +135,14 @@ router.post("/applications", requireNurseryPermission("write:application"), asyn
     return;
   }
 
-  const ownerId = nurseryContext(req).ownerId;
+  const { ownerId, branchIds } = nurseryContext(req);
   const result = await db.transaction(async (tx) => {
-    const branchId = await defaultBranchId(tx, ownerId);
+    const branchId = await defaultBranchId(tx, ownerId, branchIds);
+    if (!requireBranchAccess({ branchIds }, branchId)) return { kind: "branchNotPermitted" as const };
     if (parsed.data.classroomId != null) {
+      if (await classroomBranchMismatch(tx, ownerId, parsed.data.classroomId, branchId)) {
+        return { kind: "missing" as const };
+      }
       const capacity = await checkClassroomCapacity(tx, ownerId, parsed.data.classroomId);
       if (capacity.kind !== "available") return capacity;
     }
@@ -152,6 +160,10 @@ router.post("/applications", requireNurseryPermission("write:application"), asyn
   });
   if (result.kind === "missing") {
     res.status(404).json({ error: "Classroom not found" });
+    return;
+  }
+  if (result.kind === "branchNotPermitted") {
+    res.status(403).json({ error: "Branch not permitted" });
     return;
   }
   if (result.kind === "full") {
@@ -177,6 +189,7 @@ router.get("/applications/:id", requireNurseryPermission("read:application"), as
     .where(and(
       eq(applicationsTable.id, parsed.data.id),
       eq(applicationsTable.ownerId, nurseryContext(req).ownerId),
+      branchCondition(applicationsTable.branchId, nurseryContext(req).branchIds),
     ));
   if (!application) {
     res.status(404).json({ error: "Application not found" });
@@ -198,10 +211,19 @@ router.patch("/applications/:id", requireNurseryPermission("write:application"),
   }
 
   const result = await db.transaction(async (tx) => {
-    const current = await lockApplication(tx, params.data.id, nurseryContext(req).ownerId);
+    const context = nurseryContext(req);
+    const current = await lockApplication(tx, params.data.id, context.ownerId, context.branchIds);
     if (!current) return { kind: "missing" as const };
     if (current.status === "accepted") return { kind: "accepted" as const };
     if (body.data.classroomId != null && body.data.classroomId !== current.classroomId) {
+      if (await classroomBranchMismatch(
+        tx,
+        current.ownerId,
+        body.data.classroomId,
+        current.branchId,
+      )) {
+        return { kind: "classroomMissing" as const };
+      }
       const capacity = await checkClassroomCapacity(
         tx,
         current.ownerId,
@@ -217,6 +239,7 @@ router.patch("/applications/:id", requireNurseryPermission("write:application"),
       .where(and(
         eq(applicationsTable.id, current.id),
         eq(applicationsTable.ownerId, current.ownerId),
+        branchCondition(applicationsTable.branchId, context.branchIds),
       ))
       .returning();
     return { kind: "updated" as const, application, before: current };
@@ -270,7 +293,7 @@ router.post("/applications/:id/documents", requireNurseryPermission("write:appli
     res.status(415).json({ error: "Unsupported document type" });
     return;
   }
-  const ownerId = nurseryContext(req).ownerId;
+  const { ownerId, branchIds } = nurseryContext(req);
   const now = new Date();
   const [grant] = await db.select().from(uploadGrantsTable).where(and(
     eq(uploadGrantsTable.objectPath, body.data.objectPath),
@@ -314,7 +337,7 @@ router.post("/applications/:id/documents", requireNurseryPermission("write:appli
   }
 
   const result = await db.transaction(async (tx) => {
-    const application = await lockApplication(tx, params.data.id, ownerId);
+    const application = await lockApplication(tx, params.data.id, ownerId, branchIds);
     if (!application) return { kind: "missing" as const };
     if (application.status === "accepted") return { kind: "accepted" as const };
     await tx.execute(sql`select id from upload_grants where id = ${grant.id} for update`);
@@ -369,12 +392,14 @@ router.get("/applications/:applicationId/documents/:documentId/content", require
     res.status(400).json({ error: params.error.message });
     return;
   }
+  const context = nurseryContext(req);
   const [result] = await db
     .select({ document: applicationDocumentsTable })
     .from(applicationDocumentsTable)
     .innerJoin(applicationsTable, and(
       eq(applicationDocumentsTable.applicationId, applicationsTable.id),
-      eq(applicationsTable.ownerId, nurseryContext(req).ownerId),
+      eq(applicationsTable.ownerId, context.ownerId),
+      branchCondition(applicationsTable.branchId, context.branchIds),
     ))
     .where(and(
       eq(applicationDocumentsTable.id, params.data.documentId),
@@ -432,7 +457,8 @@ router.patch("/applications/:id/status", requireNurseryPermission("write:applica
   }
 
   const result = await db.transaction(async (tx) => {
-    const current = await lockApplication(tx, params.data.id, nurseryContext(req).ownerId);
+    const context = nurseryContext(req);
+    const current = await lockApplication(tx, params.data.id, context.ownerId, context.branchIds);
     if (!current) return { kind: "missing" as const };
     const allowed = (current.status === "new" &&
       (body.data.status === "reviewing" || body.data.status === "rejected")) ||
@@ -444,6 +470,7 @@ router.patch("/applications/:id/status", requireNurseryPermission("write:applica
     }).where(and(
       eq(applicationsTable.id, current.id),
       eq(applicationsTable.ownerId, current.ownerId),
+      branchCondition(applicationsTable.branchId, context.branchIds),
     )).returning();
     return { kind: "updated" as const, application, before: current };
   });
@@ -468,28 +495,33 @@ router.post("/applications/:id/accept", requireNurseryPermission("accept:applica
     res.status(400).json({ error: params.error.message });
     return;
   }
-  const { ownerId, actorId } = nurseryContext(req);
+  const { ownerId, actorId, branchIds } = nurseryContext(req);
 
   const result = await db.transaction(async (tx) => {
-    const application = await lockApplication(tx, params.data.id, ownerId);
+    const application = await lockApplication(tx, params.data.id, ownerId, branchIds);
     if (!application) return { kind: "missing" as const };
     if (application.status === "accepted") {
       return { kind: "accepted" as const, application, before: null };
     }
     if (application.status !== "reviewing") return { kind: "illegal" as const };
-    const applicationBranchId = application.branchId ?? await defaultBranchId(tx, application.ownerId);
+    const applicationBranchId = application.branchId ?? await defaultBranchId(tx, application.ownerId, branchIds);
+    if (!requireBranchAccess({ branchIds }, applicationBranchId)) return { kind: "branchNotPermitted" as const };
     let childId: number;
     if (application.type === "renewal") {
       if (!application.sourceChildId) return { kind: "childMissing" as const };
       const [child] = await tx
         .select()
         .from(childrenTable)
-        .where(and(
+      .where(and(
           eq(childrenTable.id, application.sourceChildId),
           eq(childrenTable.ownerId, application.ownerId),
+          branchCondition(childrenTable.branchId, branchIds),
         ));
       if (!child) return { kind: "childMissing" as const };
       if (application.classroomId != null) {
+        if (await classroomBranchMismatch(tx, application.ownerId, application.classroomId, applicationBranchId)) {
+          return { kind: "classroomMissing" as const };
+        }
         const capacity = await checkClassroomCapacity(
           tx,
           application.ownerId,
@@ -506,6 +538,7 @@ router.post("/applications/:id/accept", requireNurseryPermission("accept:applica
       }).where(and(
         eq(guardiansTable.id, child.guardianId),
         eq(guardiansTable.ownerId, application.ownerId),
+        branchCondition(guardiansTable.branchId, branchIds),
       )).returning();
       if (!guardian) return { kind: "childMissing" as const };
       await tx.update(childrenTable).set({
@@ -521,10 +554,14 @@ router.post("/applications/:id/accept", requireNurseryPermission("accept:applica
       }).where(and(
         eq(childrenTable.id, child.id),
         eq(childrenTable.ownerId, application.ownerId),
+        branchCondition(childrenTable.branchId, branchIds),
       ));
       childId = child.id;
     } else {
       if (application.classroomId != null) {
+        if (await classroomBranchMismatch(tx, application.ownerId, application.classroomId, applicationBranchId)) {
+          return { kind: "classroomMissing" as const };
+        }
         const capacity = await checkClassroomCapacity(
           tx,
           application.ownerId,
@@ -582,6 +619,7 @@ router.post("/applications/:id/accept", requireNurseryPermission("accept:applica
     }).where(and(
       eq(applicationsTable.id, application.id),
       eq(applicationsTable.ownerId, application.ownerId),
+      branchCondition(applicationsTable.branchId, branchIds),
     )).returning();
     await tx.update(applicationDocumentsTable).set({ childId })
       .where(eq(applicationDocumentsTable.applicationId, application.id));
@@ -597,6 +635,10 @@ router.post("/applications/:id/accept", requireNurseryPermission("accept:applica
 
   if (result.kind === "missing") {
     res.status(404).json({ error: "Application not found" });
+    return;
+  }
+  if (result.kind === "branchNotPermitted") {
+    res.status(403).json({ error: "Branch not permitted" });
     return;
   }
   if (result.kind === "childMissing") {
@@ -638,19 +680,21 @@ router.post(
     res.status(400).json({ error: params.error.message });
     return;
   }
-  const { ownerId, actorId } = nurseryContext(req);
+  const { ownerId, actorId, branchIds } = nurseryContext(req);
 
   const result = await db.transaction(async (tx) => {
     await tx.execute(sql`select id from children where id = ${params.data.id} and owner_id = ${ownerId} for update`);
     const [child] = await tx.select().from(childrenTable).where(and(
       eq(childrenTable.id, params.data.id),
       eq(childrenTable.ownerId, ownerId),
+      branchCondition(childrenTable.branchId, branchIds),
     ));
     if (!child) return undefined;
     const pending = await tx.select().from(applicationsTable).where(and(
       eq(applicationsTable.type, "renewal"),
       eq(applicationsTable.sourceChildId, child.id),
       eq(applicationsTable.ownerId, ownerId),
+      branchCondition(applicationsTable.branchId, branchIds),
     ));
     const existing = pending.find((application) =>
       application.status === "new" || application.status === "reviewing");
@@ -659,6 +703,7 @@ router.post(
     const [guardian] = await tx.select().from(guardiansTable).where(and(
       eq(guardiansTable.id, child.guardianId),
       eq(guardiansTable.ownerId, ownerId),
+      branchCondition(guardiansTable.branchId, branchIds),
     ));
     if (!guardian) return undefined;
     let classroomId: number | null = null;
@@ -666,6 +711,7 @@ router.post(
       const [classroom] = await tx.select({ id: classroomsTable.id }).from(classroomsTable).where(and(
         eq(classroomsTable.id, child.classroomId),
         eq(classroomsTable.ownerId, ownerId),
+        branchCondition(classroomsTable.branchId, branchIds),
       ));
       classroomId = classroom?.id ?? null;
     }
@@ -684,7 +730,7 @@ router.post(
       guardianName: guardian.name,
       guardianPhone: guardian.phone,
       guardianEmail: guardian.email,
-      branchId: child.branchId ?? await defaultBranchId(tx, ownerId),
+      branchId: child.branchId ?? await defaultBranchId(tx, ownerId, branchIds),
     }).returning();
     await tx.insert(activitiesTable).values({
       ownerId,
