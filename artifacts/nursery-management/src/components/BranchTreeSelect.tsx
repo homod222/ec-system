@@ -251,7 +251,7 @@ export function BranchTreeSelect(props: BranchTreeSelectProps) {
                 const expanded = search.trim() !== '' || !collapsedOrganizations.has(organization.id);
                 return (
                   <div key={organization.id} className="rounded-lg">
-                    <div className={cn('flex items-center gap-1 rounded-lg px-2 py-2 hover:bg-muted')}>
+                    <div className="flex items-center gap-1 rounded-lg bg-primary/10 px-2 py-2 text-primary hover:bg-primary/15">
                       {props.mode === 'multi' ? (
                         <Checkbox
                           data-testid={`${props.testId}-org-${organization.id}`}
