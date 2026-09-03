@@ -56,9 +56,6 @@ export type BranchTreeSelectProps = SingleProps | MultiProps;
 
 export function BranchTreeSelect(props: BranchTreeSelectProps) {
   const { t, dir } = useI18n();
-  const mirrored = dir === 'rtl';
-  const rowDirection = mirrored ? 'flex-row-reverse' : '';
-  const branchIndent = mirrored ? 'ps-2 pe-10' : 'pe-2 ps-10';
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [collapsedOrganizations, setCollapsedOrganizations] = useState<Set<number>>(new Set());
@@ -235,7 +232,6 @@ export function BranchTreeSelect(props: BranchTreeSelectProps) {
               type="button"
               className={cn(
                 'flex w-full items-center gap-2 border-b border-border px-4 py-3 text-start text-sm font-medium transition-colors hover:bg-muted',
-                rowDirection,
                 (props.mode === 'single' ? !props.value : !selectedLabels.length) && 'bg-primary/10 text-primary',
               )}
               onClick={clearSelection}
@@ -255,7 +251,7 @@ export function BranchTreeSelect(props: BranchTreeSelectProps) {
                 const expanded = search.trim() !== '' || !collapsedOrganizations.has(organization.id);
                 return (
                   <div key={organization.id} className="rounded-lg">
-                    <div className={cn('flex items-center gap-1 rounded-lg px-2 py-2 hover:bg-muted', rowDirection)}>
+                    <div className={cn('flex items-center gap-1 rounded-lg px-2 py-2 hover:bg-muted')}>
                       {props.mode === 'multi' ? (
                         <Checkbox
                           data-testid={`${props.testId}-org-${organization.id}`}
@@ -268,11 +264,11 @@ export function BranchTreeSelect(props: BranchTreeSelectProps) {
                       )}
                       <button
                         type="button"
-                        className={cn('flex min-w-0 flex-1 items-center gap-2 text-start', rowDirection)}
+                        className={cn('flex min-w-0 flex-1 items-center gap-2 text-start')}
                         onClick={() => toggleCollapsed(organization.id)}
                       >
-                        <Building2 className="h-4 w-4 shrink-0 text-primary" />
-                        {expanded ? <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground rtl:rotate-180" />}
+                        <Building2 className="h-4 w-4 shrink-0 text-primary rtl:order-last" />
+                        {expanded ? <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground rtl:order-last" /> : <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground rtl:order-last rtl:rotate-180" />}
                         <span className="min-w-0 flex-1 truncate text-sm font-bold">{organization.name}</span>
                       </button>
                     </div>
@@ -289,8 +285,7 @@ export function BranchTreeSelect(props: BranchTreeSelectProps) {
                                 data-testid={`${props.testId}-branch-${branch.id}`}
                                 className={cn(
                                   'flex w-full items-center gap-2 rounded-lg py-2 text-start text-sm transition-colors hover:bg-muted',
-                                  rowDirection,
-                                  branchIndent,
+                                  'pe-2 ps-10',
                                   branchSelected && 'bg-primary/10 font-bold text-primary',
                                 )}
                                 onClick={() => {
@@ -310,8 +305,7 @@ export function BranchTreeSelect(props: BranchTreeSelectProps) {
                               key={branch.id}
                               className={cn(
                                 'flex items-center gap-2 rounded-lg py-2 text-sm transition-colors hover:bg-muted',
-                                rowDirection,
-                                branchIndent,
+                                'pe-2 ps-10',
                                 disabled && 'opacity-70',
                               )}
                             >
