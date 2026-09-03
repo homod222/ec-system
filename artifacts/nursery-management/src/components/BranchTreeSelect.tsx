@@ -162,7 +162,7 @@ export function BranchTreeSelect(props: BranchTreeSelectProps) {
 
   const triggerLabel = props.mode === 'single'
     ? selectedBranch
-      ? `${selectedBranch.name} (${selectedBranch.code})`
+      ? selectedBranch.name
       : props.allowAll && !props.value
         ? props.allLabel || t('branchTree.allBranches')
         : props.placeholder || t('branchTree.selectBranch')
@@ -257,10 +257,7 @@ export function BranchTreeSelect(props: BranchTreeSelectProps) {
                     >
                       {expanded ? <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />}
                       {props.mode === 'multi' && <Building2 className="h-4 w-4 shrink-0 text-primary" />}
-                      <span className="min-w-0 truncate text-sm font-bold">
-                        {organization.name}
-                        <span className="ms-1 text-xs font-medium text-muted-foreground">({organization.code})</span>
-                      </span>
+                      <span className="min-w-0 truncate text-sm font-bold">{organization.name}</span>
                     </button>
                   </div>
                   {expanded && (
@@ -284,7 +281,6 @@ export function BranchTreeSelect(props: BranchTreeSelectProps) {
                               }}
                             >
                               <span className="min-w-0 truncate">{branch.name}</span>
-                              <span className="ms-auto shrink-0 text-xs text-muted-foreground">({branch.code})</span>
                               {branchSelected && <Check className="h-4 w-4 shrink-0" />}
                             </button>
                           );
@@ -305,7 +301,6 @@ export function BranchTreeSelect(props: BranchTreeSelectProps) {
                               aria-label={branch.name}
                             />
                             <span className="min-w-0 truncate">{branch.name}</span>
-                            <span className="ms-auto shrink-0 text-xs text-muted-foreground">({branch.code})</span>
                           </label>
                         );
                       })}
