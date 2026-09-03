@@ -9,8 +9,6 @@ import {
   useUpdateStaff,
   useDeleteStaff,
   useGetSessionContext,
-  useListBranches,
-  useListOrganizations,
   useSetStaffScope,
 } from '@workspace/api-client-react';
 import type { GuardianAccountResult, StaffMember } from '@workspace/api-client-react';
@@ -19,6 +17,7 @@ import { KeyRound, Pencil, Plus, Search, ShieldCheck, Trash2, UserX, X } from 'l
 import { Shell, Button, Pill, Avatar, QueryState, PageHeader } from '../../App';
 import { accountRoleValues, StaffAccountDialog } from './StaffExpanded';
 import { useI18n } from '../../i18n';
+import { BranchTreeSelect } from '../../components/BranchTreeSelect';
 
 type Tab = 'guardians' | 'staff';
 
@@ -457,16 +456,10 @@ function StaffScopeDialog({
   onSaved: () => void;
 }) {
   const { t } = useI18n();
-  const organizations = useListOrganizations({ request: { headers: { 'x-branch-id': '' } } });
-  const branches = useListBranches(undefined, { request: { headers: { 'x-branch-id': '' } } });
   const setScope = useSetStaffScope();
   const [organizationIds, setOrganizationIds] = useState<number[]>(member.scope.organizationIds);
   const [branchIds, setBranchIds] = useState<number[]>(member.scope.branchIds);
   const [error, setError] = useState('');
-
-  const toggle = (values: number[], id: number, setter: (next: number[]) => void) => {
-    setter(values.includes(id) ? values.filter((value) => value !== id) : [...values, id]);
-  };
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
@@ -492,50 +485,15 @@ function StaffScopeDialog({
           <Pill tone="blue">{t('users.scopeFullAccess')}</Pill>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-6">
-            <fieldset>
-              <legend className="mb-3 text-sm font-bold">{t('users.scopeOrganizations')}</legend>
-              <div className="grid gap-2 sm:grid-cols-2">
-                {(organizations.data || []).map((organization) => (
-                  <label key={organization.id} className="flex items-center gap-3 rounded-xl border border-border bg-background px-4 py-3 text-sm font-medium">
-                    <input
-                      type="checkbox"
-                      checked={organizationIds.includes(organization.id)}
-                      onChange={() => toggle(organizationIds, organization.id, setOrganizationIds)}
-                      className="h-4 w-4 accent-primary"
-                    />
-                    <span>{organization.name} <span className="text-xs text-muted-foreground">({organization.code})</span></span>
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-
-            <fieldset>
-              <legend className="mb-3 text-sm font-bold">{t('users.scopeBranches')}</legend>
-              <div className="space-y-4">
-                {(organizations.data || []).map((organization) => {
-                  const organizationBranches = (branches.data || []).filter((branch) => branch.organizationId === organization.id);
-                  if (!organizationBranches.length) return null;
-                  return (
-                    <div key={organization.id}>
-                      <p className="mb-2 text-xs font-bold text-muted-foreground">{organization.name}</p>
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        {organizationBranches.map((branch) => (
-                          <label key={branch.id} className="flex items-center gap-3 rounded-xl border border-border bg-background px-4 py-3 text-sm font-medium">
-                            <input
-                              type="checkbox"
-                              checked={branchIds.includes(branch.id)}
-                              onChange={() => toggle(branchIds, branch.id, setBranchIds)}
-                              className="h-4 w-4 accent-primary"
-                            />
-                            <span>{branch.name} <span className="text-xs text-muted-foreground">({branch.code})</span></span>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </fieldset>
+            <BranchTreeSelect
+              mode="multi"
+              value={{ organizationIds, branchIds }}
+              onChange={({ organizationIds: nextOrganizations, branchIds: nextBranches }) => {
+                setOrganizationIds(nextOrganizations);
+                setBranchIds(nextBranches);
+              }}
+              testId="select-staff-scope"
+            />
 
             <p className="rounded-xl bg-secondary/60 px-4 py-3 text-sm text-muted-foreground">{t('users.scopeHint')}</p>
             {error && <p className="text-sm font-medium text-destructive">{error}</p>}

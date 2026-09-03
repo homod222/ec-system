@@ -57,6 +57,7 @@ import { AuthProvider, useAuth, type AuthUser } from '@/lib/auth-context';
 import { setAuthTokenGetter, setBranchIdGetter } from '@workspace/api-client-react';
 import { getStoredToken } from '@/lib/auth-context';
 import { BranchSelect, branchIdPayload } from './components/BranchSelect';
+import { BranchTreeSelect } from './components/BranchTreeSelect';
 
 const queryClient = new QueryClient();
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
@@ -202,20 +203,18 @@ function BranchScopeSwitcher({
     return <span data-testid="text-branch-scope" className="rounded-full border border-border bg-card px-3 py-1.5 text-xs font-bold text-muted-foreground">{branches[0].name}</span>;
   }
   return (
-    <label className="flex items-center gap-2 text-xs font-bold text-muted-foreground">
+    <div className="min-w-0">
       <span className="sr-only">{t('admin.currentBranch')}</span>
-      <select
-        data-testid="select-branch-scope"
+      <BranchTreeSelect
+        mode="single"
         value={selectedBranchId}
-        onChange={(event) => onChange(event.target.value)}
-        className="max-w-48 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-bold text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
-      >
-        <option value="">{t('admin.allBranches')}</option>
-        {branches.map((branch) => (
-          <option key={branch.id} value={branch.id}>{branch.name} ({branch.code})</option>
-        ))}
-      </select>
-    </label>
+        onChange={onChange}
+        allowAll={fullAccess || branches.length > 1}
+        allLabel={t('admin.allBranches')}
+        testId="select-branch-scope"
+        compact
+      />
+    </div>
   );
 }
 
