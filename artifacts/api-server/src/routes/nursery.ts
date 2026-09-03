@@ -669,6 +669,7 @@ router.use(async (req, res, next) => {
       if (req.path === "/guardians/accounts") return "read:users";
       if (/^\/guardians\/\d+\/(account|details)$/.test(req.path)) return "write:users";
       if (/^\/guardians\/\d+$/.test(req.path) && req.method === "DELETE") return "delete:users";
+      if (/^\/staff\/\d+\/scope$/.test(req.path)) return "write:users";
       if (/^\/staff\/\d+\/account$/.test(req.path)) return "write:users";
       if (req.path === "/guardians" || req.path.startsWith("/guardians/")) {
         return req.method === "GET" ? "read:children" : "write:children";

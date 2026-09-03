@@ -11,9 +11,10 @@ import {
   getGetSessionContextQueryKey,
   getGetDashboardActivityQueryKey, getGetDashboardSummaryQueryKey, getListClassroomsQueryKey,
   getGetApplicationQueryKey, getListApplicationsQueryKey,
+  getListBranchesQueryKey,
   useAcceptApplication, useAttachApplicationDocument, useCreateApplication, useGetApplication, useRequestUploadUrl,
   useCreateChild, useGetChild, useGetDashboardActivity, useGetDashboardSummary, useGetSessionContext, useListChildren,
-  useListClassrooms, useListGuardians, useListApplications, useUpdateApplication, useUpdateApplicationStatus, useUpdateChild,
+  useListClassrooms, useListGuardians, useListApplications, useListBranches, useUpdateApplication, useUpdateApplicationStatus, useUpdateChild,
 } from '@workspace/api-client-react';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
@@ -53,7 +54,7 @@ import {
   type RegistrationAccountType,
 } from '@/lib/auth-api';
 import { AuthProvider, useAuth, type AuthUser } from '@/lib/auth-context';
-import { setAuthTokenGetter } from '@workspace/api-client-react';
+import { setAuthTokenGetter, setBranchIdGetter } from '@workspace/api-client-react';
 import { getStoredToken } from '@/lib/auth-context';
 import { BranchSelect, branchIdPayload } from './components/BranchSelect';
 
@@ -62,6 +63,7 @@ const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
 
 // Wire up the generated API client to include the JWT on every request
 setAuthTokenGetter(() => getStoredToken());
+setBranchIdGetter(() => localStorage.getItem('ec.selectedBranchId'));
 
 // Read permissions required to see each admin page (any one of them grants access).
 const pagePermissions = {
@@ -181,6 +183,42 @@ export function Avatar({ name, className = '' }: { name: string; className?: str
   return <span className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent text-sm font-bold text-accent-foreground ${className}`}>{initials(name)}</span>;
 }
 
+function BranchScopeSwitcher({
+  branches,
+  fullAccess,
+  selectedBranchId,
+  onChange,
+}: {
+  branches: Array<{ id: number; name: string; code: string }>;
+  fullAccess: boolean;
+  selectedBranchId: string;
+  onChange: (value: string) => void;
+}) {
+  const { t } = useI18n();
+  if (!fullAccess && branches.length === 0) {
+    return <span data-testid="text-branch-scope" className="rounded-full border border-border bg-card px-3 py-1.5 text-xs font-bold text-muted-foreground">{t('admin.noAssignedBranch')}</span>;
+  }
+  if (!fullAccess && branches.length === 1) {
+    return <span data-testid="text-branch-scope" className="rounded-full border border-border bg-card px-3 py-1.5 text-xs font-bold text-muted-foreground">{branches[0].name}</span>;
+  }
+  return (
+    <label className="flex items-center gap-2 text-xs font-bold text-muted-foreground">
+      <span className="sr-only">{t('admin.currentBranch')}</span>
+      <select
+        data-testid="select-branch-scope"
+        value={selectedBranchId}
+        onChange={(event) => onChange(event.target.value)}
+        className="max-w-48 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-bold text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+      >
+        <option value="">{t('admin.allBranches')}</option>
+        {branches.map((branch) => (
+          <option key={branch.id} value={branch.id}>{branch.name} ({branch.code})</option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 export function Skeleton({ className = '' }: { className?: string }) {
   return <div className={`animate-pulse rounded-lg bg-muted ${className}`} />; 
 }
@@ -199,6 +237,28 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const { user, isSignedIn, signOut } = useAuth();
   const { dir, t } = useI18n();
   const session = useGetSessionContext({ query: { enabled: Boolean(isSignedIn), queryKey: getGetSessionContextQueryKey(), retry: false } });
+  const branches = useListBranches(undefined, {
+    query: { enabled: Boolean(isSignedIn), queryKey: getListBranchesQueryKey(), retry: false },
+    request: { headers: { 'x-branch-id': '' } },
+  });
+  const [selectedBranchId, setSelectedBranchId] = useState(() => localStorage.getItem('ec.selectedBranchId') || '');
+  const branchScope = session.data?.branchScope;
+  const availableBranches = branches.data || [];
+
+  useEffect(() => {
+    if (selectedBranchId && !availableBranches.some((branch) => String(branch.id) === selectedBranchId)) {
+      localStorage.removeItem('ec.selectedBranchId');
+      setSelectedBranchId('');
+      queryClient.invalidateQueries();
+    }
+  }, [availableBranches, selectedBranchId]);
+
+  const handleBranchChange = (value: string) => {
+    if (value) localStorage.setItem('ec.selectedBranchId', value);
+    else localStorage.removeItem('ec.selectedBranchId');
+    setSelectedBranchId(value);
+    queryClient.invalidateQueries();
+  };
   const effectivePermissions = session.data?.effectivePermissions;
   const visibleNavGroups = navGroups
     .map((group) => ({ ...group, items: group.items.filter((item) => hasAnyPermission(effectivePermissions, item.permission)) }))
@@ -253,6 +313,12 @@ export function Shell({ children }: { children: React.ReactNode }) {
             <div className="hidden items-center gap-2 text-xs font-bold text-muted-foreground sm:flex">
                <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse-soft" /> {t('admin.systemHealthy')}
             </div>
+            <BranchScopeSwitcher
+              branches={availableBranches}
+              fullAccess={branchScope?.fullAccess ?? false}
+              selectedBranchId={selectedBranchId}
+              onChange={handleBranchChange}
+            />
           </div>
           <div className="flex items-center gap-4">
              <button data-testid="button-notifications" title={t('admin.notifications')} onClick={() => window.alert(t('admin.noNotifications'))} className="relative rounded-xl border border-border bg-card p-2.5 text-muted-foreground hover:text-foreground transition-colors">
