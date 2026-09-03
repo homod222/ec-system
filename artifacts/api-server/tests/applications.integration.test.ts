@@ -693,6 +693,8 @@ describe.sequential("application registration regression flow", () => {
         .expect(({ body }) => expect(body.map((branch: { id: number }) => branch.id).sort()).toEqual([branchA, branchB].sort()));
       await request(app).get("/api/children").set({ ...teacherHeaders(), "x-branch-id": String(branchA) }).expect(200)
         .expect(({ body }) => expect(body.map((child: { id: number }) => child.id)).toEqual([childA]));
+      await request(app).get("/api/children").set({ ...teacherHeaders(), "x-branch-id": `${branchA},${otherBranch},${branchA}` }).expect(200)
+        .expect(({ body }) => expect(body.map((child: { id: number }) => child.id)).toEqual([childA]));
       await request(app).get("/api/children").set({ ...teacherHeaders(), "x-branch-id": String(otherBranch) }).expect(200)
         .expect(({ body }) => expect(body.map((child: { id: number }) => child.id).sort()).toEqual([childA, childB].sort()));
       await request(app).get("/api/children").set(adminHeaders()).expect(200)

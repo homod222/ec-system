@@ -29,8 +29,9 @@ export function BranchSelect({
     if (initializedFromStoredBranch.current || value || query.data === undefined) return;
     initializedFromStoredBranch.current = true;
     const storedBranchId = localStorage.getItem('ec.selectedBranchId');
-    if (storedBranchId && branches.some((branch) => String(branch.id) === storedBranchId)) {
-      onChange(storedBranchId);
+    const storedBranchIds = storedBranchId?.split(',').filter(Boolean) || [];
+    if (storedBranchIds.length === 1 && branches.some((branch) => String(branch.id) === storedBranchIds[0])) {
+      onChange(storedBranchIds[0]);
     }
   }, [branches, onChange, query.data, value]);
 
