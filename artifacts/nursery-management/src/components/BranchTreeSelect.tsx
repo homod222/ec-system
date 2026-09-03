@@ -179,7 +179,7 @@ export function BranchTreeSelect(props: BranchTreeSelectProps) {
       ? selectedLabels.length > (props.compact ? 2 : 3)
         ? t('branchTree.selected', { count: selectedLabels.length })
         : props.compact
-          ? selectedLabels.map(({ label }) => label).join(dir === 'rtl' ? '، ' : ', ')
+          ? selectedLabels.map(({ label }) => label).join(t('branchTree.listSeparator'))
           : selectedLabels.map(({ key, label }) => (
             <Badge key={key} variant="secondary">{label}</Badge>
           ))
