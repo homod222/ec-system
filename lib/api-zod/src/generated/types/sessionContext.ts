@@ -10,6 +10,8 @@ import type { SessionContextRole } from './sessionContextRole';
 
 export interface SessionContext {
   role: SessionContextRole;
+  fullName: string;
+  accountRole: string;
   effectivePermissions: string[];
   branchScope: SessionContextBranchScope;
 }

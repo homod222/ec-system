@@ -2649,11 +2649,15 @@ components:
         announcementsCount: { type: number }
     SessionContext:
       type: object
-      required: [role, effectivePermissions, branchScope]
+      required: [role, fullName, accountRole, effectivePermissions, branchScope]
       properties:
         role:
           type: string
           enum: [parent, admin, pending]
+        fullName:
+          type: string
+        accountRole:
+          type: string
         effectivePermissions:
           type: array
           items: { type: string }
