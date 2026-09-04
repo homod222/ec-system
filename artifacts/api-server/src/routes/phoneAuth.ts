@@ -281,10 +281,21 @@ export function createPhoneAuthRouter(sender: Sender = defaultSender): IRouter {
           : [];
         if (!branch) return void res.status(400).json({ error: "Invalid branch" });
       }
-      const existing = await db.select({ id: publicAuthAccountsTable.id }).from(publicAuthAccountsTable)
-        .where(sql`${publicAuthAccountsTable.normalizedPhone} = ${phone} or lower(${publicAuthAccountsTable.email}) = ${email}`)
-        .limit(1);
-      let eligible = Boolean(publicOwnerId) && existing.length === 0;
+      const [existingPhone, existingEmail] = await Promise.all([
+        db.select({ id: publicAuthAccountsTable.id }).from(publicAuthAccountsTable)
+          .where(eq(publicAuthAccountsTable.normalizedPhone, phone))
+          .limit(1),
+        db.select({ id: publicAuthAccountsTable.id }).from(publicAuthAccountsTable)
+          .where(sql`lower(${publicAuthAccountsTable.email}) = ${email}`)
+          .limit(1),
+      ]);
+      if (existingPhone.length > 0) {
+        return void res.status(409).json({ code: "phone_exists", error: "Phone is already registered" });
+      }
+      if (existingEmail.length > 0) {
+        return void res.status(409).json({ code: "email_exists", error: "Email is already registered" });
+      }
+      let eligible = Boolean(publicOwnerId);
       if (eligible && publicOwnerId && body.data.accountType === "guardian") {
         const matchingGuardians = await db.select({
           clerkUserId: guardiansTable.clerkUserId,
@@ -320,7 +331,7 @@ export function createPhoneAuthRouter(sender: Sender = defaultSender): IRouter {
           }
         }
       }
-      logger.info({ phone, eligible, publicOwnerId, existingCount: existing.length, accountType: body.data.accountType }, "registration eligibility");
+      logger.info({ phone, eligible, publicOwnerId, accountType: body.data.accountType }, "registration eligibility");
       const challenge = await createChallenge(req, {
         purpose: "registration",
         phone,
@@ -549,7 +560,10 @@ export function createPhoneAuthRouter(sender: Sender = defaultSender): IRouter {
       }
     } catch (error) {
       if (typeof error === "object" && error !== null && "code" in error && error.code === "23505") {
-        return void res.status(409).json({ error: "Phone or email is already registered" });
+        const constraint = "constraint" in error && typeof error.constraint === "string" ? error.constraint : undefined;
+        return void res.status(409).json(constraint === "public_auth_accounts_email_unique"
+          ? { code: "email_exists", error: "Email is already registered" }
+          : { code: "phone_exists", error: "Phone is already registered" });
       }
       next(error);
     }

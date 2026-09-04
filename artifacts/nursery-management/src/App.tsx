@@ -973,8 +973,12 @@ function RegistrationForm() {
       if (!result.challengeId) throw new Error('Missing challenge');
       setChallengeId(result.challengeId);
       setResendCountdown(60);
-    } catch {
-      setError(t('auth.registrationRequestError'));
+    } catch (error) {
+      setError(error instanceof AuthApiError && error.code === 'phone_exists'
+        ? t('auth.phoneAlreadyRegistered')
+        : error instanceof AuthApiError && error.code === 'email_exists'
+          ? t('auth.emailAlreadyRegistered')
+          : t('auth.registrationRequestError'));
     } finally { setBusy(false); }
   };
 
@@ -995,8 +999,10 @@ function RegistrationForm() {
     } catch (error) {
       setError(error instanceof AuthApiError && error.code === 'password_policy'
         ? t('auth.passwordInvalid')
-        : error instanceof AuthApiError && error.code === 'email_exists'
-          ? t('auth.emailAlreadyRegistered')
+        : error instanceof AuthApiError && error.code === 'phone_exists'
+          ? t('auth.phoneAlreadyRegistered')
+          : error instanceof AuthApiError && error.code === 'email_exists'
+            ? t('auth.emailAlreadyRegistered')
           : t('auth.registrationVerifyError'));
     } finally { setBusy(false); }
   };
