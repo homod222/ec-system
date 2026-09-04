@@ -745,6 +745,8 @@ export async function runApplicationMigrations(): Promise<void> {
       ADD COLUMN IF NOT EXISTS branch_id integer;
     ALTER TABLE invoices
       ADD COLUMN IF NOT EXISTS branch_id integer;
+    ALTER TABLE activities
+      ADD COLUMN IF NOT EXISTS branch_id integer;
     CREATE INDEX IF NOT EXISTS children_owner_branch_idx
       ON children (owner_id, branch_id);
     CREATE INDEX IF NOT EXISTS guardians_owner_branch_idx
@@ -753,6 +755,8 @@ export async function runApplicationMigrations(): Promise<void> {
       ON applications (owner_id, branch_id);
     CREATE INDEX IF NOT EXISTS invoices_owner_branch_idx
       ON invoices (owner_id, branch_id);
+    CREATE INDEX IF NOT EXISTS activities_owner_branch_idx
+      ON activities (owner_id, branch_id, created_at);
     INSERT INTO nursery_branches (owner_id, organization_id, name, code, active)
       SELECT organization.owner_id, organization.id, organization.name,
         split_part(organization.code, '.', 1) || '.001', true

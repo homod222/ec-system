@@ -135,6 +135,7 @@ async function markPaid(
   if (outcome.kind === "duplicate") {
     await db.insert(activitiesTable).values({
       ownerId: outcome.invoice.ownerId,
+      branchId: outcome.invoice.branchId ?? null,
       type: "payment_overpayment",
       title: `دفعة مكررة للفاتورة ${outcome.invoice.invoiceNumber}`,
       description: `وصلت دفعة إضافية بمبلغ ${amount} د.ك عبر KNET وتتطلب المراجعة والاسترداد`,
@@ -150,6 +151,7 @@ async function markPaid(
 
   await db.insert(activitiesTable).values({
     ownerId: outcome.invoice.ownerId,
+    branchId: outcome.invoice.branchId ?? null,
     type: "payment",
     title: `تم سداد فاتورة ${outcome.invoice.invoiceNumber}`,
     description: `تم استلام دفعة بمبلغ ${amount} د.ك عبر KNET`,

@@ -195,6 +195,8 @@ export const ActivityType = {
 
 export interface Activity {
   id: number;
+  /** @nullable */
+  branchId?: number | null;
   type: ActivityType;
   title: string;
   description: string;

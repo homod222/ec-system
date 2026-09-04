@@ -237,6 +237,7 @@ export const GetDashboardSummaryResponse = zod.object({
  */
 export const GetDashboardActivityResponseItem = zod.object({
   id: zod.number(),
+  branchId: zod.number().nullish(),
   type: zod.enum(["attendance", "payment", "enrollment", "message", "note"]),
   title: zod.string(),
   description: zod.string(),

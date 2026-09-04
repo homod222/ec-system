@@ -632,6 +632,7 @@ router.post("/applications/:id/accept", requireNurseryPermission("accept:applica
       .where(eq(applicationDocumentsTable.applicationId, application.id));
     await tx.insert(activitiesTable).values({
       ownerId: application.ownerId,
+      branchId: accepted?.branchId ?? application.branchId ?? null,
       type: "enrollment",
       title: application.type === "renewal" ? "تم قبول التجديد" : "تم قبول التسجيل",
       description: `تم تفعيل ملف ${application.firstName} ${application.lastName}`,
@@ -745,6 +746,7 @@ router.post(
     }).returning();
     await tx.insert(activitiesTable).values({
       ownerId,
+      branchId: application.branchId ?? null,
       type: "enrollment",
       title: "بدء طلب تجديد",
       description: `تم بدء تجديد تسجيل ${child.firstName} ${child.lastName}`,

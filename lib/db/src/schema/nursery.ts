@@ -280,6 +280,7 @@ export const notificationDispatchClaimsTable = pgTable("notification_dispatch_cl
 export const activitiesTable = pgTable("activities", {
   id: serial("id").primaryKey(),
   ownerId: text("owner_id").notNull().default("__legacy__"),
+  branchId: integer("branch_id"),
   type: text("type").notNull(),
   title: text("title").notNull(),
   description: text("description").notNull(),

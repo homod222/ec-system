@@ -1976,6 +1976,7 @@ components:
       required: [id, type, title, description, createdAt]
       properties:
         id: { type: number }
+        branchId: { type: ["number", "null"] }
         type:
           type: string
           enum: [attendance, payment, enrollment, message, note]
