@@ -430,7 +430,10 @@ function Dashboard() {
     query: { queryKey: getGetSessionContextQueryKey(), retry: false },
   });
   const summary = useGetDashboardSummary();
-  const activity = useGetDashboardActivity();
+  const canViewActivity = (session.data?.effectivePermissions || []).includes('read:audit');
+  const activity = useGetDashboardActivity({
+    query: { queryKey: getGetDashboardActivityQueryKey(), enabled: canViewActivity },
+  });
   const data = summary.data;
   const activities = activity.data || [];
   const greetingKey = new Date().getHours() >= 12 ? 'dashboard.greetingEvening' : 'dashboard.greetingMorning';
@@ -455,7 +458,7 @@ function Dashboard() {
         </div>
       </QueryState>
       
-      <div className="mt-8 grid gap-8 xl:grid-cols-[1.4fr_.6fr]">
+      <div className={`mt-8 grid gap-8 ${canViewActivity ? 'xl:grid-cols-[1.4fr_.6fr]' : ''}`}>
         <section className="rounded-[2rem] border border-border bg-card p-8 shadow-sm">
           <div className="mb-8 flex items-center justify-between">
             <div>
@@ -492,7 +495,7 @@ function Dashboard() {
           </div>
         </section>
         
-        <section className="rounded-[2rem] border border-border bg-card p-8 shadow-sm">
+        {canViewActivity && <section className="rounded-[2rem] border border-border bg-card p-8 shadow-sm">
           <div className="mb-8 flex items-center justify-between">
             <div>
                <h2 className="text-xl font-bold text-foreground">{t('dashboard.latestActivities')}</h2>
@@ -517,7 +520,7 @@ function Dashboard() {
               ))}
             </div>
           </QueryState>
-        </section>
+        </section>}
       </div>
     </Shell>
   );

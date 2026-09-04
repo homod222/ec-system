@@ -727,6 +727,7 @@ router.use(async (req, res, next) => {
   }
   try {
     const routePermission = (() => {
+      if (req.path === "/dashboard/activity") return "read:audit";
       if (req.path.startsWith("/dashboard/")) return "read:dashboard";
       if (req.path === "/guardians/accounts") return "read:guardian-account";
       if (/^\/guardians\/\d+\/(account|details)$/.test(req.path)) return "write:guardian-account";
@@ -840,7 +841,10 @@ router.get("/dashboard/activity", async (req, res): Promise<void> => {
   const activities = await db
     .select()
     .from(activitiesTable)
-    .where(eq(activitiesTable.ownerId, ownerId))
+    .where(and(
+      eq(activitiesTable.ownerId, ownerId),
+      branchCondition(activitiesTable.branchId, branchIds),
+    ))
     .orderBy(desc(activitiesTable.createdAt))
     .limit(8);
   res.json(GetDashboardActivityResponse.parse(activities.map((entry) => ({
@@ -2002,6 +2006,7 @@ router.post("/invoices/:id/cash-payment", async (req, res): Promise<void> => {
     });
     await tx.insert(activitiesTable).values({
       ownerId: context.ownerId,
+      branchId: invoice.branchId ?? null,
       type: "payment",
       title: `تم سداد فاتورة ${invoice.invoiceNumber}`,
       description: `تم تسجيل دفعة نقدية بمبلغ ${invoice.amount} د.ك`,
