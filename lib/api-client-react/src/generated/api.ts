@@ -100,6 +100,7 @@ import type {
   PhoneLoginVerify,
   PhonePasswordSignIn,
   ProgressReport,
+  PublicRegistrationBranches,
   PublicRegistrationChallenge,
   PublicRegistrationRequest,
   PublicRegistrationResult,
@@ -252,6 +253,86 @@ export const useRequestPublicRegistration = <
 > => {
   return useMutation(getRequestPublicRegistrationMutationOptions(options));
 };
+
+export const getListPublicRegistrationBranchesUrl = () => {
+  return `/api/auth/register/branches`;
+};
+
+/**
+ * @summary List organizations and branches available for public registration
+ */
+export const listPublicRegistrationBranches = async (
+  options?: Parameters<typeof customFetch>[1],
+): Promise<PublicRegistrationBranches> => {
+  return customFetch<PublicRegistrationBranches>(
+    getListPublicRegistrationBranchesUrl(),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getListPublicRegistrationBranchesQueryKey = () => {
+  return [`/api/auth/register/branches`] as const;
+};
+
+export const getListPublicRegistrationBranchesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listPublicRegistrationBranches>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listPublicRegistrationBranches>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListPublicRegistrationBranchesQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listPublicRegistrationBranches>>
+  > = ({ signal }) =>
+    listPublicRegistrationBranches({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listPublicRegistrationBranches>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListPublicRegistrationBranchesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listPublicRegistrationBranches>>
+>;
+export type ListPublicRegistrationBranchesQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List organizations and branches available for public registration
+ */
+
+export function useListPublicRegistrationBranches<
+  TData = Awaited<ReturnType<typeof listPublicRegistrationBranches>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listPublicRegistrationBranches>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListPublicRegistrationBranchesQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
 
 export const getVerifyPublicRegistrationUrl = () => {
   return `/api/auth/register/verify`;

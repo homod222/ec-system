@@ -28,6 +28,39 @@ export interface PublicRegistrationRequest {
   /** @maxLength 254 */
   email: string;
   accountType: PublicRegistrationRequestAccountType;
+  /** @minimum 1 */
+  branchId?: number;
+}
+
+export interface Organization {
+  id: number;
+  name: string;
+  code: string;
+  type: string;
+  /** @nullable */
+  address?: string | null;
+  /** @nullable */
+  phone?: string | null;
+  /** @nullable */
+  email?: string | null;
+  active: boolean;
+}
+
+export interface Branch {
+  id: number;
+  organizationId: number;
+  name: string;
+  code: string;
+  /** @nullable */
+  address?: string | null;
+  /** @nullable */
+  phone?: string | null;
+  active: boolean;
+}
+
+export interface PublicRegistrationBranches {
+  organizations: Organization[];
+  branches: Branch[];
 }
 
 export interface PublicRegistrationVerify {
@@ -1520,20 +1553,6 @@ export interface NurserySettingsInput {
   calendar: NurserySettingsInputCalendar;
 }
 
-export interface Organization {
-  id: number;
-  name: string;
-  code: string;
-  type: string;
-  /** @nullable */
-  address?: string | null;
-  /** @nullable */
-  phone?: string | null;
-  /** @nullable */
-  email?: string | null;
-  active: boolean;
-}
-
 export interface OrganizationInput {
   /** @minLength 1 */
   name: string;
@@ -1558,18 +1577,6 @@ export interface OrganizationUpdate {
   /** @nullable */
   email?: string | null;
   active?: boolean;
-}
-
-export interface Branch {
-  id: number;
-  organizationId: number;
-  name: string;
-  code: string;
-  /** @nullable */
-  address?: string | null;
-  /** @nullable */
-  phone?: string | null;
-  active: boolean;
 }
 
 export interface BranchInput {

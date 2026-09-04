@@ -60,6 +60,7 @@ export const phoneOtpChallengesTable = pgTable("phone_otp_challenges", {
   email: text("email"),
   accountType: text("account_type"),
   requestedBy: text("requested_by"),
+  branchId: integer("branch_id"),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   attempts: integer("attempts").notNull().default(0),
   consumedAt: timestamp("consumed_at", { withTimezone: true }),

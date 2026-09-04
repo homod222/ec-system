@@ -4,7 +4,9 @@ import { and, eq, gte, isNull, sql } from "drizzle-orm";
 import { createHash, randomInt, randomUUID, timingSafeEqual } from "node:crypto";
 import {
   db,
+  branchesTable,
   guardiansTable,
+  organizationsTable,
   pool,
   phoneLoginIdentitiesTable,
   phoneOtpChallengesTable,
@@ -24,6 +26,7 @@ import {
   RequestPhoneLoginResponse,
   VerifyPhoneLoginResponse,
   GetPhoneEnrollmentResponse,
+  ListPublicRegistrationBranchesResponse,
 } from "@workspace/api-zod";
 import { hashPassword, verifyPassword, signJwt, getLocalAuth } from "../lib/localAuth";
 import { defaultBranchId } from "../lib/branchScope";
@@ -122,6 +125,7 @@ export function createPhoneAuthRouter(sender: Sender = defaultSender): IRouter {
     fullName?: string;
     email?: string;
     accountType?: "guardian" | "staff";
+    branchId?: number | null;
   }) {
     const id = randomUUID();
     const otp = randomInt(100000, 1000000).toString();
@@ -154,6 +158,7 @@ export function createPhoneAuthRouter(sender: Sender = defaultSender): IRouter {
         email: options.email ?? null,
         accountType: options.accountType ?? null,
         requestedBy: options.requestedBy ?? null,
+        branchId: options.branchId ?? null,
         expiresAt: new Date(Date.now() + OTP_SECONDS * 1000),
       });
       return true;
@@ -221,6 +226,41 @@ export function createPhoneAuthRouter(sender: Sender = defaultSender): IRouter {
   // -------------------------------------------------------------------------
   // Registration: request OTP
   // -------------------------------------------------------------------------
+  router.get("/auth/register/branches", async (_req, res, next) => {
+    try {
+      const publicOwnerId = await resolvePublicOwnerId();
+      if (!publicOwnerId) {
+        res.json({ organizations: [], branches: [] });
+        return;
+      }
+      const [organizations, branches] = await Promise.all([
+        db.select().from(organizationsTable).where(and(
+          eq(organizationsTable.ownerId, publicOwnerId),
+          eq(organizationsTable.active, true),
+        )).orderBy(organizationsTable.id),
+        db.select().from(branchesTable).where(and(
+          eq(branchesTable.ownerId, publicOwnerId),
+          eq(branchesTable.active, true),
+        )).orderBy(branchesTable.id),
+      ]);
+      const organizationResponse = organizations.map(({ ownerId: _ownerId, settings: _settings, createdAt: _createdAt, ...row }) => row);
+      const branchResponse = branches.map(({
+        ownerId: _ownerId,
+        settings: _settings,
+        createdAt: _createdAt,
+        legacyRecordId: _legacyRecordId,
+        capacity: _capacity,
+        ...row
+      }) => row);
+      res.json(ListPublicRegistrationBranchesResponse.parse({
+        organizations: organizationResponse,
+        branches: branchResponse,
+      }));
+    } catch (error) {
+      next(error);
+    }
+  });
+
   router.post("/auth/register/request", async (req, res, next) => {
     try {
       const body = RequestPublicRegistrationBody.safeParse(req.body);
@@ -231,6 +271,16 @@ export function createPhoneAuthRouter(sender: Sender = defaultSender): IRouter {
       const fullName = body.data.fullName.trim().replace(/\s+/gu, " ");
       const email = body.data.email.trim().toLowerCase();
       const publicOwnerId = await resolvePublicOwnerId();
+      if (body.data.branchId !== undefined) {
+        const [branch] = publicOwnerId
+          ? await db.select({ id: branchesTable.id }).from(branchesTable).where(and(
+            eq(branchesTable.id, body.data.branchId),
+            eq(branchesTable.ownerId, publicOwnerId),
+            eq(branchesTable.active, true),
+          )).limit(1)
+          : [];
+        if (!branch) return void res.status(400).json({ error: "Invalid branch" });
+      }
       const existing = await db.select({ id: publicAuthAccountsTable.id }).from(publicAuthAccountsTable)
         .where(sql`${publicAuthAccountsTable.normalizedPhone} = ${phone} or lower(${publicAuthAccountsTable.email}) = ${email}`)
         .limit(1);
@@ -281,6 +331,7 @@ export function createPhoneAuthRouter(sender: Sender = defaultSender): IRouter {
         email: eligible ? email : undefined,
         accountType: eligible ? body.data.accountType : undefined,
         requestedBy: eligible ? publicOwnerId ?? undefined : undefined,
+        branchId: eligible ? body.data.branchId ?? null : null,
       });
       if (!challenge) return void res.status(429).json({ error: "Try again later" });
       const remainingDelay = registrationResponseFloorMs() - (Date.now() - responseStartedAt);
@@ -405,7 +456,7 @@ export function createPhoneAuthRouter(sender: Sender = defaultSender): IRouter {
             // Self-registration: create a new guardian record
             const [created] = await db.insert(guardiansTable).values({
               ownerId: publicOwnerId,
-              branchId: await defaultBranchId(db, publicOwnerId),
+              branchId: challenge.branchId ?? await defaultBranchId(db, publicOwnerId),
               name: challenge.fullName,
               email: challenge.email,
               phone: challenge.normalizedPhone,
@@ -437,7 +488,7 @@ export function createPhoneAuthRouter(sender: Sender = defaultSender): IRouter {
           } else if (staffMatches.length === 0 && newStaffOwnerId) {
             const [createdStaff] = await db.insert(staffTable).values({
               ownerId: newStaffOwnerId,
-              branchId: await defaultBranchId(db, newStaffOwnerId),
+              branchId: challenge.branchId ?? await defaultBranchId(db, newStaffOwnerId),
               name: challenge.fullName,
               role: "pending",
               email: challenge.email,

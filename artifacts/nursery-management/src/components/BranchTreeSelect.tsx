@@ -1,6 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Building2, Check, ChevronDown, ChevronRight, ChevronsUpDown, Search, X } from 'lucide-react';
-import { useListBranches, useListOrganizations } from '@workspace/api-client-react';
+import {
+  getListBranchesQueryKey,
+  getListOrganizationsQueryKey,
+  useListBranches,
+  useListOrganizations,
+  type Branch,
+  type Organization,
+} from '@workspace/api-client-react';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Checkbox } from './ui/checkbox';
@@ -10,18 +17,9 @@ import { ScrollArea } from './ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { useI18n } from '../i18n';
 
-type Organization = {
-  id: number;
-  name: string;
-  code: string;
-};
-
-type Branch = {
-  id: number;
-  organizationId: number;
-  name: string;
-  code: string;
-  active?: boolean;
+export type BranchTreeSelectSource = {
+  organizations: Organization[];
+  branches: Branch[];
 };
 
 type SingleProps = {
@@ -32,6 +30,8 @@ type SingleProps = {
   allLabel?: string;
   testId: string;
   placeholder?: string;
+  hideAll?: boolean;
+  source?: BranchTreeSelectSource;
   compact?: boolean;
   disabled?: boolean;
 };
@@ -48,6 +48,7 @@ type MultiProps = {
   testId: string;
   allowAll?: boolean;
   allLabel?: string;
+  source?: BranchTreeSelectSource;
   compact?: boolean;
   disabled?: boolean;
 };
@@ -59,13 +60,17 @@ export function BranchTreeSelect(props: BranchTreeSelectProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [collapsedOrganizations, setCollapsedOrganizations] = useState<Set<number>>(new Set());
-  const organizationsQuery = useListOrganizations({ request: { headers: { 'x-branch-id': '' } } });
+  const organizationsQuery = useListOrganizations({
+    query: { enabled: !props.source, queryKey: getListOrganizationsQueryKey() },
+    request: { headers: { 'x-branch-id': '' } },
+  });
   const branchesQuery = useListBranches(undefined, {
+    query: { enabled: !props.source, queryKey: getListBranchesQueryKey() },
     request: { headers: { 'x-branch-id': '' } },
   });
 
-  const organizations = (organizationsQuery.data || []) as Organization[];
-  const allBranches = (branchesQuery.data || []) as Branch[];
+  const organizations = props.source?.organizations || organizationsQuery.data || [];
+  const allBranches = props.source?.branches || branchesQuery.data || [];
   const selectedBranchIds = props.mode === 'single'
     ? (props.value ? [Number(props.value)] : [])
     : props.value.branchIds;
@@ -227,7 +232,7 @@ export function BranchTreeSelect(props: BranchTreeSelectProps) {
             </div>
           </div>
 
-          {props.allowAll && (
+          {props.allowAll && !(props.mode === 'single' && props.hideAll) && (
             <button
               type="button"
               className={cn(

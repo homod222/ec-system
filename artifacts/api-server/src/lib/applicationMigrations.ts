@@ -928,7 +928,8 @@ export async function runApplicationMigrations(): Promise<void> {
     ALTER TABLE phone_otp_challenges
       ADD COLUMN IF NOT EXISTS full_name text,
       ADD COLUMN IF NOT EXISTS email text,
-      ADD COLUMN IF NOT EXISTS account_type text;
+      ADD COLUMN IF NOT EXISTS account_type text,
+      ADD COLUMN IF NOT EXISTS branch_id integer;
 
     CREATE TABLE IF NOT EXISTS public_auth_accounts (
       id serial PRIMARY KEY,
