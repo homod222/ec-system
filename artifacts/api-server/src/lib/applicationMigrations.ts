@@ -315,6 +315,17 @@ export async function runApplicationMigrations(): Promise<void> {
       created_by text NOT NULL, created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now()
     );
+    CREATE TABLE IF NOT EXISTS child_guardian_links (
+      id serial PRIMARY KEY,
+      owner_id text NOT NULL,
+      child_id integer NOT NULL,
+      guardian_id integer NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS child_guardian_links_unique
+      ON child_guardian_links (child_id, guardian_id);
+    CREATE INDEX IF NOT EXISTS child_guardian_links_guardian_idx
+      ON child_guardian_links (owner_id, guardian_id);
     CREATE TABLE IF NOT EXISTS invoice_lines (
       id serial PRIMARY KEY, owner_id text NOT NULL, invoice_id integer NOT NULL,
       type text NOT NULL DEFAULT 'fee', description text NOT NULL,

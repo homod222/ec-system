@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react';
 import {
   getListChildrenQueryKey,
+  getListGuardianChildrenQueryKey,
   getListGuardianAccountsQueryKey,
   getListStaffQueryKey,
   useAdminCreateAccount,
   useListGuardianAccounts,
+  useListGuardianChildren,
+  useLinkGuardianChild,
   useListChildren,
   useListStaff,
   useUpdateGuardianAccount,
@@ -12,10 +15,11 @@ import {
   useDeleteStaff,
   useGetSessionContext,
   useSetStaffScope,
+  useUnlinkGuardianChild,
 } from '@workspace/api-client-react';
 import type { Child, GuardianAccountResult, StaffMember } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Baby, KeyRound, Pencil, Plus, Search, ShieldCheck, Trash2, UserX, X } from 'lucide-react';
+import { Baby, KeyRound, Link2, Pencil, Plus, Search, ShieldCheck, Trash2, Unlink, UserPlus, UserX, X } from 'lucide-react';
 import { ChildForm, Shell, Button, Pill, Avatar, QueryState, PageHeader } from '../../App';
 import { accountRoleValues, StaffAccountDialog } from './StaffExpanded';
 import { useI18n } from '../../i18n';
@@ -250,16 +254,42 @@ function GuardiansTab({ search }: { search: string }) {
 function GuardianChildrenDialog({ account, onClose }: { account: GuardianAccountResult; onClose: () => void }) {
   const { t } = useI18n();
   const queryClient = useQueryClient();
-  const query = useListChildren();
+  const query = useListGuardianChildren(account.guardianId);
+  const [search, setSearch] = useState('');
+  const [showLinkPanel, setShowLinkPanel] = useState(false);
   const { canWriteChildren } = useUsersPermissions();
   const [editChild, setEditChild] = useState<Child | null>(null);
   const [addChild, setAddChild] = useState(false);
-  const children = (query.data || []).filter((child) => child.guardianId === account.guardianId);
+  const children = query.data || [];
+  const searchQuery = useListChildren(search.trim() ? { search: search.trim() } : undefined, {
+    query: {
+      queryKey: getListChildrenQueryKey(search.trim() ? { search: search.trim() } : undefined),
+      enabled: Boolean(search.trim()),
+    },
+  });
+  const link = useLinkGuardianChild();
+  const unlink = useUnlinkGuardianChild();
 
   const closeChildForm = () => {
     setEditChild(null);
     setAddChild(false);
     queryClient.invalidateQueries({ queryKey: getListChildrenQueryKey() });
+    queryClient.invalidateQueries({ queryKey: getListGuardianChildrenQueryKey(account.guardianId) });
+  };
+
+  const handleLink = (childId: number) => {
+    link.mutate({ id: account.guardianId, data: { childId } }, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListGuardianChildrenQueryKey(account.guardianId) });
+        queryClient.invalidateQueries({ queryKey: getListChildrenQueryKey() });
+      },
+    });
+  };
+
+  const handleUnlink = (childId: number) => {
+    unlink.mutate({ id: account.guardianId, childId }, {
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: getListGuardianChildrenQueryKey(account.guardianId) }),
+    });
   };
 
   return (
@@ -285,6 +315,18 @@ function GuardianChildrenDialog({ account, onClose }: { account: GuardianAccount
                 <Pill tone={child.status === 'active' ? 'green' : child.status === 'pending' ? 'yellow' : 'neutral'}>
                   {child.status === 'active' ? t('expanded.regular') : child.status === 'pending' ? t('expanded.pending') : t('expanded.inactive')}
                 </Pill>
+                {child.linked && <Pill tone="blue">{t('usersPage.linkedChild')}</Pill>}
+                {child.linked && canWriteChildren && (
+                  <Button
+                    variant="ghost"
+                    className="!px-2 !py-2 text-destructive hover:text-destructive"
+                    title={t('usersPage.unlink')}
+                    onClick={() => handleUnlink(child.id)}
+                    disabled={unlink.isPending}
+                  >
+                    <Unlink size={16} />
+                  </Button>
+                )}
                 {canWriteChildren && (
                   <Button variant="ghost" className="!px-2 !py-2" onClick={() => setEditChild(child)}>
                     <Pencil size={16} />
@@ -296,9 +338,47 @@ function GuardianChildrenDialog({ account, onClose }: { account: GuardianAccount
         </QueryState>
 
         {canWriteChildren && (
-          <Button className="mt-6 w-full" onClick={() => setAddChild(true)}>
-            <Plus size={18} />{t('usersPage.addChild')}
-          </Button>
+          <div className="mt-6 flex gap-3">
+            <Button className="flex-1" onClick={() => setAddChild(true)}>
+              <UserPlus size={18} />{t('usersPage.newChild')}
+            </Button>
+            <Button className="flex-1" variant="soft" onClick={() => setShowLinkPanel((visible) => !visible)}>
+              <Link2 size={18} />{t('usersPage.linkExistingChild')}
+            </Button>
+          </div>
+        )}
+        {canWriteChildren && showLinkPanel && (
+          <div className="mt-4 rounded-2xl border border-border bg-secondary/20 p-4">
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder={t('usersPage.searchChild')}
+              className="w-full rounded-xl border border-input bg-background px-4 py-3 text-sm outline-none focus:border-primary"
+            />
+            {!search.trim() ? (
+              <p className="mt-3 text-sm text-muted-foreground">{t('usersPage.typeToSearch')}</p>
+            ) : (
+              (() => {
+                const existingIds = new Set(children.map((child) => child.id));
+                const results = (searchQuery.data || []).filter((child) => !existingIds.has(child.id)).slice(0, 8);
+                return results.length ? (
+                  <div className="mt-3 space-y-2">
+                    {results.map((child) => (
+                      <div key={child.id} className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-bold">{child.fullName}</p>
+                          <p className="text-xs text-muted-foreground">{child.guardianName}</p>
+                        </div>
+                        <Button variant="soft" className="!px-3 !py-2" onClick={() => handleLink(child.id)} disabled={link.isPending}>
+                          {t('usersPage.link')}
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                ) : <p className="mt-3 text-sm text-muted-foreground">{t('usersPage.noSearchResults')}</p>;
+              })()
+            )}
+          </div>
         )}
       </div>
       {editChild && <ChildForm child={editChild} onClose={closeChildForm} />}

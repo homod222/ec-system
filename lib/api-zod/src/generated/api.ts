@@ -268,6 +268,7 @@ export const ListChildrenResponseItem = zod.object({
   classroomName: zod.string().nullable(),
   guardianName: zod.string(),
   guardianPhone: zod.string(),
+  linked: zod.boolean().optional(),
   level: zod.string(),
   attendanceRate: zod.number(),
   avatarUrl: zod.string().nullish(),
@@ -304,6 +305,7 @@ export const CreateChildResponse = zod.object({
   classroomName: zod.string().nullable(),
   guardianName: zod.string(),
   guardianPhone: zod.string(),
+  linked: zod.boolean().optional(),
   level: zod.string(),
   attendanceRate: zod.number(),
   avatarUrl: zod.string().nullish(),
@@ -329,6 +331,7 @@ export const GetChildResponse = zod.object({
   classroomName: zod.string().nullable(),
   guardianName: zod.string(),
   guardianPhone: zod.string(),
+  linked: zod.boolean().optional(),
   level: zod.string(),
   attendanceRate: zod.number(),
   avatarUrl: zod.string().nullish(),
@@ -368,6 +371,7 @@ export const UpdateChildResponse = zod.object({
   classroomName: zod.string().nullable(),
   guardianName: zod.string(),
   guardianPhone: zod.string(),
+  linked: zod.boolean().optional(),
   level: zod.string(),
   attendanceRate: zod.number(),
   avatarUrl: zod.string().nullish(),
@@ -806,6 +810,55 @@ export const ListGuardianAccountsResponseItem = zod.object({
 export const ListGuardianAccountsResponse = zod.array(
   ListGuardianAccountsResponseItem,
 );
+/**
+ * @summary List children associated with a guardian
+ */
+export const ListGuardianChildrenParams = zod.object({
+  id: zod.coerce.number(),
+});
+export const ListGuardianChildrenResponseItem = zod.object({
+  id: zod.number(),
+  firstName: zod.string(),
+  lastName: zod.string(),
+  fullName: zod.string(),
+  gender: zod.enum(["male", "female"]),
+  birthDate: zod.string(),
+  status: zod.enum(["active", "pending", "inactive"]),
+  classroomId: zod.number().nullable(),
+  branchId: zod.number().nullish(),
+  guardianId: zod.number().nullish(),
+  classroomName: zod.string().nullable(),
+  guardianName: zod.string(),
+  guardianPhone: zod.string(),
+  linked: zod.boolean().optional(),
+  level: zod.string(),
+  attendanceRate: zod.number(),
+  avatarUrl: zod.string().nullish(),
+  notes: zod.string().nullish(),
+});
+export const ListGuardianChildrenResponse = zod.array(
+  ListGuardianChildrenResponseItem,
+);
+/**
+ * @summary Link an existing child to a guardian
+ */
+export const LinkGuardianChildParams = zod.object({
+  id: zod.coerce.number(),
+});
+export const LinkGuardianChildBody = zod.object({
+  childId: zod.number(),
+});
+export const LinkGuardianChildResponse = zod.object({
+  ok: zod.boolean(),
+});
+/**
+ * @summary Unlink a child from a guardian
+ */
+export const UnlinkGuardianChildParams = zod.object({
+  id: zod.coerce.number(),
+  childId: zod.coerce.number(),
+});
+export const UnlinkGuardianChildResponse = zod.void();
 /**
  * @summary Activate or disable a guardian's login account
  */

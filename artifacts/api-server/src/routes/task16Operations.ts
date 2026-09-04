@@ -33,6 +33,7 @@ import {
 } from "./nurseryOperations";
 import { ObjectNotFoundError, ObjectStorageService } from "../lib/objectStorage";
 import { branchCondition, resolveBranchId, resolveStaffScope } from "../lib/branchScope";
+import { guardianChildCondition } from "../lib/guardianChildren";
 import {
   billingPlanDetails,
   computeBillingSchedule,
@@ -696,7 +697,7 @@ router.get("/parent/documents", async (req, res) => {
   const rows = await db.select({ document: applicationDocumentsTable })
     .from(applicationDocumentsTable).innerJoin(childrenTable, and(
       eq(applicationDocumentsTable.childId, childrenTable.id),
-      eq(childrenTable.ownerId, guardian.ownerId), eq(childrenTable.guardianId, guardian.id),
+      eq(childrenTable.ownerId, guardian.ownerId), guardianChildCondition(guardian.id, guardian.ownerId),
     )).where(eq(applicationDocumentsTable.parentVisible, true));
   res.json(ListParentDocumentsResponse.parse(rows.map(({ document }) => ({
     id: document.id, applicationId: document.applicationId, childId: document.childId!,
@@ -712,7 +713,7 @@ router.get("/parent/documents/:id/content", async (req, res) => {
   if (!guardian) return void res.status(403).json({ error: "Parent access required" });
   const [row] = await db.select({ document: applicationDocumentsTable }).from(applicationDocumentsTable)
     .innerJoin(childrenTable, and(eq(applicationDocumentsTable.childId, childrenTable.id),
-      eq(childrenTable.ownerId, guardian.ownerId), eq(childrenTable.guardianId, guardian.id)))
+      eq(childrenTable.ownerId, guardian.ownerId), guardianChildCondition(guardian.id, guardian.ownerId)))
     .where(and(eq(applicationDocumentsTable.id, params.data.id), eq(applicationDocumentsTable.parentVisible, true)));
   if (!row) return void res.status(404).json({ error: "Document not found" });
   try {

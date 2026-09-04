@@ -54,6 +54,7 @@ import type {
   Guardian,
   GuardianAccountResult,
   GuardianAccountUpdateInput,
+  GuardianChildLinkInput,
   HealthStatus,
   InternalPaymentInput,
   Invoice,
@@ -78,6 +79,7 @@ import type {
   NurseryReport,
   NurserySettings,
   NurserySettingsInput,
+  OkResponse,
   OperationalRecord,
   OperationalRecordInput,
   OperationalRecordUpdate,
@@ -2642,6 +2644,266 @@ export function useListGuardianAccounts<
 
   return withQueryKey(query, queryOptions.queryKey);
 }
+
+export const getListGuardianChildrenUrl = (id: number) => {
+  return `/api/guardians/${id}/children`;
+};
+
+/**
+ * @summary List children associated with a guardian
+ */
+export const listGuardianChildren = async (
+  id: number,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<Child[]> => {
+  return customFetch<Child[]>(getListGuardianChildrenUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListGuardianChildrenQueryKey = (id: number) => {
+  return [`/api/guardians/${id}/children`] as const;
+};
+
+export const getListGuardianChildrenQueryOptions = <
+  TData = Awaited<ReturnType<typeof listGuardianChildren>>,
+  TError = ErrorType<void>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listGuardianChildren>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListGuardianChildrenQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listGuardianChildren>>
+  > = ({ signal }) => listGuardianChildren(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: id !== null && id !== undefined,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof listGuardianChildren>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListGuardianChildrenQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listGuardianChildren>>
+>;
+export type ListGuardianChildrenQueryError = ErrorType<void>;
+
+/**
+ * @summary List children associated with a guardian
+ */
+
+export function useListGuardianChildren<
+  TData = Awaited<ReturnType<typeof listGuardianChildren>>,
+  TError = ErrorType<void>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listGuardianChildren>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListGuardianChildrenQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getLinkGuardianChildUrl = (id: number) => {
+  return `/api/guardians/${id}/children/links`;
+};
+
+/**
+ * @summary Link an existing child to a guardian
+ */
+export const linkGuardianChild = async (
+  id: number,
+  guardianChildLinkInput: GuardianChildLinkInput,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<OkResponse> => {
+  return customFetch<OkResponse>(getLinkGuardianChildUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(guardianChildLinkInput),
+  });
+};
+
+export const getLinkGuardianChildMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof linkGuardianChild>>,
+    TError,
+    { id: number; data: BodyType<GuardianChildLinkInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof linkGuardianChild>>,
+  TError,
+  { id: number; data: BodyType<GuardianChildLinkInput> },
+  TContext
+> => {
+  const mutationKey = ["linkGuardianChild"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof linkGuardianChild>>,
+    { id: number; data: BodyType<GuardianChildLinkInput> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return linkGuardianChild(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type LinkGuardianChildMutationResult = NonNullable<
+  Awaited<ReturnType<typeof linkGuardianChild>>
+>;
+export type LinkGuardianChildMutationBody = BodyType<GuardianChildLinkInput>;
+export type LinkGuardianChildMutationError = ErrorType<void>;
+
+/**
+ * @summary Link an existing child to a guardian
+ */
+export const useLinkGuardianChild = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof linkGuardianChild>>,
+    TError,
+    { id: number; data: BodyType<GuardianChildLinkInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof linkGuardianChild>>,
+  TError,
+  { id: number; data: BodyType<GuardianChildLinkInput> },
+  TContext
+> => {
+  return useMutation(getLinkGuardianChildMutationOptions(options));
+};
+
+export const getUnlinkGuardianChildUrl = (id: number, childId: number) => {
+  return `/api/guardians/${id}/children/links/${childId}`;
+};
+
+/**
+ * @summary Unlink a child from a guardian
+ */
+export const unlinkGuardianChild = async (
+  id: number,
+  childId: number,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<void> => {
+  return customFetch<void>(getUnlinkGuardianChildUrl(id, childId), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getUnlinkGuardianChildMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof unlinkGuardianChild>>,
+    TError,
+    { id: number; childId: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof unlinkGuardianChild>>,
+  TError,
+  { id: number; childId: number },
+  TContext
+> => {
+  const mutationKey = ["unlinkGuardianChild"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof unlinkGuardianChild>>,
+    { id: number; childId: number }
+  > = (props) => {
+    const { id, childId } = props ?? {};
+
+    return unlinkGuardianChild(id, childId, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UnlinkGuardianChildMutationResult = NonNullable<
+  Awaited<ReturnType<typeof unlinkGuardianChild>>
+>;
+
+export type UnlinkGuardianChildMutationError = ErrorType<void>;
+
+/**
+ * @summary Unlink a child from a guardian
+ */
+export const useUnlinkGuardianChild = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof unlinkGuardianChild>>,
+    TError,
+    { id: number; childId: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof unlinkGuardianChild>>,
+  TError,
+  { id: number; childId: number },
+  TContext
+> => {
+  return useMutation(getUnlinkGuardianChildMutationOptions(options));
+};
 
 export const getUpdateGuardianAccountUrl = (id: number) => {
   return `/api/guardians/${id}/account`;
