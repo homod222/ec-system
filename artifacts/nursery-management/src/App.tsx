@@ -881,8 +881,7 @@ function PhoneSignIn() {
   return (
     <div className="rounded-[2rem] border border-border bg-card p-8 shadow-2xl">
       <div className="mb-7 text-center">
-        <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-[#25D366]/15 text-[#128C4A]"><Phone size={25} /></span>
-        <h1 className="mt-4 text-2xl font-bold">{t('auth.passwordSignInTitle')}</h1>
+        <h1 className="text-2xl font-bold">{t('auth.passwordSignInTitle')}</h1>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">{t('auth.passwordSignInSubtitle')}</p>
       </div>
       <form onSubmit={submit} className="space-y-5">
@@ -909,9 +908,9 @@ function PhoneSignIn() {
       <div className="mt-3 text-center">
         <Link href="/staff-password-reset" className="text-xs font-bold text-primary hover:underline">{t('passwordReset.forgot')}</Link>
       </div>
-      <div className="mt-6 border-t border-border pt-5 text-center">
-        <Link href="/owner-recovery" className="text-xs font-bold text-muted-foreground hover:text-primary">{t('auth.ownerRecovery')}</Link>
-      </div>
+      <p className="mt-6 border-t border-border pt-5 text-center text-xs text-muted-foreground">
+        {t('landing.copyright', { year: new Date().getFullYear() })}
+      </p>
     </div>
   );
 }
@@ -1116,16 +1115,18 @@ function AuthPage() {
   return (
     <div dir={dir} className="grid min-h-[100dvh] place-items-center bg-ec-pattern px-4 py-12 relative overflow-hidden">
       <div className="absolute inset-0 bg-background/90 backdrop-blur-3xl" />
-      <div className={`absolute top-4 z-10 sm:top-8 ${dir === 'rtl' ? 'right-5 sm:right-8' : 'left-5 sm:left-8'}`}>
-        <Link href="/" data-testid="link-auth-logo" className="block hover:opacity-80 transition-opacity">
-          <img src={`${basePath}/ec-official-logo-v2.png`} alt={t('admin.brand')} className="mx-auto h-20 w-24 object-contain drop-shadow-sm sm:h-28 sm:w-36" />
-        </Link>
-      </div>
       <div className={`absolute top-8 z-10 ${dir === 'rtl' ? 'left-8' : 'right-8'}`}>
         <LanguageSwitcher className="bg-card/95 shadow-sm backdrop-blur" />
       </div>
-      <div className="relative z-10 w-full max-w-md animate-rise">
-        <PhoneSignIn />
+      <div className="relative z-10 flex w-full max-w-4xl flex-col items-center gap-6 animate-rise md:flex-row md:items-stretch md:gap-8">
+        <aside className="flex w-full max-w-md flex-row flex-wrap items-center justify-center gap-6 rounded-[2rem] border border-border bg-card/80 p-6 shadow-lg md:w-72 md:max-w-none md:flex-col md:justify-center md:p-8">
+          <Link href="/" data-testid="link-auth-logo" className="block hover:opacity-80 transition-opacity">
+            <img src={`${basePath}/ec-official-logo-v2.png`} alt={t('admin.brand')} className="h-28 w-36 object-contain drop-shadow-sm md:h-40 md:w-52" />
+          </Link>
+        </aside>
+        <div className="w-full max-w-md">
+          <PhoneSignIn />
+        </div>
       </div>
     </div>
   ); 
