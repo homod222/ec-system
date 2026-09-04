@@ -207,7 +207,10 @@ function accountResult(member: typeof staffTable.$inferSelect) {
   };
 }
 
-function accountManager(req: Request, operation: "write:users" | "delete:users" = "write:users") {
+function accountManager(
+  req: Request,
+  operation: "write:users" | "delete:users" | "create:users" | "write:guardian-account" | "delete:guardian-account" = "write:users",
+) {
   return permitted(req, operation);
 }
 
@@ -217,7 +220,7 @@ router.post("/admin/create-account", async (req, res): Promise<void> => {
     res.status(400).json({ error: body.error.message });
     return;
   }
-  if (!await accountManager(req)) {
+  if (!await accountManager(req, "create:users")) {
     res.status(403).json({ error: "Operation not permitted" });
     return;
   }
@@ -608,6 +611,7 @@ async function childRows(ownerId: string, branchIds: import("../lib/branchScope"
       status: child.status,
       classroomId: classroom?.id ?? null,
       branchId: child.branchId,
+      guardianId: child.guardianId ?? null,
       classroomName: classroom?.name ?? null,
       guardianName: guardian?.name ?? "ولي أمر غير مسجل",
       guardianPhone: guardian?.phone ?? "",
@@ -709,9 +713,9 @@ router.use(async (req, res, next) => {
   try {
     const routePermission = (() => {
       if (req.path.startsWith("/dashboard/")) return "read:dashboard";
-      if (req.path === "/guardians/accounts") return "read:users";
-      if (/^\/guardians\/\d+\/(account|details)$/.test(req.path)) return "write:users";
-      if (/^\/guardians\/\d+$/.test(req.path) && req.method === "DELETE") return "delete:users";
+      if (req.path === "/guardians/accounts") return "read:guardian-account";
+      if (/^\/guardians\/\d+\/(account|details)$/.test(req.path)) return "write:guardian-account";
+      if (/^\/guardians\/\d+$/.test(req.path) && req.method === "DELETE") return "delete:guardian-account";
       if (/^\/staff\/\d+\/scope$/.test(req.path)) return "write:users";
       if (/^\/staff\/\d+\/account$/.test(req.path)) return "write:users";
       if (req.path === "/guardians" || req.path.startsWith("/guardians/")) {
@@ -1152,7 +1156,7 @@ router.patch("/guardians/:id/account", async (req, res): Promise<void> => {
     res.status(400).json({ error: params.success ? body.error?.message : params.error.message });
     return;
   }
-  if (!await accountManager(req)) {
+  if (!await accountManager(req, "write:guardian-account")) {
     res.status(403).json({ error: "Operation not permitted" });
     return;
   }
@@ -1186,7 +1190,7 @@ router.patch("/guardians/:id/details", async (req, res): Promise<void> => {
   if (!id || isNaN(id)) { res.status(400).json({ error: "Invalid guardian ID" }); return; }
   const { name, phone, email } = req.body as { name?: string; phone?: string; email?: string };
   if (!name && !phone && !email) { res.status(400).json({ error: "Provide at least one field to update" }); return; }
-  if (!await accountManager(req)) { res.status(403).json({ error: "Operation not permitted" }); return; }
+  if (!await accountManager(req, "write:guardian-account")) { res.status(403).json({ error: "Operation not permitted" }); return; }
   const { ownerId, branchIds } = nurseryContext(req);
   const [guardian] = await db.select().from(guardiansTable).where(and(
     eq(guardiansTable.id, id), eq(guardiansTable.ownerId, ownerId),
@@ -1221,7 +1225,7 @@ router.patch("/guardians/:id/details", async (req, res): Promise<void> => {
 router.delete("/guardians/:id", async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (!id || isNaN(id)) { res.status(400).json({ error: "Invalid guardian ID" }); return; }
-  if (!await accountManager(req, "delete:users")) { res.status(403).json({ error: "Operation not permitted" }); return; }
+  if (!await accountManager(req, "delete:guardian-account")) { res.status(403).json({ error: "Operation not permitted" }); return; }
   const { ownerId, branchIds } = nurseryContext(req);
   const [guardian] = await db.select().from(guardiansTable).where(and(
     eq(guardiansTable.id, id), eq(guardiansTable.ownerId, ownerId),

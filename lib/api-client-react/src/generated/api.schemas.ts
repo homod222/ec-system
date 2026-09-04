@@ -231,6 +231,8 @@ export interface Child {
   /** @nullable */
   branchId?: number | null;
   /** @nullable */
+  guardianId?: number | null;
+  /** @nullable */
   classroomName: string | null;
   guardianName: string;
   guardianPhone: string;

@@ -116,7 +116,12 @@ export { configurableOperations };
 export function defaultAllowed(role: string, operation: string) {
   if (["owner", "superadmin", "admin", "nursery_admin"].includes(role)) return true;
   if (operation === "read:child-confidential") return ["manager", "supervisor"].includes(role);
-  if (["manager", "supervisor"].includes(role)) return !operation.includes(":permissions") && !operation.endsWith(":users") && operation !== "read:audit";
+  if (["manager", "supervisor"].includes(role)) {
+    return !operation.includes(":permissions")
+      && !operation.endsWith(":users")
+      && !operation.endsWith(":guardian-account")
+      && operation !== "read:audit";
+  }
   if (role === "teacher") {
     return operation === "read:attendance"
       || operation === "read:child-record"

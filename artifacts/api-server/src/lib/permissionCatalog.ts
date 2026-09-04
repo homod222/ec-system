@@ -37,9 +37,17 @@ export const permissionCatalog = [
   {
     module: "people",
     page: "users",
-    operations: [
-      "read:users", "write:users", "delete:users",
-    ],
+    operations: ["read:users", "write:users", "delete:users"],
+  },
+  {
+    module: "people",
+    page: "guardian-accounts",
+    operations: ["read:guardian-account", "write:guardian-account", "delete:guardian-account"],
+  },
+  {
+    module: "people",
+    page: "manual-accounts",
+    operations: ["create:users"],
   },
   {
     module: "people",
