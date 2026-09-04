@@ -896,6 +896,7 @@ function RegistrationForm() {
   const { t } = useI18n();
   const { signIn } = useAuth();
   const [accountType, setAccountType] = useState<RegistrationAccountType>('guardian');
+  const [organizationId, setOrganizationId] = useState('');
   const [branchId, setBranchId] = useState('');
   const [registrationSource, setRegistrationSource] = useState<BranchTreeSelectSource>({ organizations: [], branches: [] });
   const [fullName, setFullName] = useState('');
@@ -912,6 +913,8 @@ function RegistrationForm() {
   useEffect(() => {
     void listRegistrationBranches().then(setRegistrationSource).catch(() => undefined);
   }, []);
+  const organizationBranches = registrationSource.branches.filter(branch => branch.organizationId === Number(organizationId));
+  const selectClassName = 'mt-2 w-full rounded-xl border border-input bg-background px-4 py-3 text-sm font-medium outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:opacity-60';
 
   useEffect(() => {
     if (resendCountdown <= 0) return;
@@ -995,19 +998,27 @@ function RegistrationForm() {
             </div>
           </fieldset>
           {registrationSource.branches.length > 0 && (
-            <label className="block text-sm font-bold">{t('auth.branch')}
-              <div className="mt-2">
-                <BranchTreeSelect
-                  mode="single"
-                  value={branchId}
-                  onChange={setBranchId}
-                  source={registrationSource}
-                  testId="registration-branch"
-                  placeholder={t('branchTree.selectBranch')}
-                  hideAll
-                />
-              </div>
-            </label>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="block text-sm font-bold">{t('auth.organization')}
+                <select required data-testid="registration-organization" value={organizationId}
+                  onChange={event => { setOrganizationId(event.target.value); setBranchId(''); }}
+                  className={selectClassName}>
+                  <option value="">{t('auth.selectOrganization')}</option>
+                  {registrationSource.organizations.map(organization => (
+                    <option key={organization.id} value={organization.id}>{organization.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="block text-sm font-bold">{t('auth.branch')}
+                <select required data-testid="registration-branch" value={branchId} disabled={!organizationId}
+                  onChange={event => setBranchId(event.target.value)} className={selectClassName}>
+                  <option value="">{t('auth.selectBranch')}</option>
+                  {organizationBranches.map(branch => (
+                    <option key={branch.id} value={branch.id}>{branch.name}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
           )}
           <label className="block text-sm font-bold">{t('auth.fullName')}
             <input required autoComplete="name" value={fullName} onChange={event => setFullName(event.target.value)}
