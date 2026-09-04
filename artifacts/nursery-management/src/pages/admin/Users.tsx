@@ -282,8 +282,8 @@ function GuardianChildrenDialog({ account, onClose }: { account: GuardianAccount
                   <p className="font-bold">{child.fullName}</p>
                   <p className="mt-1 text-sm text-muted-foreground">{child.classroomName || '—'}</p>
                 </div>
-                <Pill tone={child.status === 'active' ? 'green' : child.status === 'pending' ? 'blue' : 'neutral'}>
-                  {child.status}
+                <Pill tone={child.status === 'active' ? 'green' : child.status === 'pending' ? 'yellow' : 'neutral'}>
+                  {child.status === 'active' ? t('expanded.regular') : child.status === 'pending' ? t('expanded.pending') : t('expanded.inactive')}
                 </Pill>
                 {canWriteChildren && (
                   <Button variant="ghost" className="!px-2 !py-2" onClick={() => setEditChild(child)}>
