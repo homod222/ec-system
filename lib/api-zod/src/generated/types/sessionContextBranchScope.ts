@@ -5,8 +5,12 @@
  * API for the nursery management platform
  * OpenAPI spec version: 0.1.0
  */
+import type { SessionContextBranchScopeBranchesItem } from './sessionContextBranchScopeBranchesItem';
+import type { SessionContextBranchScopeOrganizationsItem } from './sessionContextBranchScopeOrganizationsItem';
 
 export type SessionContextBranchScope = {
   fullAccess: boolean;
   branchIds: number[];
+  organizations: SessionContextBranchScopeOrganizationsItem[];
+  branches: SessionContextBranchScopeBranchesItem[];
 };

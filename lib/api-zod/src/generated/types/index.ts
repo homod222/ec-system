@@ -181,6 +181,8 @@ export * from './rolePermissionChange';
 export * from './rolePermissionInput';
 export * from './sessionContext';
 export * from './sessionContextBranchScope';
+export * from './sessionContextBranchScopeBranchesItem';
+export * from './sessionContextBranchScopeOrganizationsItem';
 export * from './sessionContextRole';
 export * from './siteGalleryAttachInput';
 export * from './siteGalleryAttachInputContentType';

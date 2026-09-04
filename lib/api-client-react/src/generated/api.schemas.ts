@@ -1325,9 +1325,23 @@ export const SessionContextRole = {
   pending: "pending",
 } as const;
 
+export type SessionContextBranchScopeOrganizationsItem = {
+  id: number;
+  name: string;
+};
+
+export type SessionContextBranchScopeBranchesItem = {
+  id: number;
+  organizationId: number;
+  name: string;
+  active: boolean;
+};
+
 export type SessionContextBranchScope = {
   fullAccess: boolean;
   branchIds: number[];
+  organizations: SessionContextBranchScopeOrganizationsItem[];
+  branches: SessionContextBranchScopeBranchesItem[];
 };
 
 export interface SessionContext {

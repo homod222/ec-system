@@ -636,12 +636,37 @@ router.get("/session/context", resolveNurseryContext, async (req, res, next): Pr
       const context = nurseryContext(req);
       const baseScope: import("../lib/branchScope").BranchScope =
         res.locals.operationsBaseBranchScope ?? context.branchIds;
-      const allowedBranches: Array<{ id: number }> = baseScope === null
-        ? await db.select({ id: branchesTable.id }).from(branchesTable).where(eq(branchesTable.ownerId, context.ownerId))
-        : baseScope.map((id: number) => ({ id }));
+      const allowedBranches = await db.select({
+        id: branchesTable.id,
+        organizationId: branchesTable.organizationId,
+        name: branchesTable.name,
+        active: branchesTable.active,
+      }).from(branchesTable).where(and(
+        eq(branchesTable.ownerId, context.ownerId),
+        branchCondition(branchesTable.id, baseScope),
+      )).orderBy(branchesTable.name);
+      const organizationIds = [...new Set(
+        allowedBranches
+          .map((branch) => branch.organizationId)
+          .filter((id): id is number => id !== null),
+      )];
+      const allowedOrganizations = organizationIds.length === 0
+        ? []
+        : await db.select({
+          id: organizationsTable.id,
+          name: organizationsTable.name,
+        }).from(organizationsTable).where(and(
+          eq(organizationsTable.ownerId, context.ownerId),
+          inArray(organizationsTable.id, organizationIds),
+        )).orderBy(organizationsTable.name);
       res.json(GetSessionContextResponse.parse({
         role: "admin", effectivePermissions,
-        branchScope: { fullAccess: baseScope === null, branchIds: allowedBranches.map((branch) => branch.id) },
+        branchScope: {
+          fullAccess: baseScope === null,
+          branchIds: allowedBranches.map((branch) => branch.id),
+          organizations: allowedOrganizations,
+          branches: allowedBranches,
+        },
       }));
       return;
     }
@@ -650,14 +675,14 @@ router.get("/session/context", resolveNurseryContext, async (req, res, next): Pr
       if (guardian) {
         res.json(GetSessionContextResponse.parse({
           role: "parent", effectivePermissions,
-          branchScope: { fullAccess: false, branchIds: [] },
+          branchScope: { fullAccess: false, branchIds: [], organizations: [], branches: [] },
         }));
         return;
       }
     }
     res.json(GetSessionContextResponse.parse({
       role: "pending", effectivePermissions,
-      branchScope: { fullAccess: false, branchIds: [] },
+      branchScope: { fullAccess: false, branchIds: [], organizations: [], branches: [] },
     }));
   } catch (error) {
     req.log.error({ err: error }, "Failed to resolve application session context");
