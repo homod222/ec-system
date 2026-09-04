@@ -1,12 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Building2, Check, ChevronDown, ChevronRight, ChevronsUpDown, Search, X } from 'lucide-react';
 import {
-  getListBranchesQueryKey,
-  getListOrganizationsQueryKey,
-  useListBranches,
-  useListOrganizations,
-  type Branch,
-  type Organization,
+  getGetSessionContextQueryKey,
+  useGetSessionContext,
+  type SessionContextBranchScopeBranchesItem,
+  type SessionContextBranchScopeOrganizationsItem,
 } from '@workspace/api-client-react';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
@@ -18,8 +16,8 @@ import { cn } from '@/lib/utils';
 import { useI18n } from '../i18n';
 
 export type BranchTreeSelectSource = {
-  organizations: Organization[];
-  branches: Branch[];
+  organizations: SessionContextBranchScopeOrganizationsItem[];
+  branches: SessionContextBranchScopeBranchesItem[];
 };
 
 type SingleProps = {
@@ -60,17 +58,16 @@ export function BranchTreeSelect(props: BranchTreeSelectProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [collapsedOrganizations, setCollapsedOrganizations] = useState<Set<number>>(new Set());
-  const organizationsQuery = useListOrganizations({
-    query: { enabled: !props.source, queryKey: getListOrganizationsQueryKey() },
-    request: { headers: { 'x-branch-id': '' } },
-  });
-  const branchesQuery = useListBranches(undefined, {
-    query: { enabled: !props.source, queryKey: getListBranchesQueryKey() },
-    request: { headers: { 'x-branch-id': '' } },
+  const sessionQuery = useGetSessionContext({
+    query: {
+      enabled: !props.source,
+      queryKey: getGetSessionContextQueryKey(),
+      retry: false,
+    },
   });
 
-  const organizations = props.source?.organizations || organizationsQuery.data || [];
-  const allBranches = props.source?.branches || branchesQuery.data || [];
+  const organizations = props.source?.organizations || sessionQuery.data?.branchScope.organizations || [];
+  const allBranches = props.source?.branches || sessionQuery.data?.branchScope.branches || [];
   const selectedBranchIds = props.mode === 'single'
     ? (props.value ? [Number(props.value)] : [])
     : props.value.branchIds;
@@ -82,7 +79,7 @@ export function BranchTreeSelect(props: BranchTreeSelectProps) {
   );
 
   const branchesByOrganization = useMemo(() => {
-    const grouped = new Map<number, Branch[]>();
+    const grouped = new Map<number, SessionContextBranchScopeBranchesItem[]>();
     branches.forEach((branch) => {
       const current = grouped.get(branch.organizationId) || [];
       current.push(branch);
@@ -96,12 +93,10 @@ export function BranchTreeSelect(props: BranchTreeSelectProps) {
     return organizations.flatMap((organization) => {
       const organizationBranches = branchesByOrganization.get(organization.id) || [];
       const organizationMatches = !query
-        || organization.name.toLocaleLowerCase().includes(query)
-        || organization.code.toLocaleLowerCase().includes(query);
+        || organization.name.toLocaleLowerCase().includes(query);
       const matchingBranches = organizationBranches.filter((branch) => (
         !query
         || branch.name.toLocaleLowerCase().includes(query)
-        || branch.code.toLocaleLowerCase().includes(query)
         || selectedBranchIds.includes(branch.id)
       ));
       if (!organizationBranches.length && !selectedOrganizationIds.includes(organization.id)) return [];

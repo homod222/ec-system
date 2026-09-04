@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { JSX } from 'react';
-import { useListBranches, useListOrganizations } from '@workspace/api-client-react';
+import { getGetSessionContextQueryKey, useGetSessionContext } from '@workspace/api-client-react';
 import { useI18n } from '../i18n';
 
 export function branchIdPayload(value: string): number | null {
@@ -21,14 +21,14 @@ export function BranchSelect({
   required?: boolean;
 }): JSX.Element | null {
   const { t } = useI18n();
-  const scopeHeaders = { request: { headers: { 'x-branch-id': '' } } };
-  const organizationsQuery = useListOrganizations(scopeHeaders);
-  const branchesQuery = useListBranches(undefined, scopeHeaders);
+  const sessionQuery = useGetSessionContext({
+    query: { queryKey: getGetSessionContextQueryKey(), retry: false },
+  });
   const [pendingOrganizationId, setPendingOrganizationId] = useState('');
   const initializedFromStoredBranch = useRef(false);
 
-  const branches = (branchesQuery.data ?? []).filter((branch) => branch.active || String(branch.id) === value);
-  const organizations = (organizationsQuery.data ?? []).filter((organization) =>
+  const branches = (sessionQuery.data?.branchScope.branches ?? []).filter((branch) => branch.active || String(branch.id) === value);
+  const organizations = (sessionQuery.data?.branchScope.organizations ?? []).filter((organization) =>
     branches.some((branch) => branch.organizationId === organization.id),
   );
   const selectedBranch = branches.find((branch) => String(branch.id) === value);
@@ -38,7 +38,7 @@ export function BranchSelect({
   const organizationBranches = branches.filter((branch) => String(branch.organizationId) === organizationId);
 
   useEffect(() => {
-    if (value || branchesQuery.data === undefined) return;
+    if (value || sessionQuery.data === undefined) return;
     if (branches.length === 1) {
       onChange(String(branches[0].id));
       return;
@@ -54,9 +54,9 @@ export function BranchSelect({
     if (storedBranchIds.length === 1 && branches.some((branch) => String(branch.id) === storedBranchIds[0])) {
       onChange(storedBranchIds[0]);
     }
-  }, [branches, branchesQuery.data, onChange, organizationBranches, organizationId, value]);
+  }, [branches, onChange, organizationBranches, organizationId, sessionQuery.data, value]);
 
-  if (branchesQuery.isLoading || branchesQuery.isError || organizationsQuery.isLoading || organizationsQuery.isError) return null;
+  if (sessionQuery.isLoading || sessionQuery.isError) return null;
   if (branches.length === 0) return null;
 
   return (

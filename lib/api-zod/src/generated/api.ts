@@ -1795,6 +1795,20 @@ export const GetSessionContextResponse = zod.object({
   branchScope: zod.object({
     fullAccess: zod.boolean(),
     branchIds: zod.array(zod.number()),
+    organizations: zod.array(
+      zod.object({
+        id: zod.number(),
+        name: zod.string(),
+      }),
+    ),
+    branches: zod.array(
+      zod.object({
+        id: zod.number(),
+        organizationId: zod.number(),
+        name: zod.string(),
+        active: zod.boolean(),
+      }),
+    ),
   }),
 });
 /**

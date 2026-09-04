@@ -2659,12 +2659,30 @@ components:
           items: { type: string }
         branchScope:
           type: object
-          required: [fullAccess, branchIds]
+          required: [fullAccess, branchIds, organizations, branches]
           properties:
             fullAccess: { type: boolean }
             branchIds:
               type: array
               items: { type: number }
+            organizations:
+              type: array
+              items:
+                type: object
+                required: [id, name]
+                properties:
+                  id: { type: number }
+                  name: { type: string }
+            branches:
+              type: array
+              items:
+                type: object
+                required: [id, organizationId, name, active]
+                properties:
+                  id: { type: number }
+                  organizationId: { type: number }
+                  name: { type: string }
+                  active: { type: boolean }
     ProgressReport:
       type: object
       required: [id, childId, childName, title, summary, period, educatorName, publishedAt]

@@ -11,10 +11,9 @@ import {
   getGetSessionContextQueryKey,
   getGetDashboardActivityQueryKey, getGetDashboardSummaryQueryKey, getListClassroomsQueryKey,
   getGetApplicationQueryKey, getListApplicationsQueryKey,
-  getListBranchesQueryKey,
   useAcceptApplication, useAttachApplicationDocument, useCreateApplication, useGetApplication, useRequestUploadUrl,
   useCreateChild, useGetChild, useGetDashboardActivity, useGetDashboardSummary, useGetSessionContext, useListChildren,
-  useListClassrooms, useListGuardians, useListApplications, useListBranches, useUpdateApplication, useUpdateApplicationStatus, useUpdateChild,
+  useListClassrooms, useListGuardians, useListApplications, useUpdateApplication, useUpdateApplicationStatus, useUpdateChild,
 } from '@workspace/api-client-react';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
@@ -192,7 +191,7 @@ function BranchScopeSwitcher({
   selectedOrganizationIds,
   onChange,
 }: {
-  branches: Array<{ id: number; name: string; code: string; organizationId: number }>;
+  branches: Array<{ id: number; name: string; organizationId: number; active: boolean }>;
   fullAccess: boolean;
   selectedBranchIds: string;
   selectedOrganizationIds: number[];
@@ -242,18 +241,14 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const { user, isSignedIn, signOut } = useAuth();
   const { dir, t } = useI18n();
   const session = useGetSessionContext({ query: { enabled: Boolean(isSignedIn), queryKey: getGetSessionContextQueryKey(), retry: false } });
-  const branches = useListBranches(undefined, {
-    query: { enabled: Boolean(isSignedIn), queryKey: getListBranchesQueryKey(), retry: false },
-    request: { headers: { 'x-branch-id': '' } },
-  });
   const [selectedBranchIds, setSelectedBranchIds] = useState(() => localStorage.getItem('ec.selectedBranchId') || '');
   const [selectedOrganizationIds, setSelectedOrganizationIds] = useState<number[]>([]);
   const selectionHydrated = useRef(false);
   const branchScope = session.data?.branchScope;
-  const availableBranches = branches.data || [];
+  const availableBranches = session.data?.branchScope.branches ?? [];
 
   useEffect(() => {
-    if (branches.data === undefined) return;
+    if (session.data === undefined) return;
     const selectedIds = selectedBranchIds.split(',').filter(Boolean).map(Number);
     const validIds = selectedIds.filter((id) => availableBranches.some((branch) => branch.id === id));
     if (validIds.length !== selectedIds.length) {
@@ -276,7 +271,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
       setSelectedOrganizationIds(organizationIds);
       selectionHydrated.current = true;
     }
-  }, [availableBranches, branches.data, selectedBranchIds]);
+  }, [availableBranches, session.data, selectedBranchIds]);
 
   const handleBranchChange = ({ organizationIds, branchIds }: { organizationIds: number[]; branchIds: number[] }) => {
     const expandedBranchIds = [
