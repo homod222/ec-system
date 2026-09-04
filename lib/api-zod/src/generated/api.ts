@@ -1791,6 +1791,8 @@ export const GetParentOverviewResponse = zod.object({
  */
 export const GetSessionContextResponse = zod.object({
   role: zod.enum(["parent", "admin", "pending"]),
+  fullName: zod.string(),
+  accountRole: zod.string(),
   effectivePermissions: zod.array(zod.string()),
   branchScope: zod.object({
     fullAccess: zod.boolean(),

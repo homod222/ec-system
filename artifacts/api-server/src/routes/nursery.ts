@@ -623,6 +623,15 @@ router.use(requireAuth);
 router.get("/session/context", resolveNurseryContext, async (req, res, next): Promise<void> => {
   try {
     const identity = await localIdentity(req);
+    const auth = getLocalAuth(req);
+    const accountId = Number(auth?.sub);
+    const [account] = Number.isFinite(accountId) && accountId > 0
+      ? await db.select({ fullName: publicAuthAccountsTable.fullName })
+        .from(publicAuthAccountsTable)
+        .where(eq(publicAuthAccountsTable.id, accountId))
+        .limit(1)
+      : [];
+    const fullName = account?.fullName ?? "";
     const effectivePermissions = await Promise.all(configurableOperations.map(async (operation) =>
       await permitted(req, operation) ? operation : null,
     )).then((operations) => operations.filter(
@@ -660,7 +669,7 @@ router.get("/session/context", resolveNurseryContext, async (req, res, next): Pr
           inArray(organizationsTable.id, organizationIds),
         )).orderBy(organizationsTable.name);
       res.json(GetSessionContextResponse.parse({
-        role: "admin", effectivePermissions,
+        role: "admin", fullName, accountRole: context.role, effectivePermissions,
         branchScope: {
           fullAccess: baseScope === null,
           branchIds: allowedBranches.map((branch) => branch.id),
@@ -674,14 +683,14 @@ router.get("/session/context", resolveNurseryContext, async (req, res, next): Pr
       const guardian = await resolveGuardian(req);
       if (guardian) {
         res.json(GetSessionContextResponse.parse({
-          role: "parent", effectivePermissions,
+          role: "parent", fullName, accountRole: "parent", effectivePermissions,
           branchScope: { fullAccess: false, branchIds: [], organizations: [], branches: [] },
         }));
         return;
       }
     }
     res.json(GetSessionContextResponse.parse({
-      role: "pending", effectivePermissions,
+      role: "pending", fullName, accountRole: "pending", effectivePermissions,
       branchScope: { fullAccess: false, branchIds: [], organizations: [], branches: [] },
     }));
   } catch (error) {

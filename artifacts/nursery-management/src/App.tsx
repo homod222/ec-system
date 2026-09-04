@@ -158,6 +158,21 @@ const academicLevelOptions = [
   { value: 'KG1', label: 'application.kg1' },
   { value: 'KG2', label: 'application.kg2' },
 ] satisfies Array<{ value: string; label: TranslationKey }>;
+const roleTranslationKeys = {
+  admin: 'staffAccounts.role.admin',
+  manager: 'staffAccounts.role.manager',
+  supervisor: 'staffAccounts.role.supervisor',
+  teacher: 'staffAccounts.role.teacher',
+  accountant: 'staffAccounts.role.accountant',
+  receptionist: 'staffAccounts.role.receptionist',
+  owner: 'staffAccounts.role.owner',
+  superadmin: 'staffAccounts.role.superadmin',
+  nursery_admin: 'staffAccounts.role.nursery_admin',
+} as const satisfies Record<string, TranslationKey>;
+const roleLabel = (role: string | undefined, t: (key: TranslationKey) => string) => {
+  const key = role ? roleTranslationKeys[role as keyof typeof roleTranslationKeys] : undefined;
+  return t(key ?? 'admin.seniorManagement');
+};
 
 export function Button({ children, className = '', variant = 'primary', ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'soft' | 'ghost' | 'danger' }) {
   const variants = {
@@ -246,6 +261,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const selectionHydrated = useRef(false);
   const branchScope = session.data?.branchScope;
   const availableBranches = session.data?.branchScope.branches ?? [];
+  const displayFirstName = (session.data?.fullName || user?.firstName || '').trim().split(/\s+/u)[0] || t('admin.defaultUser');
 
   useEffect(() => {
     if (session.data === undefined) return;
@@ -355,8 +371,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
               <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-destructive border-2 border-card" />
             </button>
             <div className="hidden text-start sm:block">
-               <p data-testid="text-user-name" className="text-sm font-bold text-foreground">{user?.firstName?.split(/\s+/u)[0] || t('admin.defaultUser')}</p>
-               <p className="text-[11px] font-medium text-muted-foreground">{t('admin.seniorManagement')}</p>
+               <p data-testid="text-user-name" className="text-sm font-bold text-foreground">{displayFirstName}</p>
+               <p className="text-[11px] font-medium text-muted-foreground">{roleLabel(session.data?.accountRole, t)}</p>
             </div>
              <img
                src={`${basePath}/ec-official-logo-v2.png`}
@@ -364,7 +380,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
                data-testid="image-admin-mobile-logo"
                className="h-11 w-11 rounded-lg bg-white object-contain p-1 shadow-sm sm:hidden"
              />
-             <Avatar name={user?.firstName?.split(/\s+/u)[0] || t('admin.defaultUser')} className="hidden bg-primary text-primary-foreground sm:inline-flex" />
+             <Avatar name={displayFirstName} className="hidden bg-primary text-primary-foreground sm:inline-flex" />
           </div>
         </header>
         <div className="mx-auto max-w-[1500px] p-5 sm:p-8 lg:p-10 animate-rise">{children}</div>
@@ -411,12 +427,15 @@ export function StatCard({ icon: Icon, label, value, detail, tone = 'teal' }: { 
 function Dashboard() {
   const { t, formatDate, formatCurrency } = useI18n();
   const { user } = useAuth();
+  const session = useGetSessionContext({
+    query: { queryKey: getGetSessionContextQueryKey(), retry: false },
+  });
   const summary = useGetDashboardSummary();
   const activity = useGetDashboardActivity();
   const data = summary.data;
   const activities = activity.data || [];
   const greetingKey = new Date().getHours() >= 12 ? 'dashboard.greetingEvening' : 'dashboard.greetingMorning';
-  const firstName = user?.firstName?.trim().split(/\s+/u)[0] || t('admin.defaultUser');
+  const firstName = (session.data?.fullName || user?.firstName || '').trim().split(/\s+/u)[0] || t('admin.defaultUser');
   const greeting = t(greetingKey, { name: firstName });
   
   return (
