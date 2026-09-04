@@ -380,7 +380,6 @@ export function Shell({ children }: { children: React.ReactNode }) {
                data-testid="image-admin-mobile-logo"
                className="h-11 w-11 rounded-lg bg-white object-contain p-1 shadow-sm sm:hidden"
              />
-             <Avatar name={displayFirstName} className="hidden bg-primary text-primary-foreground sm:inline-flex" />
           </div>
         </header>
         <div className="mx-auto max-w-[1500px] p-5 sm:p-8 lg:p-10 animate-rise">{children}</div>

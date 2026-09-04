@@ -546,6 +546,14 @@ async function resolveGuardian(req: Parameters<typeof getLocalAuth>[0]) {
   return null;
 }
 
+function pickDisplayName(candidates: Array<string | null | undefined>) {
+  for (const candidate of candidates) {
+    const name = candidate?.trim() ?? "";
+    if (name && !/^\+?\d[\d\s-]*$/.test(name)) return name;
+  }
+  return "";
+}
+
 const requireParentGuardian: RequestHandler = async (req, res, next) => {
   try {
     const identity = await localIdentity(req);
@@ -635,7 +643,14 @@ router.get("/session/context", resolveNurseryContext, async (req, res, next): Pr
         .where(eq(publicAuthAccountsTable.id, accountId))
         .limit(1)
       : [];
-    const fullName = account?.fullName ?? "";
+    const [staff] = Number.isFinite(accountId) && accountId > 0
+      ? await db.select({ name: staffTable.name })
+        .from(staffTable)
+        .where(eq(staffTable.clerkUserId, `local_${accountId}`))
+        .limit(1)
+      : [];
+    const guardian = await resolveGuardian(req);
+    const fullName = pickDisplayName([staff?.name, guardian?.name, account?.fullName]);
     const effectivePermissions = await Promise.all(configurableOperations.map(async (operation) =>
       await permitted(req, operation) ? operation : null,
     )).then((operations) => operations.filter(
