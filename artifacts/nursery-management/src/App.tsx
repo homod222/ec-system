@@ -58,7 +58,7 @@ import { AuthProvider, useAuth, type AuthUser } from '@/lib/auth-context';
 import { setAuthTokenGetter, setBranchIdGetter } from '@workspace/api-client-react';
 import { getStoredToken } from '@/lib/auth-context';
 import { BranchSelect, branchIdPayload } from './components/BranchSelect';
-import { BranchTreeSelect } from './components/BranchTreeSelect';
+import { BranchTreeSelect, type BranchTreeSelectSource } from './components/BranchTreeSelect';
 
 const queryClient = new QueryClient();
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
@@ -897,10 +897,7 @@ function RegistrationForm() {
   const { signIn } = useAuth();
   const [accountType, setAccountType] = useState<RegistrationAccountType>('guardian');
   const [branchId, setBranchId] = useState('');
-  const [registrationSource, setRegistrationSource] = useState<{
-    organizations: import('@workspace/api-client-react').Organization[];
-    branches: import('@workspace/api-client-react').Branch[];
-  }>({ organizations: [], branches: [] });
+  const [registrationSource, setRegistrationSource] = useState<BranchTreeSelectSource>({ organizations: [], branches: [] });
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
