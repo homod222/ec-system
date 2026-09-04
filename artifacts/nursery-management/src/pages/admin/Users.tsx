@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
+  getListChildrenQueryKey,
   getListGuardianAccountsQueryKey,
   getListStaffQueryKey,
   useAdminCreateAccount,
   useListGuardianAccounts,
+  useListChildren,
   useListStaff,
   useUpdateGuardianAccount,
   useUpdateStaff,
@@ -11,10 +13,10 @@ import {
   useGetSessionContext,
   useSetStaffScope,
 } from '@workspace/api-client-react';
-import type { GuardianAccountResult, StaffMember } from '@workspace/api-client-react';
+import type { Child, GuardianAccountResult, StaffMember } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
-import { KeyRound, Pencil, Plus, Search, ShieldCheck, Trash2, UserX, X } from 'lucide-react';
-import { Shell, Button, Pill, Avatar, QueryState, PageHeader } from '../../App';
+import { Baby, KeyRound, Pencil, Plus, Search, ShieldCheck, Trash2, UserX, X } from 'lucide-react';
+import { ChildForm, Shell, Button, Pill, Avatar, QueryState, PageHeader } from '../../App';
 import { accountRoleValues, StaffAccountDialog } from './StaffExpanded';
 import { useI18n } from '../../i18n';
 import { BranchTreeSelect } from '../../components/BranchTreeSelect';
@@ -24,7 +26,18 @@ type Tab = 'guardians' | 'staff';
 function useUsersPermissions() {
   const session = useGetSessionContext();
   const effective = session.data?.effectivePermissions || [];
-  return { canWrite: effective.includes('write:users'), canDelete: effective.includes('delete:users') };
+  return {
+    canWriteStaff: effective.includes('write:users'),
+    canDeleteStaff: effective.includes('delete:users'),
+    canReadStaff: effective.includes('read:users'),
+    canReadGuardians: effective.includes('read:guardian-account'),
+    canWriteGuardians: effective.includes('write:guardian-account'),
+    canDeleteGuardians: effective.includes('delete:guardian-account'),
+    canCreate: effective.includes('create:users'),
+    canReadChildren: effective.includes('read:children'),
+    canWriteChildren: effective.includes('write:children'),
+    loaded: session.data !== undefined,
+  };
 }
 
 export function Users() {
@@ -32,7 +45,12 @@ export function Users() {
   const [tab, setTab] = useState<Tab>('guardians');
   const [search, setSearch] = useState('');
   const [showCreateDialog, setShowCreateDialog] = useState(false);
-  const { canWrite } = useUsersPermissions();
+  const permissions = useUsersPermissions();
+
+  useEffect(() => {
+    if (!permissions.loaded) return;
+    setTab(permissions.canReadGuardians ? 'guardians' : 'staff');
+  }, [permissions.loaded, permissions.canReadGuardians]);
 
   return (
     <Shell>
@@ -41,22 +59,22 @@ export function Users() {
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
         <div className="inline-flex rounded-xl border border-border bg-card p-1">
-          <button
+          {permissions.canReadGuardians && <button
             data-testid="tab-users-guardians"
             onClick={() => setTab('guardians')}
             className={`rounded-lg px-4 py-2 text-sm font-bold transition-colors ${tab === 'guardians' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
           >
             {t('usersPage.tabGuardians')}
-          </button>
-          <button
+          </button>}
+          {permissions.canReadStaff && <button
             data-testid="tab-users-staff"
             onClick={() => setTab('staff')}
             className={`rounded-lg px-4 py-2 text-sm font-bold transition-colors ${tab === 'staff' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
           >
             {t('usersPage.tabStaff')}
-          </button>
+          </button>}
         </div>
-        {canWrite && (
+        {permissions.canCreate && (
           <Button
             data-testid="button-add-account"
             onClick={() => setShowCreateDialog(true)}
@@ -78,7 +96,7 @@ export function Users() {
         </div>
       </div>
 
-      {tab === 'guardians' ? <GuardiansTab search={search} /> : <StaffTab search={search} />}
+      {tab === 'guardians' && permissions.canReadGuardians ? <GuardiansTab search={search} /> : <StaffTab search={search} />}
 
       {showCreateDialog && <ManualAccountDialog onClose={() => setShowCreateDialog(false)} />}
     </Shell>
@@ -101,7 +119,8 @@ function GuardiansTab({ search }: { search: string }) {
   const [error, setError] = useState<number | null>(null);
   const [editAccount, setEditAccount] = useState<GuardianAccountResult | null>(null);
   const [deleteAccount, setDeleteAccount] = useState<GuardianAccountResult | null>(null);
-  const { canWrite, canDelete } = useUsersPermissions();
+  const [childrenAccount, setChildrenAccount] = useState<GuardianAccountResult | null>(null);
+  const { canWriteGuardians, canDeleteGuardians, canReadChildren } = useUsersPermissions();
   const accounts = (query.data || []).filter((account) => account.name.includes(search) || account.phone.includes(search));
 
   const mutate = (guardianId: number, status: 'active' | 'disabled') => {
@@ -142,7 +161,7 @@ function GuardiansTab({ search }: { search: string }) {
               )}
             </div>
             <div className="flex gap-2">
-              {canWrite && (
+              {canWriteGuardians && (
                 <Button
                   variant="ghost"
                   className="!px-2 !py-2"
@@ -151,7 +170,7 @@ function GuardiansTab({ search }: { search: string }) {
                   <Pencil size={16} />
                 </Button>
               )}
-              {canDelete && (
+              {canDeleteGuardians && (
                 <Button
                   variant="ghost"
                   className="!px-2 !py-2 text-destructive hover:text-destructive"
@@ -160,7 +179,7 @@ function GuardiansTab({ search }: { search: string }) {
                   <Trash2 size={16} />
                 </Button>
               )}
-              {account.accountStatus === 'unlinked' || !canWrite ? (
+              {account.accountStatus === 'unlinked' || !canWriteGuardians ? (
                 <span className="text-muted-foreground">—</span>
               ) : account.accountStatus === 'disabled' || account.accountStatus === 'pending' ? (
                 <Button
@@ -183,6 +202,17 @@ function GuardiansTab({ search }: { search: string }) {
                   <UserX size={16} />{t('usersPage.disable')}
                 </Button>
               )}
+              {canReadChildren && (
+                <Button
+                  data-testid={`button-guardian-children-${account.guardianId}`}
+                  variant="soft"
+                  className="!px-2 !py-2"
+                  title={t('usersPage.children')}
+                  onClick={() => setChildrenAccount(account)}
+                >
+                  <Baby size={16} />
+                </Button>
+              )}
             </div>
             {error === account.guardianId && (
               <p className="text-xs font-medium text-destructive md:col-span-5">{t('usersPage.updateError')}</p>
@@ -197,8 +227,8 @@ function GuardiansTab({ search }: { search: string }) {
         account={editAccount}
         onClose={() => setEditAccount(null)}
         onSaved={() => { setEditAccount(null); queryClient.invalidateQueries({ queryKey: getListGuardianAccountsQueryKey() }); }}
-      />
-    )}
+        />
+      )}
 
     {deleteAccount && (
       <DeleteGuardianDialog
@@ -207,7 +237,73 @@ function GuardiansTab({ search }: { search: string }) {
         onDeleted={() => { setDeleteAccount(null); queryClient.invalidateQueries({ queryKey: getListGuardianAccountsQueryKey() }); }}
       />
     )}
+    {childrenAccount && (
+      <GuardianChildrenDialog
+        account={childrenAccount}
+        onClose={() => setChildrenAccount(null)}
+      />
+    )}
     </>
+  );
+}
+
+function GuardianChildrenDialog({ account, onClose }: { account: GuardianAccountResult; onClose: () => void }) {
+  const { t } = useI18n();
+  const queryClient = useQueryClient();
+  const query = useListChildren();
+  const { canWriteChildren } = useUsersPermissions();
+  const [editChild, setEditChild] = useState<Child | null>(null);
+  const [addChild, setAddChild] = useState(false);
+  const children = (query.data || []).filter((child) => child.guardianId === account.guardianId);
+
+  const closeChildForm = () => {
+    setEditChild(null);
+    setAddChild(false);
+    queryClient.invalidateQueries({ queryKey: getListChildrenQueryKey() });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-primary/40 p-4 backdrop-blur-md">
+      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-[2rem] bg-card p-8 shadow-2xl">
+        <div className="mb-5 flex items-start justify-between">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-widest text-primary">{t('usersPage.childrenTitle')}</p>
+            <h2 className="mt-1 text-xl font-bold">{account.name}</h2>
+          </div>
+          <Button type="button" variant="ghost" onClick={onClose} className="!p-2"><X /></Button>
+        </div>
+
+        <QueryState loading={query.isLoading} error={query.isError} empty={!children.length} onRetry={() => query.refetch()}>
+          <div className="space-y-3">
+            {children.map((child) => (
+              <div key={child.id} className="flex items-center gap-4 rounded-2xl border border-border p-4">
+                <Avatar name={child.fullName} className="h-11 w-11" />
+                <div className="min-w-0 flex-1">
+                  <p className="font-bold">{child.fullName}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">{child.classroomName || '—'}</p>
+                </div>
+                <Pill tone={child.status === 'active' ? 'green' : child.status === 'pending' ? 'blue' : 'neutral'}>
+                  {child.status}
+                </Pill>
+                {canWriteChildren && (
+                  <Button variant="ghost" className="!px-2 !py-2" onClick={() => setEditChild(child)}>
+                    <Pencil size={16} />
+                  </Button>
+                )}
+              </div>
+            ))}
+          </div>
+        </QueryState>
+
+        {canWriteChildren && (
+          <Button className="mt-6 w-full" onClick={() => setAddChild(true)}>
+            <Plus size={18} />{t('usersPage.addChild')}
+          </Button>
+        )}
+      </div>
+      {editChild && <ChildForm child={editChild} onClose={closeChildForm} />}
+      {addChild && <ChildForm defaults={{ guardianName: account.name, guardianPhone: account.phone }} onClose={closeChildForm} />}
+    </div>
   );
 }
 
@@ -330,7 +426,7 @@ function StaffTab({ search }: { search: string }) {
   const [scopeMember, setScopeMember] = useState<StaffMember | null>(null);
   const [editMember, setEditMember] = useState<StaffMember | null>(null);
   const [deleteMember, setDeleteMember] = useState<StaffMember | null>(null);
-  const { canWrite, canDelete } = useUsersPermissions();
+  const { canWriteStaff, canDeleteStaff } = useUsersPermissions();
   const staff = (query.data || []).filter((member) => member.name.includes(search));
 
   return (
@@ -380,7 +476,7 @@ function StaffTab({ search }: { search: string }) {
                     : t('users.scopeSummaryOwn')}
               </div>
               <div className="flex gap-2">
-                {canWrite && (
+                {canWriteStaff && (
                   <Button
                     variant="ghost"
                     className="!px-2 !py-2"
@@ -389,7 +485,7 @@ function StaffTab({ search }: { search: string }) {
                     <Pencil size={16} />
                   </Button>
                 )}
-                {canDelete && (
+                {canDeleteStaff && (
                   <Button
                     variant="ghost"
                     className="!px-2 !py-2 text-destructive hover:text-destructive"
@@ -398,7 +494,7 @@ function StaffTab({ search }: { search: string }) {
                     <Trash2 size={16} />
                   </Button>
                 )}
-                {canWrite && (
+                {canWriteStaff && (
                   <Button
                     data-testid={`button-user-account-staff-${member.id}`}
                     variant={member.accountStatus === 'pending_verification' ? 'soft' : 'ghost'}
@@ -408,7 +504,7 @@ function StaffTab({ search }: { search: string }) {
                     <KeyRound size={16} />
                   </Button>
                 )}
-                {canWrite && member.accountStatus !== 'unlinked' && member.clerkUserId && (
+                {canWriteStaff && member.accountStatus !== 'unlinked' && member.clerkUserId && (
                   <Button
                     data-testid={`button-scope-staff-${member.id}`}
                     variant="soft"

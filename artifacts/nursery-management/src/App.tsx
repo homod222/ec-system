@@ -81,7 +81,7 @@ const pagePermissions = {
   reports: ['read:report-operational', 'read:report-academic', 'read:report-financial'],
   audit: ['read:audit'],
   permissions: ['read:permissions'],
-  users: ['read:users'],
+  users: ['read:users', 'read:guardian-account'],
   gallery: ['read:site-gallery'],
   settings: ['read:setting', 'read:holiday', 'read:integration'],
   organizations: ['read:organization', 'read:branch'],
@@ -524,14 +524,22 @@ function Dashboard() {
   );
 }
 
-function ChildForm({ child, onClose }: { child?: Child; onClose: () => void }) {
+export function ChildForm({
+  child,
+  onClose,
+  defaults,
+}: {
+  child?: Child;
+  onClose: () => void;
+  defaults?: Partial<Pick<Child, 'guardianName' | 'guardianPhone' | 'branchId'>>;
+}) {
   const { t } = useI18n();
   const [form, setForm] = useState({ 
     firstName: child?.firstName || '', lastName: child?.lastName || '', 
     gender: child?.gender || 'female', birthDate: child?.birthDate || '', 
-    guardianName: child?.guardianName || '', guardianPhone: child?.guardianPhone || '', 
+    guardianName: child?.guardianName || defaults?.guardianName || '', guardianPhone: child?.guardianPhone || defaults?.guardianPhone || '',
     level: child?.level || DEFAULT_ACADEMIC_LEVEL, notes: child?.notes || '', classroomId: child?.classroomId?.toString() || '',
-    branchId: child?.branchId?.toString() || '',
+    branchId: child?.branchId?.toString() || defaults?.branchId?.toString() || '',
   });
   
   const classrooms = useListClassrooms();

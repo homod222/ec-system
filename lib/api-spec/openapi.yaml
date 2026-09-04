@@ -2000,6 +2000,7 @@ components:
           enum: [active, pending, inactive]
         classroomId: { type: ["number", "null"] }
         branchId: { type: ["number", "null"] }
+        guardianId: { type: ["number", "null"] }
         classroomName: { type: ["string", "null"] }
         guardianName: { type: string }
         guardianPhone: { type: string }

@@ -23,6 +23,8 @@ const expectedOperations = [
   "read:report-operational", "read:report-academic", "read:report-financial",
   "read:organization", "write:organization", "delete:organization",
   "read:users", "write:users", "delete:users",
+  "read:guardian-account", "write:guardian-account", "delete:guardian-account",
+  "create:users",
   "read:permissions", "write:permissions", "read:audit",
   "read:dashboard", "read:children", "write:children", "delete:children",
   "read:invoice", "write:invoice", "write:payment",
