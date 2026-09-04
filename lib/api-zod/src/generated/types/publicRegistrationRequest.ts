@@ -22,4 +22,6 @@ export interface PublicRegistrationRequest {
   /** @maxLength 254 */
   email: string;
   accountType: PublicRegistrationRequestAccountType;
+  /** @minimum 1 */
+  branchId?: number;
 }

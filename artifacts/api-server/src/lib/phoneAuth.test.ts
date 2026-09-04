@@ -61,6 +61,23 @@ describe("replacement authentication contracts", async () => {
     }).success).toBe(false);
   });
 
+  it("accepts an optional positive public registration branch", () => {
+    expect(RequestPublicRegistrationBody.safeParse({
+      phone: "+965 5000 1234",
+      fullName: "أحمد محمد علي",
+      email: "parent@example.com",
+      accountType: "guardian",
+      branchId: 7,
+    }).success).toBe(true);
+    expect(RequestPublicRegistrationBody.safeParse({
+      phone: "+965 5000 1234",
+      fullName: "أحمد محمد علي",
+      email: "parent@example.com",
+      accountType: "guardian",
+      branchId: 0,
+    }).success).toBe(false);
+  });
+
   it("creates the password only in the OTP verification step", () => {
     const request = RequestPublicRegistrationBody.parse({
       phone: "50001234",

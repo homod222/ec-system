@@ -47,6 +47,7 @@ import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { useI18n, type Locale, type TranslationKey } from '@/i18n';
 import {
   AuthApiError,
+  listRegistrationBranches,
   requestRegistration,
   signInWithPassword,
   verifyRegistration,
@@ -895,6 +896,11 @@ function RegistrationForm() {
   const { t } = useI18n();
   const { signIn } = useAuth();
   const [accountType, setAccountType] = useState<RegistrationAccountType>('guardian');
+  const [branchId, setBranchId] = useState('');
+  const [registrationSource, setRegistrationSource] = useState<{
+    organizations: import('@workspace/api-client-react').Organization[];
+    branches: import('@workspace/api-client-react').Branch[];
+  }>({ organizations: [], branches: [] });
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -905,6 +911,10 @@ function RegistrationForm() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [resendCountdown, setResendCountdown] = useState(0);
+
+  useEffect(() => {
+    void listRegistrationBranches().then(setRegistrationSource).catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     if (resendCountdown <= 0) return;
@@ -923,9 +933,19 @@ function RegistrationForm() {
       setError(t('auth.phoneInvalid'));
       return;
     }
+    if (registrationSource.branches.length > 0 && !branchId) {
+      setError(t('auth.branchRequired'));
+      return;
+    }
     setBusy(true); setError('');
     try {
-      const result = await requestRegistration({ phone: normalizedPhone, fullName: fullName.trim(), email: email.trim(), accountType });
+      const result = await requestRegistration({
+        phone: normalizedPhone,
+        fullName: fullName.trim(),
+        email: email.trim(),
+        accountType,
+        branchId: branchId ? Number(branchId) : undefined,
+      });
       if (!result.challengeId) throw new Error('Missing challenge');
       setChallengeId(result.challengeId);
       setResendCountdown(60);
@@ -977,6 +997,21 @@ function RegistrationForm() {
               ))}
             </div>
           </fieldset>
+          {registrationSource.branches.length > 0 && (
+            <label className="block text-sm font-bold">{t('auth.branch')}
+              <div className="mt-2">
+                <BranchTreeSelect
+                  mode="single"
+                  value={branchId}
+                  onChange={setBranchId}
+                  source={registrationSource}
+                  testId="registration-branch"
+                  placeholder={t('branchTree.selectBranch')}
+                  hideAll
+                />
+              </div>
+            </label>
+          )}
           <label className="block text-sm font-bold">{t('auth.fullName')}
             <input required autoComplete="name" value={fullName} onChange={event => setFullName(event.target.value)}
               aria-describedby="full-name-help" className="mt-2 w-full rounded-xl border border-input bg-background px-4 py-3 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
@@ -1016,7 +1051,13 @@ function RegistrationForm() {
             if (!normalizedPhone) return;
             setBusy(true); setError('');
             try {
-              const result = await requestRegistration({ phone: normalizedPhone, fullName: fullName.trim(), email: email.trim(), accountType });
+              const result = await requestRegistration({
+                phone: normalizedPhone,
+                fullName: fullName.trim(),
+                email: email.trim(),
+                accountType,
+                branchId: branchId ? Number(branchId) : undefined,
+              });
               if (result.challengeId) { setChallengeId(result.challengeId); setOtp(''); }
               setResendCountdown(60);
             } catch { setError(t('auth.resendOtpError')); } finally { setBusy(false); }

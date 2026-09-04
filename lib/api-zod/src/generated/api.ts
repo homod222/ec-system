@@ -29,6 +29,7 @@ export const RequestPublicRegistrationBody = zod.object({
     .regex(requestPublicRegistrationBodyFullNameRegExp),
   email: zod.string().email().max(requestPublicRegistrationBodyEmailMax),
   accountType: zod.enum(["guardian", "staff"]),
+  branchId: zod.number().int().min(1).optional(),
 });
 export const requestPublicRegistrationResponseChallengeIdMin = 32;
 export const requestPublicRegistrationResponseChallengeIdMax = 64;
@@ -38,6 +39,34 @@ export const RequestPublicRegistrationResponse = zod.object({
     .min(requestPublicRegistrationResponseChallengeIdMin)
     .max(requestPublicRegistrationResponseChallengeIdMax),
   expiresInSeconds: zod.number().int().min(1),
+});
+/**
+ * @summary List organizations and branches available for public registration
+ */
+export const ListPublicRegistrationBranchesResponse = zod.object({
+  organizations: zod.array(
+    zod.object({
+      id: zod.number(),
+      name: zod.string(),
+      code: zod.string(),
+      type: zod.string(),
+      address: zod.string().nullish(),
+      phone: zod.string().nullish(),
+      email: zod.string().nullish(),
+      active: zod.boolean(),
+    }),
+  ),
+  branches: zod.array(
+    zod.object({
+      id: zod.number(),
+      organizationId: zod.number(),
+      name: zod.string(),
+      code: zod.string(),
+      address: zod.string().nullish(),
+      phone: zod.string().nullish(),
+      active: zod.boolean(),
+    }),
+  ),
 });
 /**
  * @summary Verify WhatsApp OTP, create the Clerk password account, and resolve access

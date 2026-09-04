@@ -62,6 +62,18 @@ paths:
               schema: { $ref: "#/components/schemas/PublicRegistrationChallenge" }
         "409": { description: Phone or email is already registered }
         "429": { description: Too many requests }
+  /auth/register/branches:
+    get:
+      operationId: listPublicRegistrationBranches
+      security: []
+      tags: [phone-auth]
+      summary: List organizations and branches available for public registration
+      responses:
+        "200":
+          description: Public registration organizations and branches
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PublicRegistrationBranches" }
   /auth/register/verify:
     post:
       operationId: verifyPublicRegistration
@@ -1867,6 +1879,18 @@ components:
           pattern: '^\S+(?:\s+\S+){2,}$'
         email: { type: string, format: email, maxLength: 254 }
         accountType: { type: string, enum: [guardian, staff] }
+        branchId: { type: integer, minimum: 1 }
+    PublicRegistrationBranches:
+      type: object
+      required: [organizations, branches]
+      additionalProperties: false
+      properties:
+        organizations:
+          type: array
+          items: { $ref: "#/components/schemas/Organization" }
+        branches:
+          type: array
+          items: { $ref: "#/components/schemas/Branch" }
     PublicRegistrationVerify:
       type: object
       required: [challengeId, otp, password]

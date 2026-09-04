@@ -1,4 +1,5 @@
 import { getStoredToken } from './auth-context';
+import type { Branch, Organization } from '@workspace/api-client-react';
 
 export type RegistrationAccountType = 'guardian' | 'staff';
 
@@ -7,6 +8,7 @@ export interface RegistrationRequestInput {
   fullName: string;
   email: string;
   accountType: RegistrationAccountType;
+  branchId?: number;
 }
 
 export interface RegistrationRequestResponse {
@@ -85,6 +87,18 @@ async function postJson<TInput>(path: string, input: TInput): Promise<Record<str
   }
 
   return response.json() as Promise<Record<string, unknown>>;
+}
+
+export async function listRegistrationBranches(): Promise<{
+  organizations: Organization[];
+  branches: Branch[];
+}> {
+  const response = await fetch('/api/auth/register/branches');
+  if (!response.ok) {
+    const data = await response.json().catch(() => null) as { code?: unknown } | null;
+    throw new AuthApiError(response.status, typeof data?.code === 'string' ? data.code : undefined);
+  }
+  return response.json() as Promise<{ organizations: Organization[]; branches: Branch[] }>;
 }
 
 export function requestRegistration(input: RegistrationRequestInput) {

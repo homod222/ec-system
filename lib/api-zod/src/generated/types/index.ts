@@ -163,6 +163,7 @@ export * from './phoneLoginTicket';
 export * from './phoneLoginVerify';
 export * from './phonePasswordSignIn';
 export * from './progressReport';
+export * from './publicRegistrationBranches';
 export * from './publicRegistrationChallenge';
 export * from './publicRegistrationRequest';
 export * from './publicRegistrationRequestAccountType';
