@@ -26,6 +26,7 @@ export interface Child {
   classroomName: string | null;
   guardianName: string;
   guardianPhone: string;
+  linked?: boolean;
   level: string;
   attendanceRate: number;
   /** @nullable */

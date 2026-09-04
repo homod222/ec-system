@@ -118,6 +118,14 @@ export const childrenTable = pgTable("children", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const childGuardianLinksTable = pgTable("child_guardian_links", {
+  id: serial("id").primaryKey(),
+  ownerId: text("owner_id").notNull(),
+  childId: integer("child_id").notNull(),
+  guardianId: integer("guardian_id").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const staffTable = pgTable("staff", {
   id: serial("id").primaryKey(),
   ownerId: text("owner_id").notNull().default("__legacy__"),

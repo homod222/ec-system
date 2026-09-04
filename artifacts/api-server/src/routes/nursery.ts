@@ -15,6 +15,9 @@ import {
   CreateParentInvoiceCheckoutSessionBody,
   CreateParentInvoiceCheckoutSessionParams,
   CreateParentInvoiceCheckoutSessionResponse,
+  LinkGuardianChildBody,
+  LinkGuardianChildParams,
+  LinkGuardianChildResponse,
   DeleteChildParams,
   GetChildParams,
   GetChildResponse,
@@ -44,9 +47,12 @@ import {
   ListParentProgressReportsQueryParams,
   ListParentProgressReportsResponse,
   ListGuardianAccountsResponse,
+  ListGuardianChildrenParams,
+  ListGuardianChildrenResponse,
   UpdateGuardianAccountParams,
   UpdateGuardianAccountBody,
   UpdateGuardianAccountResponse,
+  UnlinkGuardianChildParams,
   ListStaffResponse,
   RecordAttendanceBody,
   RecordAttendanceResponse,
@@ -83,6 +89,7 @@ import {
   announcementsTable,
   attendanceTable,
   auditLogsTable,
+  childGuardianLinksTable,
   childrenTable,
   classroomsTable,
   childActivitiesTable,
@@ -119,6 +126,7 @@ import {
 } from "../lib/financePayments";
 import { InvoiceNotPayableError, requireCheckoutPayable } from "../lib/invoiceLedger";
 import { sendDueReminder, sendWhatsAppText } from "../lib/notifications";
+import { guardianChildCondition } from "../lib/guardianChildren";
 import { configuredOwnerEmails, isConfiguredOwner } from "../lib/ownerIdentity";
 import {
   auditNurseryOperation,
@@ -1168,6 +1176,114 @@ router.get("/guardians/accounts", async (req, res): Promise<void> => {
     guardianAccountResponse(guardian, accountsByGuardianId.get(guardian.id)))));
 });
 
+router.get("/guardians/:id/children", async (req, res): Promise<void> => {
+  const params = ListGuardianChildrenParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  const { ownerId, branchIds } = nurseryContext(req);
+  const [guardian] = await db.select().from(guardiansTable).where(and(
+    eq(guardiansTable.id, params.data.id),
+    eq(guardiansTable.ownerId, ownerId),
+    branchCondition(guardiansTable.branchId, branchIds),
+  )).limit(1);
+  if (!guardian) {
+    res.status(404).json({ error: "Guardian not found" });
+    return;
+  }
+  const rows = await childRows(ownerId, branchIds);
+  const links = await db.select({ childId: childGuardianLinksTable.childId })
+    .from(childGuardianLinksTable)
+    .where(and(
+      eq(childGuardianLinksTable.ownerId, ownerId),
+      eq(childGuardianLinksTable.guardianId, guardian.id),
+    ));
+  const linkedIds = new Set(links.map((link) => link.childId));
+  res.json(ListGuardianChildrenResponse.parse(rows
+    .filter((child) => child.guardianId === guardian.id || linkedIds.has(child.id))
+    .map((child) => ({ ...child, linked: child.guardianId !== guardian.id && linkedIds.has(child.id) }))));
+});
+
+router.post("/guardians/:id/children/links", async (req, res): Promise<void> => {
+  const params = LinkGuardianChildParams.safeParse(req.params);
+  const body = LinkGuardianChildBody.safeParse(req.body);
+  if (!params.success || !body.success) {
+    const error = !params.success ? params.error.message : !body.success ? body.error.message : "Invalid request";
+    res.status(400).json({ error });
+    return;
+  }
+  const { ownerId, branchIds } = nurseryContext(req);
+  const [guardian] = await db.select({ id: guardiansTable.id }).from(guardiansTable).where(and(
+    eq(guardiansTable.id, params.data.id),
+    eq(guardiansTable.ownerId, ownerId),
+    branchCondition(guardiansTable.branchId, branchIds),
+  )).limit(1);
+  const [child] = await db.select().from(childrenTable).where(and(
+    eq(childrenTable.id, body.data.childId),
+    eq(childrenTable.ownerId, ownerId),
+    branchCondition(childrenTable.branchId, branchIds),
+  )).limit(1);
+  if (!guardian || !child) {
+    res.status(404).json({ error: "Guardian or child not found" });
+    return;
+  }
+  if (child.guardianId !== guardian.id) {
+    const [existing] = await db.select({ id: childGuardianLinksTable.id })
+      .from(childGuardianLinksTable)
+      .where(and(
+        eq(childGuardianLinksTable.ownerId, ownerId),
+        eq(childGuardianLinksTable.guardianId, guardian.id),
+        eq(childGuardianLinksTable.childId, child.id),
+      )).limit(1);
+    if (!existing) {
+      await db.insert(childGuardianLinksTable).values({
+        ownerId,
+        guardianId: guardian.id,
+        childId: child.id,
+      });
+    }
+  }
+  res.status(201).json(LinkGuardianChildResponse.parse({ ok: true }));
+});
+
+router.delete("/guardians/:id/children/links/:childId", async (req, res): Promise<void> => {
+  const params = UnlinkGuardianChildParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  const { ownerId, branchIds } = nurseryContext(req);
+  const [guardian] = await db.select({ id: guardiansTable.id }).from(guardiansTable).where(and(
+    eq(guardiansTable.id, params.data.id),
+    eq(guardiansTable.ownerId, ownerId),
+    branchCondition(guardiansTable.branchId, branchIds),
+  )).limit(1);
+  const [child] = await db.select({ guardianId: childrenTable.guardianId }).from(childrenTable).where(and(
+    eq(childrenTable.id, params.data.childId),
+    eq(childrenTable.ownerId, ownerId),
+    branchCondition(childrenTable.branchId, branchIds),
+  )).limit(1);
+  if (!guardian || !child) {
+    res.status(404).json({ error: "Guardian or child not found" });
+    return;
+  }
+  if (child.guardianId === guardian.id) {
+    res.status(409).json({ error: "Primary guardian relationship cannot be removed" });
+    return;
+  }
+  const deleted = await db.delete(childGuardianLinksTable).where(and(
+    eq(childGuardianLinksTable.ownerId, ownerId),
+    eq(childGuardianLinksTable.guardianId, guardian.id),
+    eq(childGuardianLinksTable.childId, params.data.childId),
+  )).returning({ id: childGuardianLinksTable.id });
+  if (!deleted.length) {
+    res.status(404).json({ error: "Guardian-child link not found" });
+    return;
+  }
+  res.sendStatus(204);
+});
+
 router.patch("/guardians/:id/account", async (req, res): Promise<void> => {
   const params = UpdateGuardianAccountParams.safeParse(req.params);
   const body = UpdateGuardianAccountBody.safeParse(req.body);
@@ -2069,7 +2185,7 @@ router.post("/invoices/:id/reminder", async (req, res): Promise<void> => {
 
 async function parentOwnedChildren(guardianId: number, ownerId: string) {
   return db.select().from(childrenTable).where(and(
-    eq(childrenTable.guardianId, guardianId),
+    guardianChildCondition(guardianId, ownerId),
     eq(childrenTable.ownerId, ownerId),
   ));
 }
@@ -2085,7 +2201,7 @@ async function parentChildRows(guardianId: number, ownerId: string) {
         .innerJoin(childrenTable, and(
           eq(attendanceTable.childId, childrenTable.id),
           eq(childrenTable.ownerId, ownerId),
-          eq(childrenTable.guardianId, guardianId),
+          guardianChildCondition(guardianId, ownerId),
         ))
         .where(inArray(attendanceTable.childId, childIds))
       : Promise.resolve([]),
@@ -2118,7 +2234,7 @@ router.get("/parent/overview", async (_req, res): Promise<void> => {
       .innerJoin(childrenTable, and(
         eq(invoicesTable.childId, childrenTable.id),
         eq(childrenTable.ownerId, guardian.ownerId),
-        eq(childrenTable.guardianId, guardian.id),
+        guardianChildCondition(guardian.id, guardian.ownerId),
       ))
       .where(and(
         eq(invoicesTable.guardianId, guardian.id),
@@ -2176,7 +2292,7 @@ router.get("/parent/attendance", async (req, res): Promise<void> => {
     .innerJoin(childrenTable, and(
       eq(attendanceTable.childId, childrenTable.id),
       eq(childrenTable.ownerId, guardian.ownerId),
-      eq(childrenTable.guardianId, guardian.id),
+      guardianChildCondition(guardian.id, guardian.ownerId),
     ))
     .where(inArray(attendanceTable.childId, [...childMap.keys()]))
     .orderBy(desc(attendanceTable.date));
@@ -2211,7 +2327,7 @@ router.get("/parent/progress-reports", async (req, res): Promise<void> => {
     .innerJoin(childrenTable, and(
       eq(progressReportsTable.childId, childrenTable.id),
       eq(childrenTable.ownerId, guardian.ownerId),
-      eq(childrenTable.guardianId, guardian.id),
+      guardianChildCondition(guardian.id, guardian.ownerId),
     ))
     .where(and(
       eq(progressReportsTable.ownerId, guardian.ownerId),
@@ -2249,7 +2365,7 @@ router.get("/parent/activities", async (req, res): Promise<void> => {
     .innerJoin(childrenTable, and(
       eq(childActivitiesTable.childId, childrenTable.id),
       eq(childrenTable.ownerId, guardian.ownerId),
-      eq(childrenTable.guardianId, guardian.id),
+      guardianChildCondition(guardian.id, guardian.ownerId),
     ))
     .where(and(
       eq(childActivitiesTable.ownerId, guardian.ownerId),
@@ -2276,7 +2392,7 @@ router.get("/parent/invoices", async (_req, res): Promise<void> => {
     .innerJoin(childrenTable, and(
       eq(invoicesTable.childId, childrenTable.id),
       eq(childrenTable.ownerId, guardian.ownerId),
-      eq(childrenTable.guardianId, guardian.id),
+      guardianChildCondition(guardian.id, guardian.ownerId),
     ))
     .where(and(
       eq(invoicesTable.guardianId, guardian.id),
@@ -2322,7 +2438,7 @@ router.post("/parent/invoices/:id/checkout-session", async (req, res): Promise<v
     .innerJoin(childrenTable, and(
       eq(invoicesTable.childId, childrenTable.id),
       eq(childrenTable.ownerId, guardian.ownerId),
-      eq(childrenTable.guardianId, guardian.id),
+      guardianChildCondition(guardian.id, guardian.ownerId),
     ))
     .where(and(
       eq(invoicesTable.id, params.data.id),

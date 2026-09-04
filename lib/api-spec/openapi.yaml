@@ -592,6 +592,59 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/GuardianAccountResult"
+  /guardians/{id}/children:
+    get:
+      operationId: listGuardianChildren
+      tags: [guardians]
+      summary: List children associated with a guardian
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Guardian child records
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Child"
+        "404": { description: Guardian not found }
+  /guardians/{id}/children/links:
+    post:
+      operationId: linkGuardianChild
+      tags: [guardians]
+      summary: Link an existing child to a guardian
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GuardianChildLinkInput"
+      responses:
+        "201":
+          description: Child linked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "404": { description: Guardian or child not found }
+  /guardians/{id}/children/links/{childId}:
+    delete:
+      operationId: unlinkGuardianChild
+      tags: [guardians]
+      summary: Unlink a child from a guardian
+      parameters:
+        - $ref: "#/components/parameters/Id"
+        - name: childId
+          in: path
+          required: true
+          schema: { type: number }
+      responses:
+        "204": { description: Child unlinked }
+        "404": { description: Link not found }
+        "409": { description: Primary guardian relationship cannot be removed }
   /guardians/{id}/account:
     patch:
       operationId: updateGuardianAccount
@@ -2005,6 +2058,7 @@ components:
         classroomName: { type: ["string", "null"] }
         guardianName: { type: string }
         guardianPhone: { type: string }
+        linked: { type: boolean }
         level: { type: string }
         attendanceRate: { type: number }
         avatarUrl: { type: ["string", "null"] }
@@ -2025,6 +2079,16 @@ components:
         guardianPhone: { type: string, minLength: 5 }
         level: { type: string, minLength: 1 }
         notes: { type: ["string", "null"] }
+    GuardianChildLinkInput:
+      type: object
+      required: [childId]
+      properties:
+        childId: { type: number }
+    OkResponse:
+      type: object
+      required: [ok]
+      properties:
+        ok: { type: boolean }
     ChildUpdate:
       type: object
       properties:
